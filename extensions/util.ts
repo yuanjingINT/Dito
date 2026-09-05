@@ -151,6 +151,7 @@ export interface DitoConfig {
       sudoCommand: string;
     };
     ask: { enabled: boolean };
+    snowluma: { enabled: boolean };
   };
 }
 
@@ -370,6 +371,7 @@ export function defaultConfig(): DitoConfig {
       },
       permission: { enabled: true, sudoMode: false, autoSudo: true, sudoCommand: "sudo" },
       ask: { enabled: true },
+      snowluma: { enabled: true },
     },
   };
 }

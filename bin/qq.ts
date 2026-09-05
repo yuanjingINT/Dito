@@ -13,8 +13,6 @@
 import { accessSync, constants as fsConstants, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import net from "node:net";
-import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { Type } from "typebox";
@@ -24,6 +22,7 @@ import { openChannelSession } from "./session.js";
 import { makeChannelChat, applySessionToolPolicy, runWithTaskSlot, type ChannelChat } from "./channel-chat.js";
 import { Affinity } from "./affinity.js";
 import { analyzeImage, downloadImage, MemeStore } from "./memes.js";
+import { probeWs } from "../extensions/snowluma-tools.js";
 
 type Bot = SnowLumaWebSocketClient;
 
@@ -385,47 +384,6 @@ function detectSnowlumaCommand(): string | null {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/**
- * 探测 SnowLuma 是否在运行：向 OneBot 端口发一个 WebSocket 升级握手。
- * - 收到任何 HTTP 响应（101/4xx）→ 服务在线
- * - TCP 连上后被 RST → 容器在跑、但 OneBot 服务未激活（QQ 未登录）→ 视为在运行，
- *   由 SDK 的自动重连等待登录激活
- * - 连接被拒 / 超时 → 确实没运行
- */
-function probeWs(url: string, timeoutMs = 3000): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let hadConnect = false;
-    const done = (v: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      socket.destroy();
-      resolve(v);
-    };
-    const target = new URL(url.replace(/^ws/, "http"));
-    const port = Number(target.port || (url.startsWith("wss") ? 443 : 80));
-    const socket = net.createConnection({ host: target.hostname, port }, () => {
-      hadConnect = true;
-      const key = randomBytes(16).toString("base64");
-      socket.write(
-        `GET ${target.pathname || "/"} HTTP/1.1\r\nHost: ${target.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`,
-      );
-    });
-    const timer = setTimeout(() => done(hadConnect), timeoutMs);
-    socket.on("data", (d) => {
-      if (/^HTTP\/\d\.\d \d{3}/.test(d.toString("latin1"))) done(true);
-    });
-    // 连上后被 RST：网关在、服务未激活 → 视为在运行；没连上就被拒 → 未运行
-    socket.on("error", (err: NodeJS.ErrnoException) => {
-      // RST/断管 = 有东西在监听但服务未激活（QQ 未登录）；拒连/超时 = 真没运行
-      done(hadConnect || err.code === "ECONNRESET" || err.code === "EPIPE");
-    });
-    socket.on("close", () => done(hadConnect));
-  });
-}
-
-
 interface AutoStartResult {
   child?: ChildProcess;
 }
@@ -603,7 +561,7 @@ export async function runQqChannel(): Promise<void> {
       qqToolsExtension(bot, affinity, memes),
     ], {
       systemPrompt: buildQqSystemPrompt(),
-      skipPluginIds: ["mode"],
+      skipPluginIds: ["mode", "snowluma"],
       sessionsDir: join(CHAT_SESSIONS_DIR, "qq-sessions"),
       memoryScope: key,
     });
