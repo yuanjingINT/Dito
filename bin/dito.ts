@@ -184,12 +184,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (args[0] === "web") {
-    const { runWebServer } = await import("./web.js");
-    await runWebServer();
-    return;
-  }
-
   if (args[0] === "voice") {
     const voicePlugin = loadConfig().plugins.voice;
     if (voicePlugin.enabled === false) {

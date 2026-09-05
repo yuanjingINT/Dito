@@ -3,8 +3,6 @@
 基于 [pi](https://pi.dev) 打造的个人 AI 助手。参考 laozhou 项目的设计，Dito 拥有：
 
 - **语音对话**：全屏水波界面（待机水波涟漪、录音水波扩散、思考水滴转圈、说话随声波动），提问/请求许可时自动朗读后录音，支持本地/线上 STT/TTS，连续对话可配置
-- **Web UI**：`dito web` 打开浏览器控制台（Xiaomi MiMo 风格浅色暖调界面），流式对话 + 运行轨迹回放 + 全部配置可视化编辑
-- **桌面版**：`npm run desktop` 启动独立 Electron 窗口，UI 沿用 Xiaomi MiMo 浅色暖调设计；提示词加密打包，用户看不到人设/身份/系统提示词正文
 - **知识库**：本地 SQLite + 中文检索，内置 Arch Linux 等 Linux 知识（48 篇）
 - **记忆**：知识点 + 历史对话，自动记忆、跨会话持久
 - **提示词设定**：Dito 人设 + 用户身份（默认 / linux小白 / 老板），可切换
@@ -12,7 +10,7 @@
 - **发行版工具**：AUR 搜索 + 「红 / 黄 / 绿」红绿灯审查（拉 PKGBUILD 做危险信号初筛）+ AUR 安装命令生成（paru/yay）、Fedora COPR 仓库检索与启用/安装/更新命令生成
 - **联网搜索**：无 key 时走 DuckDuckGo，也可配 Tavily / Exa / SearXNG
 - **频道：QQ（SnowLuma）/ Matrix**：`dito qq` 通过 SnowLuma（OneBot 协议）连 QQ——私聊/群聊对话（每聊天独立会话、QQ 专属人设）、被戳自动戳回去、按情绪给消息贴表情回应、**发 QQ 空间说说**，SnowLuma 的 184 个 OneBot action 全部注册为独立工具由模型自主选择，回复超 100 字自动转图片；`dito matrix` 连 Matrix homeserver 收发房间消息。均在 `dito config` → 「频道」里配置
-- **权限门 / sudo 权限**：高危命令（rm -rf /、fork bomb、格式化、卸载等）拦截/确认；可一键开启「sudo 权限模式」——权限门关闭，需要 root 的命令自动加 `sudo`（配置 / Web UI / `/sudo on` 切换）
+- **权限门 / sudo 权限**：高危命令（rm -rf /、fork bomb、格式化、卸载等）拦截/确认；可一键开启「sudo 权限模式」——权限门关闭，需要 root 的命令自动加 `sudo`（配置 / `/sudo on` 切换）
 - **默认模型**：opencode 免费公共模型（`big-pickle`，视觉 `mimo-v2.5-free`）——免 Key 开箱即用；内置智谱 GLM-4-Flash（免费·国内直连）等国内模型可一键切换
 
 ## 目录结构
@@ -22,11 +20,7 @@ Dito/
 ├── bin/
 │   ├── dito             # 终端对话启动器（软链到 ~/.local/bin/dito）
 │   └── dito.ts          # REPL 实现（pi SDK）
-├── desktop/              # Electron 桌面版
-│   ├── main.cjs          # 桌面壳：启动内置 Web 服务 + 打开窗口
 │   └── prompts/          # 加密提示词包（dito-prompts.bin，AES-256-GCM）
-├── scripts/
-│   └── launch-desktop.cjs# 桌面版启动器（自动定位 Electron 二进制）
 ├── extensions/           # pi 扩展（TypeScript）
 │   ├── index.ts          # 入口（调用插件内核引导）
 │   ├── plugin-kernel.ts  # Cordis 式插件内核：加载/依赖排序/配置启用
@@ -47,7 +41,7 @@ Dito/
 │   ├── mode.ts           # 模式实现
 │   ├── knowledge-base.ts / memory.ts / web-search.ts / permission.ts / ask.ts / voice.ts
 │   └── db.ts / text.ts / util.ts
-├── personas/dito.md      # Dito 主人设（开发源文件；桌面版打包后不携带明文）
+├── personas/dito.md      # Dito 主人设（开发源文件）
 ├── system-prompts/       # 各系统/发行版专属运维提示词（开发源文件）
 ├── identities/           # 用户身份（开发源文件）
 ├── kb/                   # 默认知识库（首次启动自动导入）
@@ -92,7 +86,6 @@ dito
 
 - 聊天里发 `/sudo on`（`/sudo off` 关闭，状态栏会显示当前是 `sudo模式` 还是 `权限门`）
 - `dito config` → 「权限与 sudo」分区勾选「sudo 权限模式」
-- Web UI 配置页 → 「权限与 sudo」开关，保存即时生效
 
 开启后：
 
@@ -132,33 +125,6 @@ dito config        # TUI 配置：模型 / 供应商 / 人格 / 知识库 / 记�
 - 界面为 opencode 风格：顶栏 `◈ Dito 配置` + 右侧当前模型、面板标题 breadcrumb、选中行整行高亮、底部按键提示栏、操作 toast 反馈
 - 操作：`j/k` 或方向键移动，`Enter` 编辑/选择（布尔项直接切换），`s` 保存，`q` 返回；编辑文本时用方向键/Home/End 移动光标，字母（含 h/l）原样输入；敏感字段（API Key）显示 `********`，进入编辑自动清空
 
-### Web UI（图形界面，MiMo 风格）
-
-```bash
-dito web            # 启动 http://127.0.0.1:3877
-dito web -p 8080    # 指定端口（或 DITO_WEB_PORT 环境变量）
-```
-
-- **对话**：流式聊天，`闲聊 / 标准 / 计划` 一键切换；底部「运行轨迹」面板记录每轮思考、工具调用、参数与结果（运行有迹可循）
-- **配置**：可视化编辑全部 `config/dito.json` —— 模型与供应商（新增/编辑/删除、从 API 刷新模型列表）、人设 / 身份、知识库 / 记忆 / 网络搜索 / 语音插件开关与详细参数；保存即时生效
-- **知识库**：搜索、阅读、新增、删除条目；**记忆**：回忆检索 + 统计 + 清空
-- 与终端 TUI 共用同一份 `~/.pi/agent/dito/config.json` 与 SQLite 数据，改动两边互通
-
-### 桌面版（Electron，MiMo 风格）
-
-```bash
-npm run desktop                       # 启动桌面窗口（开发模式）
-npm run desktop:encrypt-prompts       # 生成/更新加密提示词包
-npm run desktop:pack                  # 打包 Linux 桌面版目录（输出 dist/linux-unpacked/）
-```
-
-- 桌面版会启动内置的 Dito Web 服务（`127.0.0.1` 随机端口），并在独立窗口中加载 MiMo 风格 UI。
-- **提示词加密**：`personas/`、`identities/`、`system-prompts/` 下的全部 `.md` 提示词会用 AES-256-GCM 加密写入 `desktop/prompts/dito-prompts.bin`；桌面版强制只读加密包，不回退明文目录，前端 API 也只返回名称不返回正文。
-- Dito 后端在构建系统提示词时透明解密全部提示词，因此 **Dito 能获取所有提示词内容，用户在前端看不到**。
-- 打包/分发桌面版时，`desktop/prompts/dito-prompts.bin` 会随包分发，而 `personas/`、`identities/`、`system-prompts/` 明文目录不会进入 `dist/linux-unpacked/`。
-- 打包产物运行：`dist/linux-unpacked/dito`
-- `package.json` 的 `build.electronDist` 当前指向本机 `/usr/lib/electron43`；其他机器打包时可改为自己的 Electron 目录，或删除该字段让 electron-builder 自行下载 Electron。
-
 ### 频道：QQ（SnowLuma）与 Matrix
 
 Dito 可以作为聊天机器人接入外部 IM，每个聊天（好友/群/房间）拥有独立持久会话，任务进行中收到新消息会自动排队。
@@ -191,13 +157,10 @@ Dito 可以作为聊天机器人接入外部 IM，每个聊天（好友/群/房�
 ```bash
 ./packaging/build.sh                 # 生成源码包并构建 CLI/Web RPM
 ./packaging/build.sh --srpm-only     # 只生成源码 RPM
-./packaging/build-desktop-rpm.sh     # 生成桌面版 RPM（内置 Electron，自包含）
 ```
 
 - CLI/Web RPM 产物：`~/rpmbuild/RPMS/x86_64/dito-0.1.0-1.x86_64.rpm`（项目内也复制到 `dist/`）
-- 桌面版 RPM 产物：`~/rpmbuild/RPMS/x86_64/dito-desktop-0.1.0-1.x86_64.rpm`（项目内也复制到 `dist/`）
-- RPM 内只携带加密提示词包 `desktop/prompts/dito-prompts.bin`，不携带 `personas/`、`identities/`、`system-prompts/` 明文目录
-- 安装后命令：`dito`（终端对话）、`dito web`（Web UI）、`dito-desktop`（桌面版）
+- 安装后命令：`dito`（终端对话）
 
 ### DEB 打包
 
@@ -207,7 +170,7 @@ Dito 可以作为聊天机器人接入外部 IM，每个聊天（好友/群/房�
 
 - 产物：`dist/dito_0.1.0_amd64.deb`
 - DEB 内同样只携带加密提示词包，不携带明文提示词目录
-- 安装后命令同 RPM：`dito` / `dito web` / `dito-desktop`
+- 安装后命令同 RPM：`dito`
 
 ### 插件架构（一切皆插件，参考 Cordis）
 
