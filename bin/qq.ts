@@ -542,12 +542,6 @@ export async function runQqChannel(): Promise<void> {
     process.exit(1);
   }
 
-  const bot = new SnowLumaWebSocketClient({
-    url: ch.url,
-    accessToken: ch.accessToken || undefined,
-    reconnect: true,
-  });
-
   mkdirSync(join(CHAT_SESSIONS_DIR, "sessions"), { recursive: true });
   const chats = new Map<string, ChannelChat>();
   const affinity = new Affinity(join(CHAT_SESSIONS_DIR, "affinity.json"));
@@ -624,7 +618,7 @@ export async function runQqChannel(): Promise<void> {
   };
 
   // 私聊
-  bot.onPrivateMessage(async (event) => {
+  const onPrivate = async (event: Parameters<Parameters<Bot["onPrivateMessage"]>[0]>[0]): Promise<void> => {
     if (!ch.friends) return;
     if (seenOnce(event.message_id)) return;
     if (event.user_id === (await safeSelfId(bot))) return;
@@ -636,10 +630,10 @@ export async function runQqChannel(): Promise<void> {
     if (!content) return;
     const chat = await sessionFor(key);
     await runWithTaskSlot(() => chat.session.prompt(`[QQ私聊 来自 ${name}] ${content}`, { streamingBehavior: "followUp" }));
-  });
+  };
 
   // 群聊（仅 allowlist 内的群；含唤醒词或 @机器人 才响应）
-  bot.onGroupMessage(async (event) => {
+  const onGroup = async (event: Parameters<Parameters<Bot["onGroupMessage"]>[0]>[0]): Promise<void> => {
     if (!ch.groups.includes(event.group_id)) return;
     if (seenOnce(event.message_id)) return;
     const name = event.sender?.card || event.sender?.nickname || String(event.user_id);
@@ -700,10 +694,10 @@ export async function runQqChannel(): Promise<void> {
       chat.session.prompt(`[QQ群 ${event.group_id} 来自 ${name}｜好感度 ${score}/100] ${content}`, {
         streamingBehavior: "followUp",
       }));
-  });
+  };
 
   // 戳一戳：被戳就戳回去
-  bot.onNotice(async (event) => {
+  const onNotice = async (event: Parameters<Parameters<Bot["onNotice"]>[0]>[0]): Promise<void> => {
     const e = event as { notice_type?: string; sub_type?: string; group_id?: number; user_id?: number; target_id?: number };
     if (e.sub_type !== "poke") return;
     if (!ch.pokeBack) return;
@@ -716,10 +710,10 @@ export async function runQqChannel(): Promise<void> {
     } catch (err) {
       console.error("[dito qq] 戳回去失败：", (err as Error).message);
     }
-  });
+  };
 
   // 好友/群请求
-  bot.onRequest(async (event) => {
+  const onRequest = async (event: Parameters<Parameters<Bot["onRequest"]>[0]>[0]): Promise<void> => {
     const e = event as { request_type?: string; sub_type?: string; flag?: string; user_id?: number };
     if (ch.autoApprove && e.flag) {
       try {
@@ -736,7 +730,7 @@ export async function runQqChannel(): Promise<void> {
       }
     }
     console.log(`[dito qq] 收到 ${e.request_type} 请求（来自 ${e.user_id}），未自动处理`);
-  });
+  };
 
   const auto = await ensureSnowLuma(ch);
   if (auto.child) {
@@ -758,19 +752,69 @@ export async function runQqChannel(): Promise<void> {
     });
   }
 
-  // QQ 未登录时 OneBot 端口不开放 WS 握手：无限重试直到登录激活（Ctrl+C 可退）
-  let connected = false;
-  for (let attempt = 1; !connected; attempt++) {
-    try {
-      await bot.connect();
-      connected = true;
-    } catch (err) {
-      if (attempt === 1) {
-        console.log("[dito qq] OneBot 端口未就绪（QQ 可能还没扫码登录），每 3 秒重试；登录后自动进入工作状态");
-      }
-      await sleep(3000);
-    }
+  // ── 事件订阅挂到当前客户端；换客户端时整体重挂 ──
+  let bot = createBot();
+  function createBot(): Bot {
+    const b = new SnowLumaWebSocketClient({
+      url: ch.url,
+      accessToken: ch.accessToken || undefined,
+      reconnect: true,
+    });
+    bindHandlers(b);
+    return b;
   }
+  function swapBot(next: Bot): void {
+    try {
+      bot.close();
+    } catch {
+      /* ignore */
+    }
+    bot = next;
+  }
+  function connectWithRetry(b: Bot): Promise<void> {
+    return (async () => {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await b.connect();
+          return;
+        } catch {
+          if (attempt === 1) {
+            console.log("[dito qq] OneBot 端口未就绪（QQ 可能还没扫码登录），每 3 秒重试；登录后自动进入工作状态");
+          }
+          await sleep(3000);
+        }
+      }
+    })();
+  }
+  function bindHandlers(b: Bot): void {
+    b.onPrivateMessage(onPrivate);
+    b.onGroupMessage(onGroup);
+    b.onNotice(onNotice);
+    b.onRequest(onRequest);
+  }
+
+  await connectWithRetry(bot);
+
+  // 连接健康监测：SDK 的 reconnect 有重试上限，服务端长时间不可达后会彻底沉默。
+  // 每 60s 探测端口：端口通而客户端未连接 → 重建客户端并重新挂事件（聊天缓存保留）。
+  const rebuildClient = async (): Promise<void> => {
+    console.log("[dito qq] 检测到连接断开，重建 SnowLuma 客户端…");
+    const fresh = createBot();
+    swapBot(fresh);
+    await connectWithRetry(fresh);
+    console.log("[dito qq] SnowLuma 客户端已恢复");
+  };
+  const healthTimer = setInterval(() => {
+    void (async () => {
+      try {
+        const portAlive = await probeWs(ch.url, 2500);
+        if (portAlive && !bot.isConnected) await rebuildClient();
+      } catch {
+        /* 下一轮再查 */
+      }
+    })();
+  }, 60_000);
+  healthTimer.unref();
 
   let login: { user_id?: number; nickname?: string } | null = null;
   try {
