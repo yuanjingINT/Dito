@@ -19,8 +19,19 @@ interface MemoryRow {
   created_at: number;
 }
 
+/**
+ * 记忆库 scope：频道会话为每个聊天设置独立 scope（每个聊天一个 memory-<scope>.db），
+ * 终端不设 scope 用全局 memory.db——不同聊天之间的记忆互相隔离。
+ */
+let memoryScope: string | undefined;
+export function setMemoryScope(scope?: string): void {
+  memoryScope = scope ? scope.replace(/[^a-zA-Z0-9_-]/g, "_") : undefined;
+}
+
 function memoryDbPath(): string {
-  return join(ditoDataDir(), "memory.db");
+  return memoryScope
+    ? join(ditoDataDir(), `memory-${memoryScope}.db`)
+    : join(ditoDataDir(), "memory.db");
 }
 
 function extractText(message: { role: string; content?: unknown }): string {

@@ -23,7 +23,7 @@ import { loadConfig, readPersona, ROOT_DIR, saveConfig, type QqChannelConfig } f
 import { openChannelSession } from "./session.js";
 import { makeChannelChat, applySessionToolPolicy, runWithTaskSlot, type ChannelChat } from "./channel-chat.js";
 import { Affinity } from "./affinity.js";
-import { analyzeImage, downloadImage, MemeStore, type MemeEntry } from "./memes.js";
+import { analyzeImage, downloadImage, MemeStore } from "./memes.js";
 
 type Bot = SnowLumaWebSocketClient;
 
@@ -44,7 +44,7 @@ const SNOWLUMA_ACTIONS: SnowLumaAction[] = JSON.parse(
 // ── 工具集（注册进 pi，让模型自主选择动作） ─────────────────────
 
 /** 频道专属扩展：SnowLuma 全部 action + 精选封装 */
-export function qqToolsExtension(bot: Bot, affinity: Affinity): (pi: import("@earendil-works/pi-coding-agent").ExtensionAPI) => void {
+export function qqToolsExtension(bot: Bot, affinity: Affinity, memes: MemeStore): (pi: import("@earendil-works/pi-coding-agent").ExtensionAPI) => void {
   return (pi) => {
     // 0) 好感度：模型根据对话体验自主加减分
     pi.registerTool({
@@ -96,8 +96,7 @@ export function qqToolsExtension(bot: Bot, affinity: Affinity): (pi: import("@ea
         try {
           const entry = memes.pick(params.emotion, params.query);
           if (!entry) return { content: [{ type: "text", text: "表情包库还是空的，等群友发图我再偷" }] };
-          const b64 = readFileSync(memes.filePath(entry)).toString("base64");
-          const seg = message.image(`base64://${b64}`);
+          const seg = message.image(`base64://${readFileSync(memes.filePath(entry)).toString("base64")}`);
           if (params.group_id) await bot.sendGroupMessage(params.group_id, [seg]);
           else if (params.user_id) await bot.sendPrivateMessage(params.user_id, [seg]);
           else return { content: [{ type: "text", text: "没说发到哪：传 group_id 或 user_id" }] };
@@ -562,49 +561,44 @@ export async function runQqChannel(): Promise<void> {
     return false;
   };
 
-  /** 回复发送 + 概率附带随机表情包；超 100 字转图片，转图失败回退纯文本 */
-  const send = async (key: string, reply: string): Promise<unknown> => {
+  /** 按聊天 key 发送"裸段数组"（元素必须是 {type,data} 对象，不再包一层） */
+  const sendSegments = (key: string, segments: unknown[]): Promise<unknown> => {
     const [, type, id] = key.match(/^(qq-(?:private|group))-(.+)$/) ?? [];
-    // 统一收口：sendTo 接收"裸段数组"（元素必须是 {type,data}），避免任何链对象被再包一层
-  const sendTo = (segments: unknown[]): Promise<unknown> => {
-      console.log(`[dito qq] 发送段：${JSON.stringify(segments).slice(0, 200)}`);
-      return type === "qq-group"
-        ? bot.sendGroupMessage(Number(id), segments as never)
-        : bot.sendPrivateMessage(Number(id), segments as never);
-    };
-    const chars = [...reply].length;
-    if (chars > REPLY_IMAGE_LIMIT) {
-      const png = renderTextPng(reply);
-      if (png) {
-        const b64 = readFileSync(png).toString("base64");
-        await sendTo([message.image(`base64://${b64}`)]);
-        await maybeMeme(key);
-        return;
-      }
-    }
-    try {
-      await sendTo([message.text(reply)]);
-    } catch (err) {
-      console.error(`[dito qq] 文字回复内容预览：${reply.slice(0, 300)}`);
-      throw err;
-    }
-    await maybeMeme(key);
+    if (!type || !id) return Promise.resolve();
+    return type === "qq-group"
+      ? bot.sendGroupMessage(Number(id), segments as never)
+      : bot.sendPrivateMessage(Number(id), segments as never);
   };
 
-  /** 按概率补一张全库随机表情包（库空自动跳过） */
-  const maybeMeme = async (key: string): Promise<void> => {
-    const chance = ch.memeChance ?? 0.3;
-    if (chance <= 0 || Math.random() >= chance) return;
-    const entry = memes.pick();
-    if (!entry) return;
-    const [, type, id] = key.match(/^(qq-(?:private|group))-(.+)$/) ?? [];
-    if (!type || !id) return;
-    try {
-      const b64 = readFileSync(memes.filePath(entry)).toString("base64");
-      await sendTo([message.image(`base64://${b64}`)]);
-      console.log(`[dito qq] 概率触发表情包：${entry.emotion}「${entry.desc}」`);
-    } catch (err) {
-      console.error("[dito qq] 附带表情包失败：", (err as Error).message);
+  /** 图片段（文件路径 → base64 段） */
+  const imageSegment = (path: string): unknown => message.image(`base64://${readFileSync(path).toString("base64")}`);
+
+  /** 回复发送：超 100 字转图片（失败回退文字），再按概率附赠一张随机表情包 */
+  const send = async (key: string, reply: string): Promise<void> => {
+    let sent = false;
+    if ([...reply].length > REPLY_IMAGE_LIMIT) {
+      const png = renderTextPng(reply);
+      if (png) {
+        try {
+          await sendSegments(key, [imageSegment(png)]);
+          sent = true;
+        } catch (err) {
+          console.error("[dito qq] 图片发送失败，回退文字：", (err as Error).message);
+        }
+      }
+    }
+    if (!sent) await sendSegments(key, [message.text(reply)]);
+    // 概率附赠表情包（库空自动跳过）
+    if ((ch.memeChance ?? 0.3) > 0 && Math.random() < (ch.memeChance ?? 0.3)) {
+      const entry = memes.pick();
+      if (entry) {
+        try {
+          await sendSegments(key, [imageSegment(memes.filePath(entry))]);
+          console.log(`[dito qq] 附赠表情包：${entry.emotion}「${entry.desc}」`);
+        } catch (err) {
+          console.error("[dito qq] 附赠表情包失败：", (err as Error).message);
+        }
+      }
     }
   };
 
@@ -612,11 +606,12 @@ export async function runQqChannel(): Promise<void> {
     const hit = chats.get(key);
     if (hit) return hit;
     const created = await openChannelSession(join(CHAT_SESSIONS_DIR, "qq-chats.json"), key, [
-      qqToolsExtension(bot, affinity),
+      qqToolsExtension(bot, affinity, memes),
     ], {
       systemPrompt: buildQqSystemPrompt(),
       skipPluginIds: ["mode"],
       sessionsDir: join(CHAT_SESSIONS_DIR, "qq-sessions"),
+      memoryScope: key,
     });
     // 权限分级：主人私聊全量工具；其余会话（含所有群聊）屏蔽电脑控制
     const ownerMatch = /^qq-private-(\d+)$/.exec(key);
@@ -633,7 +628,6 @@ export async function runQqChannel(): Promise<void> {
     if (!ch.friends) return;
     if (seenOnce(event.message_id)) return;
     if (event.user_id === (await safeSelfId(bot))) return;
-    console.log(`[dito qq] 收到私聊事件：from=${event.user_id} raw=${JSON.stringify(event.raw_message)} keys=${Object.keys(event).join(",")}`);
     stealMemes(Array.isArray(event.message) ? event.message : [], `私聊-${event.user_id}`, memes);
     const key = `qq-private-${event.user_id}`;
     const name = event.sender?.nickname ?? String(event.user_id);

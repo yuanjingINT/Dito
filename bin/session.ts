@@ -18,6 +18,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { buildDitoSystemPrompt } from "../extensions/persona.js";
+import { setMemoryScope } from "../extensions/memory.js";
 import { bootDitoPlugins } from "../extensions/plugin-kernel.js";
 import { DITO_PLUGINS } from "../extensions/plugins/index.js";
 import { getBuiltinModels, type BuiltinProvider } from "@earendil-works/pi-ai/providers/all";
@@ -227,17 +228,44 @@ export interface SessionBundle {
  * - options.skipPluginIds：跳过指定插件（频道进程跳过面向终端的注入）
  * 返回会话句柄 + 当前模型名。启动失败（无可用模型）会抛错。
  */
-export async function createSession(
-  options: {
-    fresh?: boolean;
-    sessionFile?: string;
-    extraExtensions?: ((pi: ExtensionAPI) => void)[];
-    systemPrompt?: string;
-    skipPluginIds?: string[];
-    /** 独立会话目录（频道用，避免与终端会话互相污染） */
-    sessionsDir?: string;
-  } = {},
-): Promise<SessionBundle> {
+export interface CreateSessionOptions {
+  fresh?: boolean;
+  sessionFile?: string;
+  extraExtensions?: ((pi: ExtensionAPI) => void)[];
+  systemPrompt?: string;
+  skipPluginIds?: string[];
+  /** 独立会话目录（频道用，避免与终端会话互相污染） */
+  sessionsDir?: string;
+  /** 每聊天的记忆库 scope（频道用，记忆按会话隔离） */
+  memoryScope?: string;
+}
+
+let createQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * 创建 Dito 会话（串行化：memoryScope 等进程级状态只在创建窗口内生效）。
+ * - fresh：开新会话（否则续接全局最近一次对话）
+ * - sessionFile：打开指定会话文件（频道/会话切换用）
+ * - extraExtensions：进程级附加扩展（频道注册专属工具）
+ * - systemPrompt：覆盖默认系统提示词
+ * - skipPluginIds：跳过指定插件
+ */
+export async function createSession(options: CreateSessionOptions = {}): Promise<SessionBundle> {
+  const queued = createQueue.then(() => runCreate(options), () => runCreate(options));
+  createQueue = queued.catch(() => {});
+  return queued;
+}
+
+async function runCreate(options: CreateSessionOptions): Promise<SessionBundle> {
+  setMemoryScope(options.memoryScope);
+  try {
+    return await createSessionInner(options);
+  } finally {
+    setMemoryScope(undefined);
+  }
+}
+
+async function createSessionInner(options: CreateSessionOptions): Promise<SessionBundle> {
   writeModelsJson();
 
   const cfg = loadConfig();
@@ -351,7 +379,7 @@ export async function openChannelSession(
   indexFile: string,
   chatKey: string,
   extraExtensions?: ((pi: ExtensionAPI) => void)[],
-  sessionOptions?: { systemPrompt?: string; skipPluginIds?: string[]; sessionsDir?: string },
+  sessionOptions?: CreateSessionOptions,
 ): Promise<SessionBundle> {
   let index: ChannelIndex = {};
   try {
