@@ -444,10 +444,17 @@ class WaterUI {
     process.stdout.write(out);
   }
 
+  private idleHint = "按空格跟我说 · q 退出";
+
+  /** 待机提示（配置了唤醒词时由引擎改写） */
+  setIdleHint(hint: string): void {
+    this.idleHint = hint;
+  }
+
   private statusText(): string {
     switch (this.state) {
       case "idle":
-        return "按空格跟我说 · q 退出";
+        return this.idleHint;
       case "recording":
         return "听着呢… 空格键收声";
       case "thinking":
@@ -512,8 +519,43 @@ export async function runVoiceMode(session: AgentSessionLike, cfg: VoiceConfig):
   stdin.on("data", onKey);
 
   const recorder = detectRecorder();
+  const wakeWords = (cfg.wakeWord ?? "")
+    .split(/[,，\s]+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+  if (wakeWords.length > 0) {
+    ui.setIdleHint(`说 ${wakeWords.join(" / ")} 唤醒 · 空格也可以 · q 退出`);
+  }
 
-  function record(): Promise<string> {
+  /** 待机等待：配了唤醒词 → 本地 whisper 低成本轮询短音频；空格键始终可手动唤醒 */
+  async function waitForWake(): Promise<void> {
+    if (wakeWords.length === 0) {
+      await waitForSpace();
+      return;
+    }
+    stopRequested = false;
+    ui.setState("idle");
+    while (!quitRequested) {
+      if (stopRequested) {
+        stopRequested = false;
+        return;
+      }
+      const wav = await record(2500); // 2.5 秒短块，本地转写零 API 成本
+      if (quitRequested) return;
+      const heard = await sttWhisper(wav, cfg);
+      try {
+        unlinkSync(wav);
+      } catch {}
+      if (heard && wakeWords.some((w) => heard.toLowerCase().includes(w.toLowerCase()))) {
+        ui.setState("idle");
+        // 唤醒反馈：本地 espeak 快速“嗯”一声
+        await ttsEspeak("嗯", cfg).catch(() => {});
+        return;
+      }
+    }
+  }
+
+  function record(ms?: number): Promise<string> {
     const out = tmpWav();
     const child = spawn(recorder, recorderArgs(recorder, out));
     stopRequested = false;
@@ -521,7 +563,7 @@ export async function runVoiceMode(session: AgentSessionLike, cfg: VoiceConfig):
     const begin = Date.now();
     return new Promise<string>((resolve) => {
       const poll = setInterval(() => {
-        const over = Date.now() - begin > cfg.maxRecordSeconds * 1000;
+        const over = Date.now() - begin > (ms ?? cfg.maxRecordSeconds * 1000);
         if (stopRequested || over) {
           clearInterval(poll);
           child.kill("SIGINT");
@@ -591,7 +633,7 @@ export async function runVoiceMode(session: AgentSessionLike, cfg: VoiceConfig):
     let autoContinue = false;
     while (!quitRequested) {
       if (!autoContinue) {
-        await waitForSpace();
+        await waitForWake();
         if (quitRequested) break;
       }
       autoContinue = false;
