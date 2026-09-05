@@ -527,7 +527,7 @@ export async function runVoiceMode(session: AgentSessionLike, cfg: VoiceConfig):
     ui.setIdleHint(`说 ${wakeWords.join(" / ")} 唤醒 · 空格也可以 · q 退出`);
   }
 
-  /** 待机等待：配了唤醒词 → 本地 whisper 低成本轮询短音频；空格键始终可手动唤醒 */
+  /** 待机等待：配了唤醒词 → 用配置的 STT（MiMo）轮询 2.5 秒短音频；空格键始终可手动唤醒 */
   async function waitForWake(): Promise<void> {
     if (wakeWords.length === 0) {
       await waitForSpace();
@@ -540,9 +540,9 @@ export async function runVoiceMode(session: AgentSessionLike, cfg: VoiceConfig):
         stopRequested = false;
         return;
       }
-      const wav = await record(2500); // 2.5 秒短块，本地转写零 API 成本
+      const wav = await record(2500); // 2.5 秒短块
       if (quitRequested) return;
-      const heard = await sttWhisper(wav, cfg);
+      const heard = await speechToText(wav, cfg);
       try {
         unlinkSync(wav);
       } catch {}
