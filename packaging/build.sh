@@ -19,10 +19,9 @@ mkdir -p "$RPMBUILD"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 SRC="$STAGE/$NAME-$VERSION"
 mkdir -p "$SRC"
 cp -a \
-  bin extensions kb config skills .pi \
+  bin extensions kb config skills .pi personas identities system-prompts \
   package.json package-lock.json README.md \
   "$SRC"/
-# 不打包明文提示词：personas/identities/system-prompts 不出现在源码包中。
 
 # ── 打包源码 tarball ──
 tar -C "$STAGE" -czf "$RPMBUILD/SOURCES/$NAME-$VERSION.tar.gz" "$NAME-$VERSION"

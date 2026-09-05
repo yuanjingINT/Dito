@@ -19,7 +19,7 @@ mkdir -p "$OUT" "$SRC"
 
 # ── 2. 组装源码树（排除明文 personas / identities / system-prompts）──
 cp -a \
-  bin extensions kb config skills .pi \
+  bin extensions kb config skills .pi personas identities system-prompts \
   package.json package-lock.json README.md \
   "$SRC"/
 

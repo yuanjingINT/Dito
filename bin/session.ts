@@ -112,15 +112,17 @@ export function listSessions(): SessionSummary[] {
   }
 }
 
-/** 解析会话管理器：指定文件打开；否则 fresh=true 开新会话、续接全局最近一次会话。 */
-function resolveSessionManager(fresh: boolean, sessionFile?: string): SessionManager {
-  mkdirSync(DITO_SESSIONS_DIR, { recursive: true });
-  if (sessionFile) return SessionManager.open(sessionFile, DITO_SESSIONS_DIR, process.cwd());
+/** 解析会话管理器：指定文件打开；否则 fresh=true 开新会话、续接全局最近一次会话。
+ *  sessionsDir 可为频道指定独立会话目录（与终端会话完全隔离）。 */
+function resolveSessionManager(fresh: boolean, sessionFile?: string, sessionsDir?: string): SessionManager {
+  const dir = sessionsDir ?? DITO_SESSIONS_DIR;
+  mkdirSync(dir, { recursive: true });
+  if (sessionFile) return SessionManager.open(sessionFile, dir, process.cwd());
   if (!fresh) {
-    const recent = findMostRecentSessionFile(DITO_SESSIONS_DIR);
-    if (recent) return SessionManager.open(recent, DITO_SESSIONS_DIR, process.cwd());
+    const recent = findMostRecentSessionFile(dir);
+    if (recent) return SessionManager.open(recent, dir, process.cwd());
   }
-  return SessionManager.create(process.cwd(), DITO_SESSIONS_DIR);
+  return SessionManager.create(process.cwd(), dir);
 }
 
 /**
@@ -232,6 +234,8 @@ export async function createSession(
     extraExtensions?: ((pi: ExtensionAPI) => void)[];
     systemPrompt?: string;
     skipPluginIds?: string[];
+    /** 独立会话目录（频道用，避免与终端会话互相污染） */
+    sessionsDir?: string;
   } = {},
 ): Promise<SessionBundle> {
   writeModelsJson();
@@ -274,7 +278,7 @@ export async function createSession(
   });
   await resourceLoader.reload();
 
-  const sessionManager = resolveSessionManager(!!options.fresh, options.sessionFile);
+  const sessionManager = resolveSessionManager(!!options.fresh, options.sessionFile, options.sessionsDir);
 
   const { session } = await createAgentSession({
     model,
@@ -347,7 +351,7 @@ export async function openChannelSession(
   indexFile: string,
   chatKey: string,
   extraExtensions?: ((pi: ExtensionAPI) => void)[],
-  sessionOptions?: { systemPrompt?: string; skipPluginIds?: string[] },
+  sessionOptions?: { systemPrompt?: string; skipPluginIds?: string[]; sessionsDir?: string },
 ): Promise<SessionBundle> {
   let index: ChannelIndex = {};
   try {

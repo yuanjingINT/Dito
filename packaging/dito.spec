@@ -10,7 +10,7 @@
 # 注意：提交构建时必须加 --enable-net on（COPR 默认禁网会导致 npm ci 失败）。
 
 Name:           dito
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Dito (TiTe) - AI assistant based on the pi agent
 
@@ -44,7 +44,7 @@ npm ci --omit=dev --no-audit --no-fund
 %install
 # 应用整体安装到 %{_libexecdir}/dito（私有可执行目录），
 install -d %{buildroot}%{_libexecdir}/%{name}
-cp -a bin extensions kb config skills .pi \
+cp -a bin extensions kb config skills .pi personas identities system-prompts \
       package.json package-lock.json \
       %{buildroot}%{_libexecdir}/%{name}/
 cp -a node_modules %{buildroot}%{_libexecdir}/%{name}/
@@ -61,3 +61,6 @@ ln -s ../libexec/%{name}/bin/dito %{buildroot}%{_bindir}/dito
 %changelog
 * Fri Aug 14 2026 yuanjing <yuanjing@localhost> - 0.1.0-1
 - Initial RPM packaging of Dito
+* Fri Sep 05 2026 yuanjing <yuanjing@localhost> - 0.2.0-1
+- SnowLuma QQ 频道（好感度/表情包/唤醒词/概率回复）、Matrix 频道、8 任务并发
+- 权限分级（主人全量/他人受限）、打包携带明文人设目录

@@ -71,7 +71,9 @@ export async function runMatrixChannel(): Promise<void> {
         const key = roomKey(roomId);
         let chat = chats.get(key);
         if (!chat) {
-          const created = await openChannelSession(join(CHAT_SESSIONS_DIR, "matrix-chats.json"), key);
+          const created = await openChannelSession(join(CHAT_SESSIONS_DIR, "matrix-chats.json"), key, undefined, {
+    sessionsDir: join(CHAT_SESSIONS_DIR, "matrix-sessions"),
+  });
           applySessionToolPolicy(created.session, false, "dito matrix");
           chat = makeChannelChat(created.session, (reply) => client.sendTextMessage(roomId, reply), "dito matrix");
           chats.set(key, chat);
