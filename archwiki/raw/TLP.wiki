@@ -1,0 +1,141 @@
+[[Category:Power management]]
+[[hu:TLP]]
+[[ja:TLP]]
+[[zh-hans:TLP]]
+{{Related articles start}}
+{{Related|Laptop}}
+{{Related|Laptop Mode Tools}}
+{{Related|Powertop}}
+{{Related articles end}}
+
+[https://linrunner.de/tlp/ TLP] is a feature-rich command line utility for Linux, saving laptop battery power without the need to delve deeper into technical details.
+
+TLP's default settings are already optimized for battery life and implement [[Powertop]]'s recommendations out of the box, so additional configuration is not needed. Also, TLP is completely customizable, which means you can get even more power savings or meet your exact requirements.
+
+TLP [https://linrunner.de/tlp/faq/misc.html intentionally excludes] some settings from the project, notably [[Fan speed control]] and [[Backlight]].
+
+== Installation ==
+
+[[Install]] the {{Pkg|tlp}} package. Installing the optional dependencies may help provide additional power saving.
+
+[[Enable/start]] {{ic|tlp.service}}.
+
+One should also [[mask]] the service {{ic|systemd-rfkill.service}} and socket {{ic|systemd-rfkill.socket}} to avoid conflicts and ensure proper operation of TLP's radio device switching options.
+
+=== Replace power-profiles-daemon support in Desktop Environments ===
+
+To be able to use the ''power profiles'' interface in [[power-profiles-daemon]] used by [[GNOME#Power_modes|GNOME]] and [[KDE#Power_management|KDE]], install {{Pkg|tlp-pd}}.
+
+See [https://linrunner.de/tlp/faq/ppd.html TLP FAQ] for details.
+
+=== Radio Device Wizard (tlp-rdw) ===
+
+When using the Radio Device Wizard ({{pkg|tlp-rdw}}), it is required to use [[NetworkManager]] and [[enabling]] {{ic|NetworkManager-dispatcher.service}}.
+
+See [https://linrunner.de/tlp/settings/rdw.html TLP settings] for details.
+
+=== Front end ===
+
+* {{Pkg|tlpui}} is a [[GTK]] user interface for TLP written in Python.
+* {{AUR|slimbookbattery}} is a different GTK interface that works with additional drivers like AMD and NVIDIA.
+
+=== ThinkPads only ===
+
+Controlling the charge thresholds using D-Bus without root privileges is possible using {{AUR|threshy}} and its example Qt user interface {{AUR|threshy-gui}}. Note: ''threshy'' is no longer maintained by its developer.
+
+==== Before Sandy Bridge (until 2010) ====
+
+For ThinkPads before model year 2011, the [[tp_smapi]] kernel module is required. See [[tp_smapi#Installation]] for kernel-specific installation instructions.
+
+== Configuration ==
+
+The configuration file is located at {{ic|/etc/tlp.conf}} and provides a largely optimized power saving by default. For a full explanation of options see: [https://linrunner.de/tlp/settings/ TLP settings].
+Instead of editing this file directly, you can also place files in {{ic|/etc/tlp.d/}}, for example {{ic|/etc/tlp.d/00-enable-wifi-at-startup.conf}} with the desired changes. If the same parameter is defined in both places, the value set in {{ic|/etc/tlp.conf}} takes precedence.
+
+=== USB autosuspend ===
+
+When starting TLP with the default configuration, some USB devices such as audio DACs will be '''powered down when running on battery''' due to TLP's autosuspend feature. Some devices such as keyboards and scanners are blacklisted from autosuspend by default.
+
+You may simply want to disable USB autosuspend entirely with the following setting:
+
+{{hc|/etc/tlp.conf|2=
+# Do not suspend USB devices
+USB_AUTOSUSPEND=0}}
+
+Or blacklist specific devices from being auto-suspended. See the [https://linrunner.de/tlp/settings/usb.html TLP documentation on USB devices] for details.
+
+=== Force balanced (BAL) power profile ===
+
+When no power supply can be detected, the performance power profile (PRF) will be used on devices like desktops and embedded hardware.
+
+You may want to force the balanced (BAL) or power-saving (SAV) profile when using TLP on these devices to enable more power saving:
+
+(Note: Legacy values AC and BAT continue to work. They are mapped to PRF and BAL, respectively.)
+
+{{hc|/etc/tlp.conf|2=
+# Operation mode when no power supply can be detected:
+#    PRF=performance, BAL=balanced, SAV=power-saver
+
+TLP_DEFAULT_MODE=BAL
+
+# Operation mode select: 0=depend on power source, 1=always use TLP_DEFAULT_MODE
+TLP_PERSISTENT_DEFAULT=1}}
+
+=== Bumblebee with NVIDIA driver ===
+
+If you are running [[Bumblebee]] with NVIDIA driver, you need to disable power management for the GPU in TLP in order to make Bumblebee control the power of the GPU.
+
+Depending on the driver(s) that you are using, blacklist one or more of them, preventing TLP from managing their power state:
+{{hc|/etc/tlp.conf|2=
+RUNTIME_PM_DRIVER_DENYLIST="nouveau nvidia" }}
+
+=== PRIME with NVIDIA driver ===
+
+If you are running [[PRIME]] with NVIDIA driver, do not disable power management for the GPU in TLP.
+Instead, you may want to enable power management all the time to prevent your laptop from heating by adding the NVIDIA card PCI ID ({{ic|lspci -d 10de::03xx}}) to the variable {{ic|RUNTIME_PM_ENABLE}}:
+
+{{hc|/etc/tlp.conf|2=
+RUNTIME_PM_ENABLE="01:00.0"
+}}
+
+=== PCI(e) runtime power management on AC ===
+
+Enabling [https://linrunner.de/tlp/settings/runtimepm.html runtime power management] for PCI(e) bus devices while on AC may improve power saving on some laptops. This is enabled by default on battery, but not on AC. To enable on AC, set:
+
+{{hc|/etc/tlp.conf|2=
+RUNTIME_PM_ON_AC=auto
+}}
+
+=== Enable Wi-Fi radio on boot ===
+
+By default, TLP stops the Wi-Fi radio from automatically powering on. Although definitely power-saving, most users might find this behavior undesirable. To make Wi-Fi start on boot, set the following:
+
+{{hc|/etc/tlp.conf|2=
+DEVICES_TO_ENABLE_ON_STARTUP="wifi"
+}}
+
+=== Command line ===
+
+TLP provides several command line tools. See [https://linrunner.de/tlp/usage/index.html#commands TLP commands].
+
+== Troubleshooting ==
+
+For debugging you can display information about the currently used Mode(AC/BAT) and applied configurations:
+
+ # tlp-stat
+
+See also the [https://linrunner.de/tlp/support/troubleshooting.html upstream troubleshooting] guide.
+
+=== hci0: link tx timeout ===
+
+If your bluetooth headphones suddenly stop working and you see this error from [[dmesg]], it may be caused by TLP suspending your device. Add device ID to {{ic|USB_DENYLIST}} in {{ic|/etc/tlp.conf}}:
+
+ # Disable bluetooth autosuspend
+ USB_DENYLIST="8087:0aaa"
+
+Get the device ID for your bluetooth device from {{ic|lsusb -v}}. Restart TLP and the {{ic|bluetooth}} service.
+
+== See also ==
+
+* [https://linrunner.de/tlp TLP - Optimize Linux Laptop Battery Life] — Project homepage & documentation
+* [https://linrunner.de/tlp/faq/ Project FAQ]

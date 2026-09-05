@@ -1,0 +1,11 @@
+Package: dito
+Version: 0.1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: nodejs (>= 22.5), bash
+Maintainer: yuanjingINT <yuanjing@localhost>
+Description: Dito (TiTe) - AI assistant based on the pi agent
+ Dito（蒂特）——基于 pi agent 的个人 AI 助手。
+ 提供语音对话、本地知识库、跨会话记忆、提示词设定、联网搜索，
+ 以及高危命令确认门。默认模型为 opencode 免费公共模型。

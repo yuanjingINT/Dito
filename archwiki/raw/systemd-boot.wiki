@@ -1,0 +1,447 @@
+{{Lowercase title}}
+[[Category:Boot loaders]]
+[[de:Systemd-boot]]
+[[es:Systemd-boot]]
+[[fr:Systemd-boot]]
+[[hu:Systemd-boot]]
+[[ja:Systemd-boot]]
+[[pt:Systemd-boot]]
+[[ru:Systemd-boot]]
+[[tr:Systemd-boot]]
+[[zh-hans:Systemd-boot]]
+{{Related articles start}}
+{{Related|Arch boot process}}
+{{Related|Secure Boot}}
+{{Related|Unified Extensible Firmware Interface}}
+{{Related articles end}}
+
+{{man|7|systemd-boot}}, previously called '''gummiboot''' (German for "rubber dinghy") and sometimes referred to as ''sd-boot'', is an easy-to-configure [[UEFI]] [[boot manager]]. It provides a textual menu to select the boot entry and an editor for the kernel command line.
+
+Note that ''systemd-boot'' can only start EFI executables (e.g., the Linux kernel [[EFI boot stub]], [[UEFI shell]], [[GRUB]], or the [https://learn.microsoft.com/en-us/windows-hardware/drivers/bringup/boot-and-uefi#understanding-the-windows-boot-manager Windows Boot Manager]) from the [[EFI system partition]] it is installed to or from an Extended Boot Loader Partition (XBOOTLDR partition) on the same disk.
+
+{{Note|In the entire article {{ic|''esp''}} denotes the mountpoint of the [[EFI system partition]] and {{ic|''boot''}} denotes the mountpoint of the optional XBOOTLDR partition. It is assumed that you have [[chroot]]ed to the system's mount point.}}
+
+== Supported file systems ==
+
+systemd-boot inherits the support for the file systems [[Arch boot process#UEFI|from the firmware]] (i.e. at least FAT12, FAT16 and FAT32). Additionally it loads any [[Unified Extensible Firmware Interface#UEFI drivers|UEFI drivers]] placed in {{ic|''esp''/EFI/systemd/drivers/}}.
+
+== Installation ==
+
+''systemd-boot'' is shipped with the {{Pkg|systemd}} package which is a dependency of the {{Pkg|base}} meta package, so no additional packages need to be installed manually.
+
+== Installing the UEFI boot manager ==
+
+To install ''systemd-boot'', first make sure that the system is booted into UEFI mode and [[Unified Extensible Firmware Interface#UEFI variables|UEFI variables]] are accessible. This can be verified by running {{ic|efivar --list}} or, if {{Pkg|efivar}} is not installed, by running {{ic|ls /sys/firmware/efi/efivars}} (if the directory exists, the system is booted into UEFI mode.)
+
+Use {{man|1|bootctl}} to install ''systemd-boot'' to the ESP:
+
+ # bootctl install
+
+This will copy the ''systemd-boot'' UEFI boot manager to the ESP, create a UEFI boot entry for it and set it as the first in the UEFI boot order.
+
+* On an x64 UEFI, {{ic|/usr/lib/systemd/boot/efi/systemd-bootx64.efi}} will be copied to {{ic|''esp''/EFI/systemd/systemd-bootx64.efi}} and {{ic|''esp''/EFI/BOOT/BOOTX64.EFI}}.
+* On an IA32 UEFI, {{ic|/usr/lib/systemd/boot/efi/systemd-bootia32.efi}} will be copied to {{ic|''esp''/EFI/systemd/systemd-bootia32.efi}} and {{ic|''esp''/EFI/BOOT/BOOTIA32.EFI}}.
+* An already existing old {{ic|systemd-bootx64.efi}} will be kept as fallback and copied to {{ic|systemd-boot-fallbackx64.efi}}, together with an automatically created UEFI boot entry "Fallback Linux Boot Manager".
+
+The UEFI boot entry will be called "Linux Boot Manager" and will point to, depending on the [[Unified Extensible Firmware Interface#UEFI firmware bitness|UEFI bitness]], either {{ic|\EFI\systemd\systemd-bootx64.efi}} or {{ic|\EFI\systemd\systemd-bootia32.efi}} on the ESP.
+
+{{Note|
+* When running {{ic|bootctl install}}, ''systemd-boot'' will try to locate the ESP at {{ic|/efi}}, {{ic|/boot}}, and {{ic|/boot/efi}}. Setting {{ic|''esp''}} to a different location requires passing the {{ic|1=--esp-path=''esp''}} option. (See {{man|1|bootctl|OPTIONS}} for details.)
+* Installing ''systemd-boot'' will overwrite any existing {{ic|''esp''/EFI/BOOT/BOOTX64.EFI}} (or {{ic|''esp''/EFI/BOOT/BOOTIA32.EFI}} on IA32 UEFI), e.g. Microsoft's version of the file.
+* ''bootctl'' refrains from operating on UEFI variables/boot entries when running in pid namespace, which is the case for {{man|8|arch-chroot}}'s non-systemd mode. To create the boot entry in the chroot environment, use {{ic|arch-chroot -S}} instead.
+}}
+
+To conclude the installation, [[#Configuration|configure]] ''systemd-boot''.
+
+=== Installation using XBOOTLDR ===
+
+{{Move|Partitioning#Discrete partitions|All partitioning info should be moved to partitioning, to leave only steps relevant to installing systemd-boot if you have such a setup.}}
+
+A separate [[Partitioning#/boot|/boot partition]] of type "Linux extended boot" (XBOOTLDR) can be created to keep the kernel and initramfs separate from the ESP. This is particularly helpful to [[dual boot with Windows]] with an existing ESP that is too small. [[#Grml on ESP|Grml]] or [[#Archiso on ESP|Archiso]] are also possible use cases.
+
+Prepare an ESP as usual and create another partition for XBOOTLDR on the same physical drive. The XBOOTLDR partition must have a partition type GUID of {{ic|bc13c2ff-59e6-4262-a352-b275fd6f7172}} [https://uapi-group.org/specifications/specs/boot_loader_specification/] ({{ic|ea00}} type for [[gdisk]], {{ic|xbootldr}} type for [[fdisk]]). The size of the XBOOTLDR partition should be large enough to accommodate all of the kernels you are going to install.
+
+{{Note|
+* ''systemd-boot'' does not do a file system check like it does for the ESP. Hence, it is possible to use any file system that your UEFI implementation can read.
+* UEFI may skip loading partitions other than the ESP when a "fast boot" mode is enabled. This can lead to ''systemd-boot'' failing to find entries on the XBOOTLDR partition; in that case, disable the "fast boot" mode.
+* The XBOOTLDR partition must be on the same physical disk as the ESP for ''systemd-boot'' to recognize it.
+}}
+
+During install, mount the ESP to {{ic|/mnt/efi}} and the XBOOTLDR partition to {{ic|/mnt/boot}}.
+
+Once in chroot, use the command:
+
+ # bootctl --esp-path=/efi --boot-path=/boot install
+
+To conclude the installation, [[#Configuration|configure]] ''systemd-boot''.
+
+=== Updating the UEFI boot manager ===
+
+Whenever there is a new version of ''systemd-boot'', the UEFI boot manager can be optionally reinstalled by the user. This can be done manually or automatically; the two approaches are described thereafter.
+
+{{Note|The UEFI boot manager is a standalone EFI executable and any version can be used to boot the system (partial updates do not apply, since pacman only installs the ''systemd-boot'' installer, not ''systemd-boot'' itself.) However, new versions may add new features or fix bugs, so it is probably a good idea to update ''systemd-boot''.}}
+
+{{Warning|If you have [[Secure Boot]] enabled, you need to sign the boot manager update. See [[#Signing for Secure Boot]].}}
+
+==== Manual update ====
+
+Use ''bootctl'' to update ''systemd-boot'':
+
+ # bootctl update
+
+{{Note|As with {{ic|bootctl install}}, ''systemd-boot'' will try to locate the ESP at {{ic|/efi}}, {{ic|/boot}}, and {{ic|/boot/efi}}. Setting {{ic|''esp''}} to a different location requires passing the {{ic|1=--esp-path=''esp''}} option.}}
+
+==== Automatic update ====
+
+As of {{Pkg|systemd}} version 261.2-1, when the package is upgraded and an installed ''systemd-boot'' is detected, its {{ic|post_upgrade()}} function marks {{ic|systemd-boot-update.service}} for restart. The {{ic|35-systemd-enqueue-marked.hook}} pacman hook subsequently runs {{ic|systemctl enqueue-marked}}, which runs the marked service:
+
+ # bootctl --variables=no --graceful update
+
+{{Accuracy|{{ic|systemctl enqueue-marked}} does not restart the service when it is inactive.}}
+
+There is no need to enable the service or install a separate pacman hook. Automatic detection searches for the ESP at {{ic|/efi}}, {{ic|/boot}}, or {{ic|/boot/efi}}. If {{ic|''esp''}} is not one of these paths, update it manually with {{ic|1=bootctl --esp-path=''esp'' update}}. The command updates all installed versions of ''systemd-boot'' in the ESP if a newer version is available in {{ic|/usr/lib/systemd/boot/efi/}}. It looks for a ''systemd-boot'' file ending in {{ic|.efi.signed}} first to allow users to sign the image for use with [[Secure Boot]].
+
+=== Signing for Secure Boot ===
+
+If you have [[Secure Boot]] enabled, you may want to add a pacman hook to automatically sign the boot manager upon every upgrade of the package:
+
+{{hc|/etc/pacman.d/hooks/80-secureboot.hook|2=
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/lib/systemd/boot/efi/systemd-boot*.efi
+
+[Action]
+Description = Signing systemd-boot EFI binary for Secure Boot
+When = PostTransaction
+Exec = /bin/sh -c 'while read -r f; do /usr/lib/systemd/systemd-sbsign sign --private-key ''/path/to/keyfile.key'' --certificate ''/path/to/certificate.crt'' --output "${f}.signed" "$f"; done;'
+Depends = sh
+NeedsTargets
+}}
+
+Replace {{ic|''/path/to/keyfile.key''}} and {{ic|''/path/to/certificate.crt''}} with your signing key and certificate respectively. For better understanding of this hook, consult {{man|1|systemd-sbsign}}.
+
+The created {{ic|/usr/lib/systemd/boot/efi/systemd-boot*.efi.''signed''}} will automatically be picked up by {{ic|bootctl install}} or {{ic|bootctl update}}. See {{man|1|bootctl|SIGNED .EFI FILES}}.
+
+As an alternative, use [[Unified Extensible Firmware Interface/Secure Boot#Automatic signing with the pacman hook|sbctl]].
+
+== Configuration ==
+
+{{Tip|
+* After changing the configuration, run {{ic|bootctl}} (without any arguments) to make sure that systemd-boot will be able to parse it properly.
+* The [[kernel-install]] utility can be used to automatically generate configuration files compatible with systemd-boot. This section describes how to do so manually.
+}}
+
+=== Loader configuration ===
+
+The loader configuration is stored in the file {{ic|''esp''/loader/loader.conf}}. See {{man|5|loader.conf|OPTIONS}} for details.
+
+A loader configuration example is provided below:
+
+{{hc|''esp''/loader/loader.conf|
+default  arch.conf
+timeout  4
+console-mode max
+editor   no
+}}
+
+{{Tip|
+* {{ic|default}} and {{ic|timeout}} can be changed in the boot menu itself and changes will be stored as UEFI variables {{ic|LoaderEntryDefault}} and {{ic|LoaderConfigTimeout}}, overriding these options. 
+* {{ic|bootctl set-default ""}} and {{ic|bootctl set-timeout ""}} can be used to clear the UEFI variables overriding the {{ic|default}} and {{ic|timeout}} options, respectively.
+* A basic loader configuration file is located at {{ic|/usr/share/systemd/bootctl/loader.conf}}.
+* If the boot manager—during the entry selection—appears distorted/uses the wrong resolution you can try to set the {{ic|console-mode}} to {{ic|auto}} (uses heuristics to select the best resolution), {{ic|keep}} (keeps the firmware provided resolution) or {{ic|2}} (tries to select the first non-UEFI-standard resolution).
+}}
+
+==== Remember last entry ====
+
+The {{ic|default}} can be changed to {{ic|@saved}} in order to remember the last picked entry on startup. This is useful for when dual booting Windows and the surprise windows auto update pushes you into Linux.
+
+{{hc|''esp''/loader/loader.conf|
+default @saved
+...
+}}
+
+Consult {{man|5|loader.conf}} for more details.
+
+=== Adding loaders ===
+
+''systemd-boot'' will search for ''.conf'' files in {{ic|/loader/entries/}} on the [[EFI system partition]] it was launched from and additionally the [[#Installation using XBOOTLDR|XBOOTLDR]] partition on the same disk.
+
+{{Note|
+* Entries in {{ic|''esp''/loader/entries/*.conf}} can only use files (e.g. kernels, initramfs, images, etc.) in {{ic|''esp''/}} and entries in {{ic|''boot''/loader/entries/*.conf}} can only use files in {{ic|''boot''/}}.
+* The file path parameters are relative to the root of your EFI system partition or XBOOTLDR partition. E.g., if your EFI system partition or XBOOTLDR partition is mounted at {{ic|/boot}}, then the {{ic|/boot/vmlinuz-linux}} file must be specified in the {{ic|linux}} key as {{ic|/vmlinuz-linux}}.
+* When [[Secure Boot]] is active, [[unified kernel image]]s (UKIs) with an embedded {{ic|.cmdline}} ignore all command line options passed to them (either using a boot entry with {{ic|options}} or interactively). When Secure Boot is not active, the options passed via the command line override the embedded {{ic|.cmdline}}.
+}}
+
+An example of loader files launching Arch from a volume using its [[UUID]] {{ic|''xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx''}} is:
+
+{{hc|''esp''/loader/entries/arch.conf|2=
+title   Arch Linux
+linux   /vmlinuz-linux
+initrd  /initramfs-linux.img
+options root=UUID=''xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'' rw
+}}
+
+{{hc|''esp''/loader/entries/arch-fallback.conf|2=
+title   Arch Linux (fallback initramfs)
+linux   /vmlinuz-linux
+initrd  /initramfs-linux-fallback.img
+options root=UUID=''xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'' rw
+}}
+
+See the [https://uapi-group.org/specifications/specs/boot_loader_specification/#type-1-boot-loader-specification-entries Boot Loader Specification] for details on all configuration options.
+
+''systemd-boot'' will automatically check at boot time for '''Windows Boot Manager''' at the location {{ic|/EFI/Microsoft/Boot/Bootmgfw.efi}}, '''Apple macOS Boot Manager''' in firmware, [[UEFI shell]] {{ic|/shellx64.efi}} and '''EFI Default Loader''' {{ic|/EFI/BOOT/bootx64.efi}}, as well as specially prepared kernel files found in {{ic|/EFI/Linux/}}. When detected, corresponding entries with titles {{ic|auto-windows}}, {{ic|auto-osx}}, {{ic|auto-efi-shell}} and {{ic|auto-efi-default}}, respectively, will be generated. These entries do not require manual loader configuration. However, it does not auto-detect other EFI applications (unlike [[rEFInd]]), so for booting the Linux kernel, manual configuration entries must be created.
+
+{{Tip|
+* The available boot entries which have been configured can be listed with the command {{ic|bootctl list}}.
+* An example entry file is located at {{ic|/usr/share/systemd/bootctl/arch.conf}}.
+* The [[kernel parameters]] for scenarios such as [[LVM]], [[LUKS]], [[dm-crypt]] or [[Btrfs]] can be found on the relevant pages.
+}}
+
+{{Note|If [[Microcode#Microcode in a separate initramfs file|external microcode initramfs images]] are used (e.g. when using [[Booster]] as the initramfs generator), {{ic|/boot/amd-ucode.img}} or {{ic|/boot/intel-ucode.img}} must be specified in a separate {{ic|initrd}} and always be placed '''first''', before the main initramfs image.}}
+
+==== UEFI Shells or other EFI applications ====
+
+In case you installed a [[UEFI shell]] with the package {{Pkg|edk2-shell}}, ''systemd-boot'' will auto-detect and create a new entry if the EFI file is placed in {{ic|''esp''/shellx64.efi}}.
+To perform this an example command after installing the package would be:
+
+ # cp /usr/share/edk2-shell/x64/Shell.efi /boot/shellx64.efi
+
+Otherwise in case you installed [[rEFInd#Tools|other EFI applications]] into the ESP, you can use the following snippets.
+
+{{Note|The file path parameter for the {{ic|efi}} line is relative to the root of your [[EFI system partition]]. If your EFI system partition is mounted at {{ic|/boot}} and your EFI binaries reside at {{ic|/boot/EFI/xx.efi}} and {{ic|/boot/yy.efi}}, then you would specify the parameters as {{ic|efi /EFI/xx.efi}} and {{ic|efi /yy.efi}} respectively.}}
+
+{{hc|''esp''/loader/entries/fwupd.conf|
+title  Firmware updater
+efi     /EFI/tools/fwupdx64.efi
+}}
+
+{{hc|''esp''/loader/entries/gdisk.conf|
+title  GPT fdisk (gdisk)
+efi     /EFI/tools/gdisk_x64.efi
+}}
+
+===== Memtest86+ =====
+
+You need to install {{Pkg|memtest86+-efi}} for this to work. Also sign the EFI binary when using Secure Boot.
+
+{{hc|''esp''/loader/entries/memtest.conf|
+title Memtest86+
+efi /memtest86+/memtest.efi
+}}
+
+===== Netboot =====
+
+''systemd-boot'' can chainload [[Netboot]]. Download the {{ic|ipxe-arch.efi}} EFI binary and signature, verify it and place it as proposed in {{ic|''esp''/EFI/arch_netboot/arch_netboot.efi}}.
+
+{{hc|''esp''/loader/entries/arch_netboot.conf|
+title Arch Linux Netboot
+efi /EFI/arch_netboot/arch_netboot.efi
+}}
+
+===== GRUB =====
+
+''systemd-boot'' can chainload [[GRUB]]. The location of the {{ic|grubx64.efi}} binary matches the used {{ic|--bootloader-id{{=}}}} when GRUB was installed to the ESP.
+
+{{hc|''esp''/loader/entries/grub.conf|
+title GRUB
+efi /EFI/GRUB/grubx64.efi
+}}
+
+==== Boot from another disk ====
+
+''systemd-boot'' [https://github.com/systemd/systemd/issues/3252 cannot] launch EFI binaries from partitions other than the ESP it is launched from or the XBOOTLDR partition on the same disk, but it can direct the [[UEFI shell]] to do so.
+
+First, install {{Pkg|edk2-shell}} as [[#UEFI Shells or other EFI applications|described above]]. In the UEFI shell, use the ''map'' command to take notes of the '''FS alias''' (ex: HD0a66666a2, HD0b, FS1, or BLK7) of the partition with the corresponding PARTUUID.
+
+Then, use the {{ic|exit}} command to boot back into Linux, where you can create a new loader entry to run the target EFI program through the UEFI shell:
+
+{{hc|''esp''/loader/entries/windows.conf|
+title   Windows
+efi     /shellx64.efi
+options -nointerrupt -nomap -noversion HD0b:EFI\Microsoft\Boot\Bootmgfw.efi
+}}
+
+Ensure that the {{ic|efi}} path matches the location where the {{ic|shellx64.efi}} has been copied in the ''esp'' partition. Also, note that the {{ic|shellx64.efi}} EFI file can be moved elsewhere to avoid the automatic entry creation by ''systemd-boot''.
+
+Replace {{ic|HD0b}} with the previously noted ''FS alias''.
+
+* The {{ic|-nointerrupt}} option prevents interrupting the target EFI program with {{ic|Ctrl+c}}.
+* The {{ic|-nomap -noversion}} options hide the default UEFI shell greeting.
+* To have the UEFI shell automatically return to the boot manager if the target EFI program exits (e.g. due to an error), add the {{ic|-exit}} option.
+* You can also add the {{ic|-noconsoleout}} option if there is still unnecessary output in the UEFI shell.
+
+=== Booting into UEFI firmware setup ===
+
+systemd-boot will automatically add an entry to boot into UEFI firmware setup if your device's firmware supports rebooting into setup from the OS.
+
+=== Kernel parameters editor with password protection ===
+
+Alternatively you can install {{AUR|systemd-boot-password}} which supports {{ic|password}} basic configuration option. Use {{ic|sbpctl generate}} to generate a value for this option.
+
+Install ''systemd-boot-password'' with the following command:
+
+ # sbpctl install ''esp''
+
+With enabled editor you will be prompted for your password before you can edit kernel parameters.
+
+== Tips and tricks ==
+
+=== Keys inside the boot menu ===
+
+You can use {{ic|t}} and {{ic|T}} while in the menu to adjust the menu timeout and {{ic|e}} to edit the kernel parameters for this boot. Press {{ic|h}} to see a short list of useful hotkeys. See {{man|7|systemd-boot|KEY BINDINGS}} for the full list of available key bindings inside the boot menu.
+
+=== Choosing next boot ===
+
+The boot manager is integrated with the systemctl command, allowing you to choose what option you want to boot after a reboot. For example, suppose you have built a custom kernel and created an entry file {{ic|''esp''/loader/entries/arch-custom.conf}} to boot into it, you can just launch
+
+ $ systemctl reboot --boot-loader-entry=arch-custom.conf
+
+and your system will reboot into that entry maintaining the default option intact for subsequent boots. To see a list of possible entries pass the {{ic|1=--boot-loader-entry=help}} option.
+
+If you want to boot into the firmware of your motherboard directly, then you can use this command:
+
+ $ systemctl reboot --firmware-setup
+
+=== Unified kernel images ===
+
+[[Unified kernel image]]s (UKIs) in {{ic|''esp''/EFI/Linux/}} are automatically sourced by systemd-boot, and do not need an entry in {{ic|''esp''/loader/entries}}. (Note that unified kernel images must have a {{ic|.efi}} extension to be identified by ''systemd-boot''.)
+
+{{Tip|Files in {{ic|''esp''/loader/entries/}} will be booted first if no {{ic|default}} is set in {{ic|''esp''/loader/loader.conf}}. Remove those entries, or set the default with the full file name, i.e. {{ic|1=default arch-linux.efi}}}}
+
+=== Grml on ESP ===
+
+{{Note|The following instructions are not exclusive to Grml. With slight adjustments, installing other software (e.g., [https://www.system-rescue-cd.org/ SystemRescueCD]) is possible.}}
+
+{{Tip|A {{ic|PKGBUILD}} is available: {{AUR|grml-systemd-boot}}.}}
+
+[https://grml.org/ Grml] is a small live system with a collection of software for system administration and rescue.
+
+In order to install Grml on the ESP, we only need to copy the kernel {{ic|vmlinuz}}, the initramfs {{ic|initrd.img}}, and the squashed image {{ic|grml64-small.squashfs}} from the iso file to the ESP. To do so, first download [https://grml.org/ grml64-small.iso] and mount the file (the mountpoint is henceforth denoted ''mnt''); the kernel and initramfs are located in {{ic|''mnt''/boot/grml64small/}}, and the squashed image resides in {{ic|''mnt''/live/grml64-small/}}.
+
+Next, create a directory for Grml in your ESP,
+
+ # mkdir -p ''esp''/grml
+
+and copy the above-mentioned files in there:
+
+ # cp ''mnt''/boot/grml64small/vmlinuz ''esp''/grml
+ # cp ''mnt''/boot/grml64small/initrd.img ''esp''/grml
+ # cp ''mnt''/live/grml64-small/grml64-small.squashfs ''esp''/grml
+
+In the last step, create an boot entry for systemd-boot: In {{ic|''esp''/loader/entries}} create a {{ic|grml.conf}} file with the following content:
+
+{{hc|''esp''/loader/entries/grml.conf|2=
+title   Grml Live Linux
+linux   /grml/vmlinuz
+initrd  /grml/initrd.img
+options apm=power-off boot=live live-media-path=/grml/ nomce net.ifnames=0
+}}
+
+For an overview of the available boot options, consult the [https://github.com/grml/grml-live/blob/master/config/media-files/GRMLBASE/GRML/GRML_NAME/grml-cheatcodes.txt cheatcode for Grml].
+
+=== Archiso on ESP ===
+
+{{Tip|A {{ic|PKGBUILD}} is available: {{AUR|archiso-systemd-boot}}.}}
+
+As with Grml it is possible to use the Arch Linux ISO. To do this we need to copy the kernel {{ic|vmlinuz-linux}}, the initramfs {{ic|initramfs-linux.img}}, and the squashfs image {{ic|airootfs.sfs}} from the ISO file to the EFI system partition.
+
+First download [https://archlinux.org/download/ archlinux-YYYY.MM.DD-x86_64.iso].
+
+Next, create a directory for archiso in your ESP:
+
+ # mkdir -p ''esp''/EFI/archiso
+
+Extract the contents of the {{ic|arch}} directory in there:
+
+ # bsdtar -v -x --no-same-permissions --strip-components 1 -f archlinux-''YYYY''.''MM''.''DD''-x86_64.iso -C ''esp''/EFI/archiso arch
+
+In the last step, create a boot entry for the systemd-boot: In {{ic|''esp''/loader/entries}} create a {{ic|arch-rescue.conf}} file with the following content:
+
+{{hc|''esp''/loader/entries/arch-rescue.conf|2=
+title   Arch Linux (rescue system)
+linux   /EFI/archiso/boot/x86_64/vmlinuz-linux
+initrd  /EFI/archiso/boot/x86_64/initramfs-linux.img
+options archisobasedir=/EFI/archiso archisosearchfilename=/EFI/archiso/boot/x86_64/vmlinuz-linux
+}}
+
+For an overview of the available boot options, consult the [https://gitlab.archlinux.org/archlinux/mkinitcpio/mkinitcpio-archiso/-/blob/master/docs/README.bootparams README.bootparams for mkinitcpio-archiso].
+
+==== Recovery Arch image on the ESP with Secure Boot ====
+
+The official Arch ISO does not currently support [[Secure Boot]]. As a result, Secure Boot must be disabled to boot into the ISO for recovery or maintenance. This undermines system security and is not an ideal approach.
+
+An alternative is to create a signed [[unified kernel image]] (UKI) using [[mkosi]], assuming Secure Boot is already configured and functioning properly on your system. This allows you to boot into a signed recovery Arch environment without disabling Secure Boot or carrying an Arch ISO USB drive wherever your laptop goes.
+
+https://swsnr.de/archlinux-rescue-image-with-mkosi/ describes how to set up Secure Boot-compatible Arch recovery images. A practical starting point with a sane mkosi configuration you can add your packages to is available at https://codeberg.org/swsnr/rescue-image.
+
+=== systemd-boot on BIOS systems ===
+
+If you need a boot loader for BIOS systems that follows [https://uapi-group.org/specifications/specs/boot_loader_specification/ The Boot Loader Specification], then systemd-boot can be pressed into service on BIOS systems. The [[Clover]] boot loader supports booting from BIOS systems and provides an emulated UEFI environment.
+
+== Troubleshooting ==
+
+=== systemd-boot does not display my boot entry ===
+
+This may be caused by a variety of issues with the configuration file, such as the path to the kernel being specified incorrectly. To check, run:
+
+ # bootctl
+
+=== Installing after booting in BIOS mode ===
+
+{{Note|This is not recommended.}}
+
+If booted in BIOS mode, you can still install ''systemd-boot'', however this process requires you to tell firmware to launch ''systemd-boot'''s EFI file at boot:
+
+* you have a working UEFI Shell somewhere else.
+* your firmware interface provides a way of properly setting the EFI file that needs to be loaded at boot time.
+* some firmware may use the default {{ic|''esp''/EFI/BOOT/BOOTX64.EFI}} if there is no other entry set in the UEFI.
+
+If you can do it, the installation is easier: go into your UEFI Shell or your firmware configuration interface and change your machine's default EFI file to {{ic|''esp''/EFI/systemd/systemd-bootx64.efi}}.
+
+{{Note|The firmware interface of Dell Latitude series provides everything you need to setup UEFI boot but the UEFI Shell will not be able to write to the computer's ROM.}}
+
+=== Manual entry using efibootmgr ===
+
+If the {{ic|bootctl install}} command failed, you can create a UEFI boot entry manually using {{Pkg|efibootmgr}}:
+
+ # efibootmgr --create --disk /dev/sd''X'' --part ''Y'' --loader '\EFI\systemd\systemd-bootx64.efi' --label "Linux Boot Manager" --unicode
+
+where {{ic|/dev/sd''XY''}} is the [[EFI system partition]].
+
+{{Note|The path to the EFI binary must use the backslash ({{ic|\}}) as the separator}}
+
+=== Manual entry using bcdedit from Windows ===
+
+If for any reason you need to create a UEFI boot entry from Windows, you can use the following commands from an Administrator prompt:
+
+ > bcdedit /copy "{bootmgr}" /d "Linux Boot Manager"
+ > bcdedit /set "{''guid''}" path \EFI\systemd\systemd-bootx64.efi
+
+Replace {{ic|''guid''}} with the id returned by the first command. You can also set it as the default entry using
+
+ > bcdedit /default "{''guid''}"
+
+=== Menu does not appear after Windows upgrade ===
+
+See [[UEFI#Windows changes boot order]].
+
+=== Add support for Windows BitLocker TPM unlocking ===
+
+To stop BitLocker from requesting the recovery key, add the following to ''loader.conf'':
+
+{{hc|''esp''/loader/loader.conf|
+reboot-for-bitlocker yes
+}}
+
+This will set the ''BootNext'' UEFI variable, whereby ''Windows Boot Manager'' is loaded without BitLocker requiring the recovery key. This is a one-time change, and ''systemd-boot'' remains the default boot loader. There is no need to specify Windows as an entry if it was autodetected.
+
+This is an experimental feature, so make sure to consult {{man|5|loader.conf}}.
+
+== See also ==
+
+* https://systemd.io/BOOT/
+* https://bbs.archlinux.org/viewtopic.php?id=254374
+* https://uapi-group.org/specifications/specs/boot_loader_specification/

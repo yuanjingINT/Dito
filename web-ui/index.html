@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dito — 与你同行，探索智能的温度</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%23fcfaf8'/><circle cx='50' cy='50' r='32' fill='none' stroke='%23000' stroke-width='6'/><circle cx='40' cy='40' r='8' fill='%23000'/><circle cx='60' cy='58' r='5' fill='%23000'/></svg>" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- 顶栏：MiMo 风格白色磨砂导航 -->
+  <div class="ds-header-wrapper">
+    <header class="ds-header-bar">
+      <a class="brand" href="#chat">
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+          <circle cx="15" cy="15" r="13" stroke="#000" stroke-width="2"/>
+          <circle cx="11.5" cy="11.5" r="3.5" fill="#000"/>
+          <circle cx="19" cy="18.5" r="2.5" fill="#000"/>
+          <path d="M7 22c2-4 5-6.5 9-7" stroke="#000" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <span class="brand-name">Dito</span>
+        <span class="brand-badge">WEB</span>
+      </a>
+      <nav class="ds-nav">
+        <a href="#chat" data-view="chat" class="active">对话</a>
+        <a href="#config" data-view="config">配置</a>
+        <a href="#kb" data-view="kb">知识库</a>
+        <a href="#memory" data-view="memory">记忆</a>
+        <a href="#about" data-view="about">关于</a>
+      </nav>
+      <div class="header-right">
+        <div class="status-pill" title="当前模型">
+          <span class="dot"></span>
+          <span class="model" id="header-model">载入中</span>
+        </div>
+      </div>
+    </header>
+  </div>
+
+  <main>
+    <!-- 对话视图 -->
+    <section id="view-chat" class="view active">
+      <div class="ds-container chat-container">
+        <div class="page-head">
+          <div>
+            <p class="ds-section-label">Chat</p>
+            <h1 class="ds-hero-title">运行有迹可循</h1>
+            <p class="subtitle">
+              Dito 的每个能力都是一个插件，可以按需开关、自由组合。模型、人格、知识库、记忆、搜索与语音，所有配置即时生效。
+            </p>
+          </div>
+          <div class="head-actions">
+            <button class="ds-btn ds-btn-secondary ds-btn-sm" id="btn-new-session">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              新会话
+            </button>
+          </div>
+        </div>
+
+        <div class="shell">
+          <div class="shell-top">
+            <div class="shell-title">dito · <b id="chat-model-name">载入中</b></div>
+            <div class="shell-actions">
+              <div class="mode-chips" id="mode-chips">
+                <button class="chip" data-mode="chat">闲聊</button>
+                <button class="chip active" data-mode="standard">标准</button>
+                <button class="chip" data-mode="plan">计划</button>
+              </div>
+              <span class="mode-hint" id="mode-hint">完整助手 · 全部工具</span>
+            </div>
+          </div>
+
+          <div class="chat-layout">
+            <div class="chat-scroll" id="chat-scroll">
+              <div class="chat-empty" id="chat-empty">
+                <div class="orb"></div>
+                <h1>一切皆插件</h1>
+                <p>向 Dito 提问，回答会流式显示在这里。<br/>右侧轨迹面板记录每一轮思考、工具调用与结果。</p>
+                <div class="welcome-actions">
+                  <a class="ds-btn ds-btn-primary ds-btn-sm" href="#config">打开配置</a>
+                  <span class="hint">试试输入「你是谁」</span>
+                </div>
+              </div>
+              <div id="chat-messages" class="chat-messages"></div>
+            </div>
+            <aside class="trace-side">
+              <div class="trace-head">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+                运行轨迹
+                <span class="count" id="trace-count">0</span>
+              </div>
+              <div class="trace-body" id="trace-body"></div>
+            </aside>
+          </div>
+
+          <div class="composer">
+            <div class="composer-box">
+              <textarea id="chat-input" rows="1" placeholder="给 Dito 发消息（Enter 发送，Shift+Enter 换行）"></textarea>
+              <button class="send-btn" id="chat-send" title="发送">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z"/></svg>
+              </button>
+            </div>
+            <div class="composer-hint">按 Enter 发送 · Shift+Enter 换行 · 当前 <b id="composer-mode">标准</b> 模式</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 配置视图 -->
+    <section id="view-config" class="view">
+      <div class="ds-container">
+        <div class="page-head">
+          <div>
+            <p class="ds-section-label">Configuration</p>
+            <h1>配置中心</h1>
+            <p class="subtitle">一切皆插件。每个能力作为一个插件卡片，可启用、停用与详细配置。保存后即时生效。</p>
+          </div>
+          <div class="head-actions">
+            <button class="ds-btn ds-btn-ghost ds-btn-sm" id="config-reload">重新载入</button>
+            <button class="ds-btn ds-btn-primary ds-btn-sm" id="config-save">保存配置</button>
+            <span class="save-flash" id="config-save-flash"></span>
+          </div>
+        </div>
+        <div id="config-loading" class="loading">正在载入配置</div>
+        <div id="config-root" class="hidden"></div>
+      </div>
+    </section>
+
+    <!-- 知识库视图 -->
+    <section id="view-kb" class="view">
+      <div class="ds-container">
+        <div class="page-head">
+          <div>
+            <p class="ds-section-label">Knowledge Base</p>
+            <h1>知识库</h1>
+            <p class="subtitle">本地 SQLite，中文检索。在这里搜索、阅读、新增或删除知识条目。</p>
+          </div>
+          <div class="head-actions"><div class="stat-pills" id="kb-stats"></div></div>
+        </div>
+        <div class="data-layout">
+          <div class="ds-card">
+            <div class="search-row">
+              <input id="kb-search" class="ds-input" placeholder="搜索知识条目" />
+              <button class="ds-btn ds-btn-primary ds-btn-sm" id="kb-add-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                新增
+              </button>
+              <button class="ds-btn ds-btn-ghost ds-btn-sm" id="kb-refresh">刷新</button>
+            </div>
+            <div class="item-list" id="kb-list"><div class="loading">载入中</div></div>
+          </div>
+          <div class="ds-card">
+            <div class="detail-head">
+              <span class="t" id="kb-detail-title">选择一个条目</span>
+              <button class="ds-btn ds-btn-danger ds-btn-sm hidden" id="kb-delete">删除</button>
+            </div>
+            <pre class="detail-content" id="kb-detail"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 记忆视图 -->
+    <section id="view-memory" class="view">
+      <div class="ds-container">
+        <div class="page-head">
+          <div>
+            <p class="ds-section-label">Memory</p>
+            <h1>记忆</h1>
+            <p class="subtitle">知识点与历史对话（短日记），跨会话持久。</p>
+          </div>
+          <div class="head-actions">
+            <div class="stat-pills" id="memory-stats"></div>
+            <button class="ds-btn ds-btn-danger ds-btn-sm" id="memory-clear">清空记忆</button>
+          </div>
+        </div>
+        <div class="data-layout single">
+          <div class="ds-card">
+            <div class="search-row">
+              <input id="memory-search" class="ds-input" placeholder="回忆检索，例如「主人喜欢的编辑器」" />
+              <button class="ds-btn ds-btn-primary ds-btn-sm" id="memory-query">回忆</button>
+            </div>
+            <div class="item-list" id="memory-list"><div class="loading">载入中</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 关于视图 -->
+    <section id="view-about" class="view">
+      <div class="ds-container">
+        <div class="page-head">
+          <div>
+            <p class="ds-section-label">About</p>
+            <h1>关于 Dito</h1>
+            <p class="subtitle">Dito（蒂特），基于 pi agent 的个人 AI 助手。本控制台参考 Xiaomi MiMo 的设计语言构建。</p>
+          </div>
+        </div>
+        <div class="about-grid">
+          <div class="about-card">
+            <h3>Dito 是谁</h3>
+            <p>由 yuanjingINT（乌龙）创造、跑在主人 Linux 电脑上的 AI 伙伴。语音、知识库、记忆、提示词设定、联网搜索，默认走 opencode 免费公共模型。</p>
+          </div>
+          <div class="about-card">
+            <h3>一切皆插件</h3>
+            <p>人设、模式、知识库、记忆、搜索、语音、权限门与 sudo。每个能力都是一个插件，在配置页开关与调参即可重新组合，无需改动源码。</p>
+          </div>
+          <div class="about-card">
+            <h3>运行有迹可循</h3>
+            <p>对话页右侧的运行轨迹把每一轮的思考、工具调用、参数与结果都记录在案，任何一次运行都可回查。</p>
+          </div>
+          <div class="about-card">
+            <h3>数据位置</h3>
+            <ul class="mono-list">
+              <li>配置 <code>~/.pi/agent/dito/config.json</code></li>
+              <li>模型 <code>~/.pi/agent/dito/models.json</code></li>
+              <li>知识库 <code>~/.pi/agent/dito/kb.db</code></li>
+              <li>记忆 <code>~/.pi/agent/dito/memory.db</code></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

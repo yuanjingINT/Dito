@@ -1,0 +1,411 @@
+[[Category:Input methods]]
+[[ja:Fcitx5]]
+[[zh-hans:Fcitx5]]
+{{Related articles start}}
+{{Related|Fcitx}}
+{{Related|IBus}}
+{{Related articles end}}
+
+[https://fcitx-im.org/wiki/Fcitx_5 Fcitx5] is an [[input method]] framework with a lightweight core, offering additional language support via addons. It is the successor to [[Fcitx]].
+
+== Installation ==
+
+[[Install]] the {{Pkg|fcitx5}} package.
+
+The {{Grp|fcitx5-im}} group pulls the main {{Pkg|fcitx5}} package, some of [[#Input method modules]], and [[#Configuration tool]].
+
+{{Note|By itself, {{Pkg|fcitx5}} has only a basic framework that just gives English support. If you want to input other languages, such as Chinese or Japanese, you need an Input Method Engine (IME). See [[Input method#List of available input method editors]] for a list of available IMEs.}}
+
+=== Input method modules ===
+
+Some GUI toolkits provide input method modules support for input method integration in applications. However, they're not always needed, and [[#Wayland]] native protocols might show better performance. See [[#Integration]] for details.
+
+* [[Qt]]5/6: {{Pkg|fcitx5-qt}}.
+* [[GTK]]: {{Pkg|fcitx5-gtk}}.
+* Qt4: {{AUR|fcitx5-qt4-git}}.
+
+=== Plugins ===
+
+For date and time support with {{Pkg|fcitx5-chinese-addons}}, install {{Pkg|fcitx5-lua}}: {{ic|;sj}} will then input the current time, while {{ic|;rq}} will input the current date.
+
+== Usage ==
+
+=== Integration ===
+
+Applications need to redirect input events to the input method in order to actually make use of it. The protocol used for such a purpose could be provided by display servers (i.e. [[Wayland]]'s ''text-input'' or [[Xorg]]'s ''XIM''), or by GUI toolkits' input method modules.
+
+==== Wayland ====
+
+Wayland's native ''text-input'' protocol usually yields better results than input method modules. The Wayland frontend of fcitx5 is enabled by default, and [[GTK]]/[[Qt]] utilize ''text-input'' if no other IM module is explicitly specified. Therefore, it's generally recommended to only use [[#IM modules]] in [[Xwayland]] applications. Additionally, enable [[#XIM]] for legacy X11 applications. [https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#TL.3BDR_Do_we_still_need_XMODIFIERS.2C_GTK_IM_MODULE_and_QT_IM_MODULE.3F]
+
+{{Note|''text-input'' requires the Wayland compositor and the client to use the same version of the protocol. You might want to use [[#IM modules]] if the version mismatches for some applications. In particular, [[GNOME]] and [[Sway]] only have support for ''text-input-v3'', while [[Chromium]] defaults to ''text-input-v1'' (can be overridden via {{ic|1=--wayland-text-input-version=3}}).}}
+
+===== GNOME =====
+
+[[GNOME]] does not support Wayland's ''input-method'' protocol, which is required by fcitx5's Wayland frontend to communicate with the compositor and display the popup. {{AUR|gnome-shell-extension-kimpanel-git}} provides support for popups in GNOME Wayland through Kimpanel.
+
+===== KDE Plasma =====
+
+[[Plasma]] on Wayland requires the input method process to be invoked by KWin.[https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#KDE_Plasma] To achieve that, quit any running Fcitx 5 process, head to ''System Settings > Input & Output > Keyboard > Virtual Keyboard'', then select ''Fcitx 5''.
+
+{{Tip|
+* You may want to disable the system-wide autostart desktop file at {{ic|/etc/xdg/autostart/org.fcitx.Fcitx5.desktop}} to prevent Fcitx 5 from being invoked by other components, otherwise you could potentially receive an error message {{ic|Fcitx should be launched by KWin under KDE Wayland ...}} after login. See [[XDG Autostart#Directories]].
+* If the IME disappears, check whether the "On-Screen Keyboard" is deactivated.
+}}
+
+===== Wayfire =====
+
+Enable the ''input-method-v1'' plugin and add ''fcitx5'' to the [https://github.com/WayfireWM/wayfire/wiki/Configuration#autostart autostart] commands.
+
+Due to Wayfire [https://github.com/WayfireWM/wayfire/issues/2315 partially supporting text-input-v1], for software that supports ''text-input-v1'' but not ''text-input-v3'', see [[#Software using Wayland input protocol cannot obtain Wayland popup window]]. 
+
+For Qt6 software, which currently defaults to ''text-input-v1'' but supports ''text-input-v3'', an other workaround is using {{ic|1=QT_WAYLAND_TEXT_INPUT_PROTOCOL=zwp_text_input_v3}} but you may encounter other bugs.
+
+==== IM modules ====
+
+Set the following [[environment variables]][https://fcitx-im.org/wiki/Setup_Fcitx_5#Environment_variables], [[Environment variables#Per Xorg session|globally if using X11]] or [[Environment variables#Per application|for each Xwayland application]] if using a Wayland compositor with ''text-input'' support.
+
+ GTK_IM_MODULE=fcitx
+ QT_IM_MODULE=fcitx
+
+{{Note|
+*[[Append]] {{ic|1=SDL_IM_MODULE=fcitx}} to enable support of some games that use a specific version of the SDL2 library.
+}}
+
+Alternatively, write {{ic|1=gtk-im-module=fcitx}} for GTK3 and {{ic|1=gtk-im-module="fcitx"}} for GTK2 into the configuration files in [[GTK#Configuration]] to make GTK applications running under X11/Xwayland use the IM module without affecting Wayland-native GTK applications.
+
+If your locale is {{ic|en_US.UTF-8}}, and your GTK2 application cannot activate fcitx5, you can set {{ic|1=GTK_IM_MODULE=xim}} [[Environment variables#Per application|specifically for it]].
+
+{{Note|Do not set {{ic|GTK_IM_MODULE}} to xim globally as it affects GTK3 programs as well. XIM has various problems (such as the input method cannot input after restarting), so try not to use it.}}
+
+==== XIM ====
+
+For generic [[X11]] applications, enable XIM support through the following environment variable:
+
+ XMODIFIERS=@im=fcitx
+
+=== Autostart ===
+
+If your [[desktop environment]] implements [[XDG Autostart]], see [[Autostarting#On desktop environment startup]].
+
+See [[Autostarting#On Xorg startup]] or [[Autostarting#On window manager startup]] depending on your needs.
+
+{{Tip|To see if Fcitx5 is working correctly, open an application and press {{ic|Ctrl+Space}} to switch between input methods (when configured), and input some words.}}
+
+{{Note|To use Wayland ''text-input'' protocol in KDE Wayland, additionally follow the procedures in [[#KDE Plasma]].}}
+
+=== Dictionaries ===
+
+==== Chinese ====
+
+For the Chinese input method of Fcitx5, several dictionaries are currently available:
+
+* {{Pkg|fcitx5-pinyin-zhwiki}}: A dictionary created by felixonmars based on Chinese Wikipedia. Applicable to '''Pinyin input method'''.
+* {{Pkg|rime-pinyin-zhwiki}}: A dictionary for [[Rime]] input method.
+* {{AUR|fcitx5-pinyin-moegirl}} : A dictionary created by outloudvi based on Moegirlpedia.
+* {{AUR|rime-pinyin-moegirl}}: A dictionary for [[Rime]] input method.
+* [https://github.com/cathaysia/fcitx5_dicts/releases/tag/0.0.1 cedict]: A dictionary converted from [https://www.mdbg.net/chinese/dictionary?page=cc-cedict cedict dictionary].
+
+{{Note|
+* Manually downloaded dictionary files can be placed in {{ic|~/.local/share/fcitx5/pinyin/dictionaries}}.
+* The suffix of the dictionary file should be ''.dict''.
+* ''.scel'' files from Sogou cannot be used directly but can be [[#Import Sogou dictionary|imported]].
+}}
+
+==== Custom dictionary ====
+
+Generally speaking, since {{Pkg|fcitx5}} supports [[#Import Sogou dictionary|importing the Sogou dictionary]], there is no need to customize dictionaries to a large extent, but {{Pkg|fcitx5}} still provides related tools (i.e. {{Pkg|libime}}).
+
+The original dictionary file is a text file, its format is: {{ic|Character Pinyin Frequency}}. To convert it: 
+
+ $ libime_pinyindict ''dictionary''.txt ''dictionary''.dict
+
+The custom dictionary file can be placed in {{ic|~/.local/share/fcitx5/pinyin/dictionaries}}
+
+{{Note|The following projects may help:
+* [https://pypi.org/project/pypinyin/ Chinese characters to Pinyin]
+* [https://pypi.org/project/OpenCC/ Simplified and Traditional Chinese Conversion]
+}}
+
+== Configuration ==
+
+=== Configuration tool ===
+
+The configuration file of {{Pkg|fcitx5}} is located at {{ic|~/.config/fcitx5}}. Although you can use a text editor to edit the configuration file, you might find a GUI configuration tool much more convenient, so install the {{Pkg|fcitx5-configtool}} package.
+
+=== Disable overriding XKB settings ===
+
+By default Fcitx5 overrides X keyboard settings. (The ones you can set with {{ic|setxkbmap}} command or graphical tools provided by [[desktop environment]]s.) If you do not want that, run {{ic|fcitx5-configtool}} and uncheck ''Addons > XCB > Allow Overriding System XKB Settings''.
+
+=== Themes and appearance ===
+
+==== Themes ====
+
+The number of default themes is limited, you can find more themes on [https://github.com/search?q=fcitx5+theme&type=Repositories GitHub].
+
+* {{App|Breeze|Fcitx5 theme to match KDE's Breeze style.|https://gitlab.com/scratch-er/fcitx5-breeze|{{Pkg|fcitx5-breeze}}}}
+* {{App|Nord|Fcitx5 theme based on the Nord color theme.|https://github.com/tonyfettes/fcitx5-nord|{{Pkg|fcitx5-nord}}}}
+* {{App|Material|Material color theme for fcitx5.|https://github.com/hosxy/Fcitx5-Material-Color|{{Pkg|fcitx5-material-color}}}}
+* {{App|Solarized|Solarized color theme for Fcitx5.|https://github.com/mingyech/fcitx5-solarized|{{AUR|fcitx5-solarized}}}}
+* {{App|Fluent|A Fluent-Design dark theme with blur effect and shadow.|https://github.com/Reverier-Xu/Fluent-fcitx5|{{AUR|fcitx5-skin-fluentdark-git}}}}
+
+{{Tip|If you are using KCM on KDE Plasma, then switch themes with: ''Setting > Regional Settings > Input Method > Configure addons > Classic User Interface > Theme''.}}
+
+{{Note|Theming does not work if you are using {{AUR|gnome-shell-extension-kimpanel-git}} in GNOME. [https://yanqiyu.info/2020/11/06/fcitx5-fedora-updated/#60d50c0a87a8c64ae965e403]}}
+
+==== Enable single-line mode ====
+
+In the settings of the Pinyin input method (or Rime input method), enable ''Show preedit within application'' to enable single-line mode.
+
+=== Use fullwidth punctuation after latin letter or number ===
+
+By default Fcitx5 uses halfwidth punctuation after latin letter or number. If you want to use fullwidth punctuation instead, run {{ic|fcitx5-configtool}} and uncheck ''Configure addons > Punctuation > Half width punctuation after latin letter or number''.
+
+== Troubleshooting ==
+
+=== Diagnose problems ===
+
+If you have problems using fcitx5, e.g. if {{ic|Ctrl+Space}} fails to activate input method in some applications, try to diagnose the current environment using {{ic|fcitx5-diagnose}}, whose output should contain clues for the most common problems.
+
+{{Note|The hints ought not to be blindly followed. E.g. {{ic|GTK_IM_MODULE}} and {{ic|QT_IM_MODULE}} are unneeded for applications that implement the native Wayland ''text-input'' protocol. Refer to [[#Integration]] for details.}}
+
+=== Fcitx5 single-line mode not working in some applications ===
+
+If the single-line mode does not work in GTK applications such as [[Firefox]], install {{Pkg|fcitx5-gtk}}
+
+The single-line mode is unsupported by [[WPS Office]][https://github.com/fcitx/fcitx5/issues/83] and Sublime Text[https://github.com/fcitx/fcitx5/issues/60].
+
+=== Fcitx5 is not working in JetBrains IDEs ===
+
+Please verify that your system [[locale]] is correct and well generated, as an incorrect locale will prevent Fcitx5 from working correctly in JetBrains IDEs.
+
+=== Emoji show abnormally in the candidate box ===
+
+Confirm you have a font with emoji support installed (such as {{Pkg|noto-fonts-emoji}}). Disable anti-aliasing for the chosen emoji font (such as ''Noto Color Emoji'') as explained in [[Font configuration#Anti-aliasing]] and [[Font configuration#Custom settings for certain fonts or font styles]].
+
+=== Fcitx5 not available in RStudio ===
+
+Run the following command:
+
+ $ strings /usr/lib/rstudio/lib/libQt5Core.so.5 | grep "Qt 5"
+
+Find out the version of the Qt library, use this version to recompile {{ic|libfcitx5platforminputcontextplugin.so}} in {{Pkg|fcitx5-qt}}, and put it into {{ic|/usr/lib/rstudio/plugins/platforminputcontexts/}} directory.
+
+=== Fcitx5 not available on Steam and Dota 2 ===
+
+The IME can be activated on Steam Big Screen mode and Dota 2 by using {{ic|Ctrl+Space}} instead of {{ic|Ctrl+Shift}}. [https://github.com/fcitx/fcitx5/issues/442]
+
+=== Fcitx5 not available in Chromium running on Wayland ===
+
+See [[Chromium#Native Wayland support]].
+
+=== Candidate popup misaligned in HiDPI mode of GTK environments ===
+
+If the position of your candidate popup is not anchored at your cursor position, [[install]] {{Pkg|fcitx5-gtk}}.
+
+=== Fcitx5 right alt key not working with Electron applications ===
+
+If a non-system keyboard is used by an application (e.g. Discord, Element, etc.), the application may handle the {{ic|ISO_Level3_Shift}} before the input method can. This results in some input methods failing in specific applications. One solution is to add another input method group, setting the system layout to correspond to this keyboard. For example, to type Polish letters like {{ic|ąćęłńóśźż}} on a QWERTY keyboard with English as your primary system keyboard, you can use the Fcitx5 Configuration GUI to:
+
+# Click the ''Add Group'' plus button.
+# Select this group in the dropdown and now add your input method (the keyboard, e.g. ''Keyboard - Polish'').
+# Use ''Select system keyboard layout'' to pick the one that matches this input method, and apply changes.
+
+See comments from the Fcitx5 developers if you need another solution. [https://github.com/fcitx/fcitx5/issues/740]
+
+=== Software using Wayland input protocol cannot obtain Wayland popup window ===
+
+Software using the Wayland input protocols (such as wezterm and GTK software if the environment variable is set to {{ic|1=GTK_IM_MODULE=wayland}}) may have issues with text-input-v3 support.
+
+Regarding Qt and GTK software support for Wayland, according to the fcitx5 developer[https://www.csslayer.info/wordpress/linux/use-plasma-5-24-to-type-in-alacritty-or-any-other-text-input-v3-client-with-fcitx-5-on-wayland/]:
+
+: Qt has text-input-v2 support. If QT_IM_MODULE is empty, it can be used, but there are some minor problems with pre-editing. In addition, for the current version of Wayland input method protocol, Wayland can only have one global input context. So now if you want to use the "per-application" input status supported by Fcitx 5, it may be a problem. However, there is a benefit to using Qt's text input protocol, which is that the input window will not flicker visually.
+: Gtk has text-input-v3 support, but its pre-editing style is poor, with bold fonts highlighted. In addition, its text support is weak. So now, if you want to have all the Fcitx features, using {{ic|1=GTK_IM_MODULE=fcitx}} may still be a good choice.
+
+In summary, for [https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#Gtk3_.2F_Gtk4 GTK3/GTK4] and [https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#Qt5_.2F_Qt6 Qt5/Qt6] you may still want to [[#IM modules|set the respective environment variables]] if you encounter issues without them.
+
+== Tips and tricks ==
+
+=== Customizing traditional and simplified Chinese conversion ===
+
+Some IMEs assume Simplified Chinese by default, resulting in incorrect characters being displayed when using Traditional input, e.g. 爲什麼 instead of 為什麼. To fix this, the usage of the {{ic|Simplified and Traditional Chinese Translation}} can be customized. 
+
+To configure conversion, set {{ic|OpenCC profile for Simplified to Traditional}} to one of the following values:
+* s2t - Simplified to Traditional (OpenCC) (this is the default and probably not what you are looking for)
+* s2tw - Simplified to Traditional (Taiwan)
+* s2twp - Simplified to Traditional (Taiwan) with Taiwanese idiom
+* s2hk - Simplified to Traditional (Hong Kong)
+
+To configure the reverse, set {{ic|OpenCC profile for Traditional to Simplified}} to one of the following values:
+* t2s - Traditional (OpenCC) to Simplified (OpenCC) (this is the default and probably not what you are looking for)
+* tw2s - Traditional (Taiwan) to Simplified (OpenCC)
+* tw2sp - Traditional (Taiwan) to Simplified (OpenCC) with Mainland Chinese idiom
+* t2hk - Traditional (OpenCC) to Hong Kong variant
+* t2tw - Traditional (OpenCC) to Taiwan Standard
+* tw2t - Traditional (Taiwan) to Traditional (OpenCC)
+* hk2s - Traditional (Hong Kong) to Simplified (OpenCC)
+* hk2t - Traditional (Hong Kong) to Traditional Chinese (OpenCC)
+* t2jp - Traditional (Kyūjitai) to New Japanese Kanji (Shinjitai)
+* jp2t - New Japanese Kanji (Shinjitai) to Traditional (Kyūjitai)
+
+Up to date list here: [https://github.com/BYVoid/OpenCC OpenCC]
+
+=== View the Unicode encoding of selected characters ===
+
+* If you want to view the Unicode encoding of the selected text in a text editor, then directly select the text, and then use the shortcut keys {{ic|Ctrl+Alt+Shift+u}} to view the encoding of the selected text.
+* If you want to view the Unicode encoding of some text in a non-editable area (such as this wiki), you need to first copy the text to the clipboard, then click on any editable area (such as the search box), and then use the shortcut keys {{ic|Ctrl+Alt+Shift+u}} to view the encoding of the text in the clipboard.
+
+=== Input special characters ===
+
+In general, for some simple symbols, such as {{ic|≤}}, {{ic|ā}}, {{ic|á}}, {{ic|©}}, etc., you can enter them through [[Xorg/Keyboard configuration#Configuring compose key|Configuring compose key]], but for more special symbols, such as {{ic|②}}, {{ic|③}}, {{ic|④}}, etc., you Either customize {{ic|~/.XCompose}}, or use Fcitx5's Unicode function to achieve.
+
+Take {{ic|①}} as an example:
+
+Position the cursor in any input box, and then press {{ic|Ctrl+Alt+Shift+u}}, and then enter {{ic|circle one}}, you will see a variety of {{ic|①}}, other special characters are similar here.
+
+=== Switching halfwidth and fullwidth punctuation ===
+
+For {{Pkg|fcitx5-chinese-addons}}, fullwidth punctuation is used by default, one may use {{ic|Ctrl+.}} to switch between halfwidth and fullwidth punctuation.
+
+=== Automatically switch input methods in vim ===
+
+It is recommended to use the [https://github.com/lilydjwg/fcitx.vim fcitx.vim] plugin. This plugin will keep different buffer-specific input method states in their respective insert modes. For neovim user, use [https://github.com/junyixu/fcitx.nvim fcitx.nvim] plugin, which keeps neovim and fcitx5 in sync through direct [https://aur.archlinux.org/packages/lua51-ldbus DBus calls].
+
+For a simple solution, you can append the code to {{ic|~/.vimrc}}: [https://www.zhihu.com/question/341748857/answer/1739052604][https://sur.moe/post/vim%E8%BE%93%E5%85%A5%E6%B3%95%E5%88%87%E6%8D%A2%E4%B8%8D%E4%BD%BF%E7%94%A8%E6%8F%92%E4%BB%B6/]
+
+{{hc|~/.vimrc|<nowiki>
+let fcitx5state = system("fcitx5-remote")
+" Disable the input method when exiting the insertion mode and saving the state
+autocmd InsertLeave* : silent let fcitx5state = system("fcitx5-remote")[0] | silent ! call system("fcitx5-remote -c")
+" 2 indicates that the input method was opened in the previous state, and the input method is started when entering the insert mode
+autocmd InsertEnter*: silent if fcitx5state == 2 | call system("fcitx5-remote -o") | endif
+</nowiki>}}
+
+If you are using {{Pkg|neovim}}, then append the above code to {{ic|~/.config/nvim/init.vim}}.
+
+If you are using Vim9, then the code should be
+
+{{hc|~/.vimrc|<nowiki>
+# Only take effect after using vim9script syntax or keywords with `vim9script`
+var fcitx5state = system("fcitx5-remote")
+autocmd InsertLeave * : silent fcitx5state = system("fcitx5-remote")[0] | silent ! fcitx5 - remote - c
+autocmd InsertEnter * : silent if fcitx5state == '2' | call system("fcitx5-remote -o") | endif
+</nowiki>}}
+
+{{Note|If you add this code in vim.cmd, you may need to uncomment it.}}
+
+If you are using VSCodeVim, add the following snippet into your configuration file:
+
+ "vim.autoSwitchInputMethod.enable": true,
+ "vim.autoSwitchInputMethod.defaultIM": "1",
+ "vim.autoSwitchInputMethod.obtainIMCmd": "/usr/bin/fcitx5-remote",
+ "vim.autoSwitchInputMethod.switchIMCmd": "/usr/bin/fcitx5-remote -t {im}",
+
+=== Pinyin input method ===
+
+{{Note|The following functions are only valid for the Pinyin input method in {{Pkg|fcitx5-chinese-addons}}, please explore other input methods by yourself. }}
+
+==== Import Sogou dictionary ====
+
+* For [[KDE]] users, you can import Sogou dictionary through ''Settings > Regional Settings > Input Method > Pinyin > Dictionary > Import''.
+* For users who use {{Pkg|fcitx5-configtool}}, you need to manually open the software "Fcitx5 Configuration" and manually configure it in the Pinyin input method.
+* Alternatively, ''scel2org5'' (from {{Pkg|fcitx5-chinese-addons}}) allows the conversion.
+
+You can import local dictionaries or browse and import online dictionaries.
+
+==== Cloud Pinyin ====
+
+On the settings page of the Pinyin input method, you can enable Cloud Pinyin. But if you need to change the default backend of Cloud Pinyin, you need to change it in the global settings of {{Pkg|fcitx5}}. Provided backends are {{ic|Google}}, {{ic|Baidu}}, {{ic|GoogleCN}}.
+
+==== Stroke Filter ====
+
+Set the shortcut key after the "stroke filter" of the pinyin input method you set (the default is {{ic|`}})
+Then after entering the text, press the shortcut key, the words '''stroke filter''' will appear in the candidate box of the input method, and the words can be filtered by strokes. The specific rules are: h horizontal stroke, s vertical stroke, p left-falling stroke, n right-falling stroke, z turning stroke.
+
+By default, the stroke filter is to filter the first character of a sentence, but you can switch between different characters in a sentence by using '''determining characters by word'''.
+
+For example, to perform stroke filtering on the third character in the word 中华人民共和国, you can press {{ic|]}} twice in a row after enabling stroke filtering to let {{Pkg|fcitx5}} perform stroke filtering on it.
+
+{{Note|By default, the shortcut keys of '''Determining characters with words''' are {{ic|[}} and {{ic|]}}, and the shortcut keys can be viewed in the settings of '''Pinyin input method'''.}}
+
+=== RIME/Zhongzhou rhyme ===
+
+{{Tip|All changes need to be redeployed to take effect.}}
+
+==== Import dictionary ====
+
+Take importing dictionary {{Pkg|rime-pinyin-zhwiki}} and {{AUR|rime-pinyin-moegirl}} as an example.
+
+{{Tip|It is also possible to put the custom dictionary into {{ic|~/.local/share/fcitx5/rime/}}, and the file name (filename.dict.yaml) should be the same as the dictionary name ([https://github.com/rime/home/wiki/RimeWithSchemata#%E7%A2%BC%E8%A1%A8%E8%88%87%E8%A9%9E%E5%85%B8 dictionary format]) }}
+
+1. Change the {{ic|~/.local/share/fcitx5/rime/luna_pinyin.custom.yaml}} file (take {{ic|luna_pinyin}} as an example, and modify the name of the other input schemes)
+
+{{hc|~/.local/share/fcitx5/rime/luna_pinyin.custom.yaml|
+# There should only be one "patch:" in the file, if it already exists, just paste the following code
+# This file is used to modify a specific input scheme, change the above luna_pinyin to other input scheme names to complete the modification of other input schemes
+patch:
+    "translator/dictionary": extended #The dictionary name can be customized, just keep the same as the file name below
+}}
+
+2. Create a new {{ic|~/.local/share/fcitx5/rime/extended.dict.yaml}} file
+
+{{Tip|Import custom dictionary just add the dictionary name after "import_tables:"}}
+
+{{hc|~/.local/share/fcitx5/rime/extended.dict.yaml|
+# The following disables the default dictionary and does not enable the default "Baguwen" dictionary and word frequency system, if you do not want traditional characters and box characters to appear in candidate words
+---
+name: extended
+version: "2021.02.19"
+sort: by_weight
+use_preset_vocabulary: false #Whether to enable the default "Baguwen" dictionary and word frequency system, if you want to enable it, please set it to true.
+import_tables:
+  # - luna_pinyin #Default dictionary, please uncomment if you want to enable it
+  - zhwiki
+  - moegirl
+  # - custom dictionary name
+...
+}}
+
+==== Fuzzy sound settings ====
+
+Please comment (#) or delete unnecessary fuzzy sounds as needed. If you need to add other fuzzy sounds, please refer to [https://gist.github.com/2320943 Mingyue Pinyin fuzzy sound custom template]
+
+If the {{ic|luna_pinyin.custom.yaml}} file does not exist
+
+{{hc|~/.local/share/fcitx5/rime/luna_pinyin.custom.yaml|
+patch:
+    "speller/algebra":
+        - derive/^([zcs])h/$1/ #zh,ch,sh->z,c,s
+        - derive/^([zcs])([^h])/$1h$2/ #z,c,s->zh,ch,sh
+        - derive/^n/l #n->l
+        - derive/^l/n #l->n
+        - derive/([ei])n$/$1ng/  # en -> eng, in -> ing
+        - derive/([ei])ng$/$1n/ # eng->en, ing -> in
+        - abbrev/^([a-z]).+$/$1/ #Jianpin support
+        - abbrev/^([zcs]h).+$/$1/ #fuzzy sounds support for Jianpin
+        delimiter: " '" #delimiter
+}}
+
+If the file exists, paste the part below {{ic|patch:}} to the end of the file (there is only one {{ic|patch:}} in {{ic|luna_pinyin.custom.yaml}})
+
+==== Special symbols ====
+
+{{Note|Fcitx5 has built-in support for special symbols. See [[#Input special characters]]}}
+
+Import the {{ic|symbols.dict.yaml}} dictionary in the [https://github.com/yangshann/rime-dict rime-dict] project to input Greek letters, some mathematical symbols and Emoji expressions in Pinyin.
+
+Example:
+
+* Greek letters: input {{ic|alpha}} to output {{ic|α}}
+
+* Mathematical symbols: input {{ic|jifen}} to output {{ic|∫}}
+
+* Special symbols: Input {{ic|cha}} to output {{ic|✕,✖}}
+
+* Serial number: input {{ic|qi}} to output {{ic|Ⅶ,⑦}}
+
+* Emoji expression: Input {{ic|haha}} to output {{ic|😃,😆}}
+
+==== Load librime-lua plugin ====
+
+If you want to load the librime-lua plugin, you must add the {{ic|lua}} module in the Rime input method settings of the fcitx configuration tool.

@@ -1,0 +1,71 @@
+[[Category:Package management]]
+[[de:Ältere Paketversion installieren (Downgrade)]]
+[[es:Downgrading packages]]
+[[fr:Downgrading packages]]
+[[hu:Downgrading packages]]
+[[ja:パッケージのダウングレード]]
+[[pt:Downgrading packages]]
+[[zh-hans:Downgrading packages]]
+{{Related articles start}}
+{{Related|Arch build system}}
+{{Related|Arch Linux Archive}}
+{{Related|makepkg}}
+{{Related|pacman}}
+{{Related articles end}}
+
+Before downgrading a single or multiple packages, consider why you wish to do so. If it is due to a bug, follow the [[bug reporting guidelines]]. I.e. search the Arch Linux Bugtracker for existing tasks and if there is none, add a new task. It is better to correct bugs, or at least warn other users of possible issues.
+
+{{Warning|
+* Downgrading one package may require that its dependencies be downgraded as well. When the number of packages to downgrade is large, consider using a snapshot. See [[Arch Linux Archive#Restore all packages to a specific date]].
+* Be careful with changes to configuration files and scripts. For now ''pacman'' will handle this for us, as long as we do not bypass its safeguards.
+* If a downgrade involves a soname change, all dependencies may need downgrading or [[Frequently asked questions#What if I run a full system upgrade and there will be an update for a shared library, but not for the applications that depend on it?|rebuilding]] too.
+}}
+
+{{Note|Similar to upgrading, downgrades are not picked up by already running processes. If the motivation for downgrading is avoiding a bug, be sure to restart affected programs.}}
+
+== Return to an earlier package version ==
+
+=== Using the pacman cache ===
+
+If a package was installed at an earlier stage, and the [[Pacman#Cleaning the package cache|pacman cache]] was not cleaned, install an earlier version from {{ic|/var/cache/pacman/pkg/}}.
+
+This process will remove the current package and install the older version. Dependency changes will be handled, but [[pacman]] will not handle version conflicts. If a library or other package needs to be downgraded with the packages, please be aware that you will have to downgrade this package yourself as well.
+
+ # pacman -U file:///var/cache/pacman/pkg/''package''-''old_version''.pkg.tar.zst
+
+Once the package is reverted and confirmed to work, to make {{ic|pacman -Syu}} temporarily ignore updates, add the package to the [[Pacman#Skip package from being upgraded|IgnorePkg section]] of {{ic|pacman.conf}}, until the difficulty with the updated package is resolved.
+
+=== Downgrading the kernel ===
+
+In case of issue with a new kernel, the Linux packages can be downgraded to the last working ones [[#Using the pacman cache]]. Go into the directory {{ic|/var/cache/pacman/pkg}} and downgrade at least {{Pkg|linux}}, {{Pkg|linux-headers}} and any kernel modules. For example:
+
+ # pacman -U file://linux-6.16.1.arch1-1-x86_64.pkg.tar.zst file://linux-headers-6.16-1-x86_64.pkg.tar.zst file://virtualbox-host-modules-arch-7.2.0-2-x86_64.pkg.tar.zst
+
+{{Tip|If you are unable to boot after a kernel update, you can downgrade the kernel [[Change root|chrooting]] into the system. Boot using an Arch Linux [[USB flash installation media]] and mount the partition where your system is installed to {{ic|/mnt}}. If you have {{ic|/boot}} or {{ic|/var}} on separate partitions, also mount them to {{ic|/mnt}} (e.g. {{ic|mount /dev/sdc3 /mnt/boot}}). Then ''chroot'' into the system using:
+
+ # arch-chroot -S /mnt
+
+Now you can go into the ''pacman'' cache directory and downgrade the Linux packages using the command indicated above. Once done, exit the chroot (with {{ic|exit}}) and reboot.}}
+
+=== Arch Linux Archive ===
+
+The [[Arch Linux Archive]] is a daily snapshot of the [[official repositories]]. It can be used to [[Arch Linux Archive#How to downgrade one package|install a previous package version]], or [[Arch Linux Archive#How to restore all packages to a specific date|restore the system to an earlier date]].
+
+=== Rebuild the package ===
+
+If the package is unavailable, find the correct [[PKGBUILD]] and rebuild it with [[makepkg]].
+
+For packages from the [[official repositories]], retrieve the PKGBUILD with [[ABS]] and change the software version. Alternatively, find the package on the [https://archlinux.org/packages Packages] website, click "View Changes", and navigate to the desired version. The necessary files can then be downloaded from the directory so that the package can be rebuilt.
+
+See also [[Arch build system#Using the pkgctl tool]].
+
+Old AUR packages can be built by checking out an old commit in the AUR package Git repository. For pre-2015 AUR3 PKGBUILDs, see [[Arch User Repository#Git repositories for AUR3 packages]].
+
+=== Automation ===
+
+* {{App|downgrade|A Bash script to downgrade one (or multiple) packages, by using the pacman cache or the [[Arch Linux Archive]]. See {{man|8|downgrade|url=https://github.com/archlinux-downgrade/downgrade/blob/main/doc/downgrade.8.ronn}} for details.|https://github.com/pbrisbin/downgrade|{{AUR|downgrade}}}}
+* {{App|archarchive|A simple, interactive CLI program to downgrade all packages using the [[Arch Linux Archive]].|https://github.com/progzone122/archarchive|{{AUR|archarchive}}}}
+
+== Return from [testing] ==
+
+See [[Official repositories#Disabling testing repositories]].

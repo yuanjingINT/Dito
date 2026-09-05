@@ -1,0 +1,522 @@
+[[Category:Version control system]]
+[[Category:Commands]]
+[[Category:OpenPGP]]
+[[de:Git]]
+[[es:Git]]
+[[ja:Git]]
+[[ru:Git]]
+[[zh-hans:Git]]
+{{Related articles start}}
+{{Related|Bisecting bugs with Git}}
+{{Related|Concurrent Versions System}}
+{{Related|Git server}}
+{{Related|Gitweb}}
+{{Related|HTTP tunneling#Tunneling Git}}
+{{Related|Subversion}}
+{{Related|VCS package guidelines}}
+{{Related articles end}}
+
+:"I've met people who thought git is a front-end to GitHub. They were wrong, git is a front-end to the AUR." — [https://public-inbox.org/git/#didyoureallythinklinuswouldsaythat Linus T.]
+
+[[wikipedia:Git (software)|Git]] is the version control system (VCS) designed and developed by Linus Torvalds, the creator of the Linux kernel. Git is now used to maintain [[AUR]] packages, as well as many other projects, including sources for the Linux kernel.
+
+== Installation ==
+
+[[Install]] the {{Pkg|git}} package. For the development version, install the {{AUR|git-git}} package. Check the optional dependencies when using tools such as ''git svn'', ''git gui'' and ''gitk''.
+
+=== Graphical front-ends ===
+
+See also [https://git-scm.com/download/gui/linux git GUI Clients].
+
+* {{App|Commit|Editor that helps you write better Git and Mercurial commit messages.|https://apps.gnome.org/Commit/|{{Pkg|commit}}}}
+* {{App|Forge Sparks|Simple notifier app with support for Github, GitLab, Gitea and Forgejo.|https://apps.gnome.org/ForgeSparks/|{{Pkg|forge-sparks}}}}
+* {{App|Giggle|GTK frontend for git.|https://wiki.gnome.org/Apps/giggle/|{{Pkg|giggle}}}}
+* {{App|GitAhead|Graphical git client including a built-in Merge Tool.|https://gitahead.github.io/gitahead.com/|{{AUR|gitahead}}}}
+* {{App|GitButler|Version control client, backed by Git, powered by Tauri/Rust/Svelte.|https://gitbutler.com/|{{AUR|gitbutler}}}}
+* {{App|Git Cola|Sleek and powerful graphical user interface for Git written in Python.|https://git-cola.github.io/|{{AUR|git-cola}}}}
+* {{App|Git Extensions|Graphical user interface for Git that allows you to control Git without using the commandline.|https://gitextensions.github.io/|{{AUR|gitextensions}}}}
+* {{App|GitFourchette|Qt GUI to explore and understand your Git repositories.|https://gitfourchette.org/|{{Pkg|gitfourchette}}}}
+* {{App|gitg|GNOME GUI client to view git repositories. Part of {{Grp|gnome-extra}}.|https://wiki.gnome.org/Apps/Gitg|{{Pkg|gitg}}}}
+* {{App|git-gui|Tcl/Tk based portable graphical interface to Git.|https://git-scm.com/docs/git-gui|{{Pkg|git}} + {{Pkg|tk}}}}
+:{{Note|To enable spell checking in ''git-gui'', {{Pkg|aspell}} is required, along with the dictionary corresponding to the {{ic|LC_MESSAGES}} [[environment variable]]. See {{Bug|28181}} and the [[aspell]] article.}}
+* {{App|GitHub Desktop|Electron-based graphical user interface built by the GitHub team.|https://github.com/desktop/desktop|{{AUR|github-desktop}} {{AUR|github-desktop-bin}}}}
+* {{App|gitk|Tcl/Tk based Git repository browser.|https://git-scm.com/docs/gitk|{{Pkg|git}} + {{Pkg|tk}}}}
+* {{App|Gittyup|Qt based Git client.|https://github.com/Murmele/Gittyup|{{AUR|gittyup}}}}
+* {{App|Gitnuro|Git client that allows you to manage multiple repositories with a modern experience and live visual representation of your repositories' state.|https://gitnuro.com/|{{AUR|gitnuro-bin}}}}
+* {{App|Guitar|Git GUI Client.|https://github.com/soramimi/Guitar|{{AUR|guitar}}}}
+* {{App|gitui|fast terminal-ui for git written in rust.|https://github.com/extrawurst/gitui|{{Pkg|gitui}}}}
+* {{App|Kommit|Git GUI client for KDE.|https://apps.kde.org/kommit/|{{Pkg|kommit}}}}
+* {{App|lazygit|simple terminal UI for git commands.|https://github.com/jesseduffield/lazygit|{{Pkg|lazygit}}}}
+* {{App|QGit|Git GUI viewer to browse revisions history, view patch content and changed files, graphically following different development branches.|https://github.com/tibirna/qgit|{{Pkg|qgit}}}}
+* {{App|[[Wikipedia:RabbitVCS|RabbitVCS]]|Set of graphical tools written to provide simple and straightforward access to the version control systems you use.|http://rabbitvcs.org/|{{AUR|rabbitvcs}}}}
+* {{App|Sublime Merge|Proprietary Git client from the makers of Sublime Text.|https://www.sublimemerge.com/|{{AUR|sublime-merge}}}}
+* {{App|Tig|ncurses-based text-mode interface for git.|https://jonas.github.io/tig/|{{Pkg|tig}}}}
+* {{App|ungit|Brings user friendliness to git without sacrificing the versatility of git.|https://github.com/FredrikNoren/ungit|{{AUR|nodejs-ungit}}}}
+
+== Configuration ==
+
+In order to use Git you need to set at least a name and email:
+
+ $ git config --global user.name  "''John Doe''"
+ $ git config --global user.email "''johndoe@example.com''"
+
+See [https://git-scm.com/book/en/v2/Getting-Started-First-Time-Git-Setup Getting Started - First-Time Git Setup].
+
+See [[#Tips and tricks]] for more settings.
+
+== Usage ==
+
+A Git repository is contained in a {{ic|.git}} directory, which holds the revision history and other metadata. The directory tracked by the repository, by default the parent directory, is called the working directory. Changes in the working tree need to be staged before they can be recorded (committed) to the repository. Git also lets you restore, previously committed, working tree files.
+
+See [https://git-scm.com/book/en/v2/Getting-Started-About-Version-Control Getting Started].
+
+=== Getting a Git repository ===
+
+See [https://git-scm.com/book/en/v2/Git-Basics-Getting-a-Git-Repository Getting a Git Repository - Git Basics]
+
+
+=== Recording changes ===
+
+See [https://git-scm.com/book/en/v2/Git-Basics-Recording-Changes-to-the-Repository Recording Changes to the Repository - Git Basics]
+
+
+=== Viewing change history ===
+
+See [https://git-scm.com/book/en/v2/Git-Basics-Viewing-the-Commit-History Viewing the Commit History - Git Basics]
+
+
+=== Undoing things ===
+
+See [https://git-scm.com/book/en/v2/Git-Basics-Undoing-Things Undoing Things - Git Basics]
+
+=== Working with remotes ===
+
+See [https://git-scm.com/book/en/v2/Git-Basics-Working-with-Remotes Working with Remotes - Git Basics]
+
+=== Branching ===
+
+See [https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell Branching in a Nutshell - Git Branching]
+
+==== Basic branching and merging ====
+
+See [https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging Basic Branching and Merging - Git Branching]
+
+==== Branch management ====
+
+See [https://git-scm.com/book/en/v2/Git-Branching-Branch-Management Branch Management - Git Branching]
+
+==== Branching workflows ====
+
+See [https://git-scm.com/book/en/v2/Git-Branching-Branching-Workflows Branching Workflows - Git Branching]
+
+==== Remote branches ====
+
+See [https://git-scm.com/book/en/v2/Git-Branching-Remote-Branches Remote Branches - Git Branching]
+
+==== Rebasing ====
+
+See [https://git-scm.com/book/en/v2/Git-Branching-Rebasing Rebasing - Git Branching]
+
+=== Collaboration ===
+
+==== Distributed workflows ====
+
+See [https://git-scm.com/book/en/v2/Distributed-Git-Distributed-Workflows Distributed Workflows - Distributed Git]
+
+==== Contributing to a project ====
+
+See [https://git-scm.com/book/en/v2/Distributed-Git-Contributing-to-a-Project Contributing to a Project - Distributed Git]
+
+==== Maintaining a project ====
+
+See [https://git-scm.com/book/en/v2/Distributed-Git-Maintaining-a-Project Maintaining a Project - Distributed Git]
+
+=== Git tools ===
+
+==== Revision selection ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Revision-Selection Revision Selection - Git Tools]
+
+==== Interactive staging ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Interactive-Staging Interactive Staging - Git Tools]
+
+==== Stashing and cleaning ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Stashing-and-Cleaning Stashing and Cleaning - Git Tools]
+
+==== Signing your work ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Signing-Your-Work Signing Your Work - Git Tools]
+
+==== Searching ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Searching Searching - Git Tools]
+
+==== Rewriting history ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Rewriting-History Rewriting History - Git Tools]
+
+==== Reset demystified ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Reset-Demystified Reset Demystified - Git Tools]
+
+==== Advanced merging ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging Advanced Merging - Git Tools]
+
+==== Rerere ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Rerere Rerere - Git Tools]
+
+==== Debugging with Git ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Debugging-with-Git Debugging with Git - Git Tools]
+
+==== Submodules ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Submodules Submodules - Git Tools]
+
+==== Bundling ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Bundling Bundling - Git Tools]
+
+==== Replace ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Replace Replace - Git Tools]
+
+==== Credential storage ====
+
+See [https://git-scm.com/book/en/v2/Git-Tools-Credential-Storage Credential Storage - Git Tools]
+
+== Tips and tricks ==
+
+=== Using git-config ===
+
+Git reads its configuration from four INI-type configuration files:
+
+* {{ic|/etc/gitconfig}} for system-wide defaults
+* {{ic|~/.gitconfig}} and {{ic|~/.config/git/config}} (since 1.7.12) for user-specific configuration
+* {{ic|.git/config}} for repository-specific configuration
+
+These files can be edited directly, but the usual method is to use ''git config'', as shown in the examples below.
+
+List the currently set variables:
+
+ $ git config list {--local,--global,--system}
+
+Set the default editor from [[vim]] to [[nano]]:
+
+ $ git config --global core.editor "nano -w"
+
+Set the default push action:
+
+ $ git config --global push.default simple
+
+Set a different tool for ''git difftool'' (''meld'' by default):
+
+ $ git config --global diff.tool vimdiff
+
+See {{man|1|git-config}} and [https://git-scm.com/book/en/v2/Customizing-Git-Git-Configuration Git Configuration] for more information.
+
+==== Inclusion of separate configuration files ====
+
+Since [https://github.com/gitster/git/commit/9b25a0b52e09400719366f0a33d0d0da98bbf7b0 v1.7.10 in 2012], Git is able to build a configuration file that is split into multiple configuration files using the {{ic|include}} keyword inside the {{ic|gitconfig}} file.
+{{Tip|Loading included configuration files is disabled by default when using the {{ic|--local}} or {{ic|--global}} flags. To enable it, use the {{ic|--includes}} flag with the {{ic|git config get}} and {{ic|git config list}} commands.}}
+
+=== Adopting a good etiquette ===
+
+* When considering contributing to an existing project, read and understand its license, as it may excessively limit your ability to change the code. Some licenses can generate disputes over the ownership of the code.
+* Think about the project's community and how well you can fit into it. To get a feeling of the direction of the project, read any documentation and even the [[#Viewing change history|log]] of the repository.
+* When requesting to pull a commit, or submit a patch, keep it small and well documented; this will help the maintainers understand your changes and decide whether to merge them or ask you to make some amendments.
+* If a contribution is rejected, do not get discouraged, it is their project after all. If it is important, discuss the reasoning for the contribution as clearly and as patiently as possible: with such an approach a resolution may eventually be possible.
+
+=== Speeding up authentication ===
+
+You may wish to avoid the hassle of authenticating interactively at every push to the Git server.
+
+* If you are authenticating with SSH keys, use an [[SSH agent]]. See also [[OpenSSH#Speeding up SSH]] and [[OpenSSH#Keep alive]].
+* If you are authenticating with username and password, switch to [[SSH keys]] if the server supports SSH, otherwise use git-credential-libsecret credential helper, or try [https://git-scm.com/docs/git-credential-cache git-credential-cache] or [https://git-scm.com/docs/git-credential-store git-credential-store].
+
+=== Using git-credential-libsecret as credential-helper ===
+
+Git may fetch your credentials from an [https://archlinux.org/packages/?q=org.freedesktop.secrets org.freedesktop.secrets] compatible keyring like [[GNOME Keyring]], [[KeePass#Secret Service|KeePassXC]] or [[KDE Wallet]]. Therefore set up one compatible keyring and check if a keyring is registered to dbus using:
+
+ $ dbus-send --session --print-reply --dest=org.freedesktop.DBus / \
+     org.freedesktop.DBus.GetConnectionUnixProcessID \
+     string:org.freedesktop.secrets
+
+then run
+
+ $ git config --global credential.helper /usr/lib/git-core/git-credential-libsecret
+
+to set up git.
+
+=== Using git-credential-netrc as credential-helper ===
+
+Git can read the [https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html netrc] file to access credentials. First, direct Git to the netrc helper script:
+
+ $ git config --global credential.helper /usr/share/git/credential/netrc/git-credential-netrc.perl
+
+Then, [[create]] a {{ic|.netrc}} file:
+
+{{hc|~/.netrc|
+machine git-host
+login username
+password password
+}}
+
+The credential helper also supports [[gpg]]-encrypted files ({{ic|~/.netrc.gpg}}) if you like to keep your secrets safe.
+
+=== Protocol defaults ===
+
+If you are running a multiplexed SSH connection as shown above, Git over SSH might be faster than HTTPS. Also, some servers (like the AUR) only allow pushing via SSH. For example, the following configuration will set Git over SSH for any repository hosted on the AUR.
+
+{{hc|~/.gitconfig|<nowiki>
+[url "ssh://aur@aur.archlinux.org/"]
+	insteadOf = https://aur.archlinux.org/
+	insteadOf = http://aur.archlinux.org/
+	insteadOf = git://aur.archlinux.org/
+</nowiki>}}
+
+=== Bash completion ===
+
+In order to enable Bash completion, source {{ic|/usr/share/git/completion/git-completion.bash}} in a [[Bash#Configuration files|Bash startup file]]. Alternatively, install {{pkg|bash-completion}}.
+
+=== Git prompt ===
+
+The Git package comes with a prompt script. To enable it, source the {{ic|/usr/share/git/completion/git-prompt.sh}} and set a custom prompt with the {{ic|%s}} parameter:
+
+* For [[Bash]]: {{ic|1=PS1='[\u@\h \W$(__git_ps1 " (%s)")]\$ '}}
+* For [[Zsh]]: {{ic|1=setopt PROMPT_SUBST ; PS1='[%n@%m %c$(__git_ps1 " (%s)")]\$ '}} {{Tip|Zsh provides a  {{ic|vcs_info}} function which can be used as an alternative. See {{man|1|zshcontrib|GATHERING INFORMATION FROM VERSION CONTROL SYSTEMS}}.}}
+
+Note that the command substitution must be escaped, see [[Bash/Prompt customization#Embedding commands]] for details. See [[Command-line shell#Configuration files]] for persistent configuration.
+
+When changing to a directory of a Git repository, the prompt will change to show the branch name. Extra details can be set to be shown by the prompt by setting the corresponding environment variable:
+
+{| class="wikitable"
+ |+
+ ! Shell variable !! Information
+ |-
+ | GIT_PS1_SHOWDIRTYSTATE     || {{ic|+}} for staged, {{ic|*}} if unstaged.
+ |-
+ | GIT_PS1_SHOWSTASHSTATE     || {{ic|$}} if something is stashed.
+ |-
+ | GIT_PS1_SHOWUNTRACKEDFILES || {{ic|%}} if there are untracked files.
+ |-
+ | GIT_PS1_SHOWUPSTREAM       || {{ic|<}}, {{ic|>}}, {{ic|<>}} behind, ahead, or diverged from upstream.
+ |-
+ | GIT_PS1_STATESEPARATOR     || separator between branch name and state symbols
+ |-
+ | GIT_PS1_DESCRIBE_STYLE     || show commit relative to tag or branch, when detached HEAD
+ |-
+ | GIT_PS1_SHOWCOLORHINTS     || display in color
+ |}
+
+The full documentation for the environment variables is available in the comments of the script.
+
+{{Note|
+* If you experience that {{ic|$(__git_ps1)}} returns {{ic|((unknown))}}, then there is a {{ic|.git}} folder in your current directory which does not contain any repository, and therefore Git does not recognize it. This can, for example, happen if you mistake Git's configuration file to be {{ic|~/.git/config}} instead of {{ic|~/.gitconfig}}.
+* If your prompt is experiencing delays with very large repositories, it is likely due to the {{ic|GIT_PS1_SHOWUNTRACKEDFILES}} option, which triggers a full directory tree scan every time to detect new files, causing noticeable performance impact. To disable this option locally for those repositories, you can use the command {{ic|git config --local bash.showUntrackedFiles false}}.
+}}
+
+Alternatively, you can use one of git shell prompt customization packages from [[AUR]] such as {{AUR|bash-git-prompt}} or {{AUR|gittify}}.
+
+=== Visual representation ===
+
+To get an idea of the amount of work done:
+
+ $ git diff --stat
+
+''git log'' with forking representation:
+
+ $ git log --graph --oneline --decorate
+
+''git log'' graph alias (i.e. ''git graph'' will show a decorated version):
+
+ $ git config --global alias.graph 'log --graph --oneline --decorate'
+
+=== Commit tips ===
+
+Reset to previous commit (very dangerous, erases all tracked files to the specified commit):
+
+ $ git reset --hard HEAD~
+
+If a repository address gets changed, its remote location will need to be updated:
+
+ $ git remote set-url origin git@''address'':''user''/''repo''.git
+
+Alternatively, edit {{ic|.git/config}} with the new location.
+
+Signed-off-by line append (a name-email signature is added to the commit which is required by some projects):
+
+ $ git commit -s
+
+Signed-off-by automatically append to patches (when using {{ic|git format-patch ''commit''}}):
+
+ $ git config --local format.signoff true
+
+Commit specific parts of files that have changed. This is useful if there are a large number of changes made that would be best split into several commits:
+
+ $ git add -p
+
+=== Signing commits ===
+
+Git allows commits and tags to be signed using [[GnuPG]], see [https://git-scm.com/book/en/v2/Git-Tools-Signing-Your-Work Signing Your Work].
+
+{{Note|To use [[pinentry]] curses for GPG signing make sure to {{ic|1=export GPG_TTY=$(tty)}} (alternatively use pinentry-tty) otherwise the signing step will fail if GPG is currently in a locked state (since it cannot prompt for pin).}}
+
+To configure Git to automatically sign commits:
+
+ $ git config --global commit.gpgSign true
+
+=== Working with a non-master branch ===
+
+Occasionally a maintainer will ask that work be done on a branch. These branches are often called {{ic|devel}} or {{ic|testing}}. Begin by cloning the repository.
+
+To enter another branch beside master (''git clone'' only shows master branch but others still exist, {{ic|git branch -a}} to show):
+
+ $ git checkout -b ''branch'' origin/''branch''
+
+Now edit normally; however to keep the repository tree in sync be sure to use both:
+
+ $ git pull --all
+ $ git push --all
+
+=== Directly sending patches to a mailing list ===
+
+If you want to send patches directly to a mailing list, you have to install the following packages: {{Pkg|perl-authen-sasl}} and {{Pkg|perl-io-socket-ssl}}.
+
+Make sure you have configured your username and e-mail address, see [[#Configuration]].
+
+Configure your e-mail settings:
+
+ $ git config --global sendemail.smtpserver ''smtp.example.com''
+ $ git config --global sendemail.smtpserverport ''465''
+ $ git config --global sendemail.smtpencryption ''ssl''
+ $ git config --global sendemail.smtpuser ''foobar@example.com''
+
+Now you should be able to send the patch to the mailing list (see also [https://docs.yoctoproject.org/dev/contributor-guide/submit-changes.html#sending-the-patches-via-email OpenEmbedded: Sending the Patches via Email] and [https://git-send-email.io/ git-send-email.io]):
+
+ $ git add ''filename''
+ $ git commit -s
+ $ git send-email --to=''pacman-contrib@lists.archlinux.org'' --confirm=always -M -1
+
+=== Working with a large git repository ===
+
+When working with a large remote repository, a significant amount of data has to be fetched. The following examples use the Linux kernel to illustrate how to work with such codebases.
+
+==== Fetching the entire repository ====
+
+The easiest solution is to get the entire repository:
+
+ $ git clone git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+
+{{Note|{{ic|git clone}} cannot be resumed if interrupted.}}
+
+You can update your repository by {{ic|git pull}}.
+
+==== Partially fetching the repository ====
+
+To limit your local repository to a smaller subset of the origin, say after v4.14 to bisect a bug, use a shallow clone:
+
+ $ git clone --shallow-exclude v4.13 git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+
+You will get v4.14 and later, but not v4.13 and older.
+
+If you only want the latest snapshot, ignoring all history (If a tarball is available and it suffices, choose that; downloading from a git repository needs more bandwidth.), you can get it with:
+
+ $ git clone --depth 1 git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+
+You can later obtain older commits, as the two following examples show:
+
+ $ git fetch --tags --shallow-exclude v4.1
+ $ git fetch --tags --shallow-since 2016-01-01
+
+{{Note|Without {{ic|--tags}}, tags will not be fetched.}}
+
+==== Using Scalar ====
+
+[https://github.com/microsoft/scalar Scalar], formerly [[wikipedia:Virtual File System for Git|Virtual File System for Git]] (VFS for Git), allows to access git repositories without a local instance.
+
+See {{man|1|scalar}}.
+
+==== Getting other branches ====
+
+Your local repository tracks, in the above example, only the mainline kernel, i.e. in which the ''latest development is done''. Suppose you want the latest ''LTS'', for example the up-to-date 4.14 branch. You can get it by:
+
+ $ git remote set-branches --add origin linux-4.14.y
+ $ git fetch --shallow-exclude v4.14
+ $ git branch --track linux-4.14.y origin/linux-4.14.y
+
+The last line is not mandatory, but probably wanted.
+(To know the name of the branch you want, there is no general rule. You can guess one by seeing the "ref" link in the gitweb interface.)
+
+For the snapshot of linux-4.14.y, do
+
+ $ git checkout linux-4.14.y
+
+Or to extract it in another directory,
+
+ $ mkdir /path/to/src-4.14; cd /path/to/src-4.14
+ $ git clone --no-local --depth 1 -b linux-4.14.y ../linux-stable
+
+As usual, do {{ic|git pull}} to update your snapshot.
+
+=== Filtering confidential information ===
+
+Occasionally, software may keep plain-text passwords in configuration files, as opposed to hooking into a keyring. In these cases, git clean-filters may be handy to avoid accidentally committing confidential information. E. g., the following file assigns a filter to the file “some-dotfile”:
+
+{{hc|.gitattributes|<nowiki>
+some-dotfile filter=remove-pass
+</nowiki>}}
+
+Whenever the file “some-dotfile” is checked into git, git will invoke the filter “remove-pass” on the file before checking it in. The filter must be defined in the git-configuration file, e. g.:
+
+{{hc|.git/config|<nowiki>
+[filter "remove-pass"]
+clean = "sed -e 's/^password=.*/#password=TODO/'"
+</nowiki>}}
+
+{{Note|Escaping special characters for sed expressions can be a [https://stackoverflow.com/questions/49652495/git-filter-and-sed-fight-over tricky task] in this context. Remember that git is turning two backslashes into one, while the shell that git invokes to run commands will again turn two backslashes into one. For more details, see [https://stackoverflow.com/a/49654653 Git filter and sed fight over `\$`].}}
+
+=== HTML help files ===
+
+The {{ic|git help}} documentation is also available in HTML form by installing {{AUR|git-htmldocs}}. After installing, the HTML docs can be accessed by passing the {{ic|-w}} flag. For example:
+
+ $ git help -w merge
+
+The HTML documentation can be loaded by default by setting a {{ic|git config}} option:
+
+ $ git config --global help.format html
+
+== Extensions ==
+
+=== Helpers and utilities ===
+
+* {{App|git-extras|Collection of utilities for Git (repo summary, repl, changelog, author commit, ''etc.'')|https://github.com/tj/git-extras|{{AUR|git-extras}}}} - If you're using [https://ohmyz.sh oh-my-zsh], you may also enable [https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git-extras git-extras plugin]
+* {{App|gitflow-cjs|Extend Git with [https://nvie.com/posts/a-successful-git-branching-model/ Vincent Driessen's branching model]. The CJS Edition is an actively maintained fork.|https://github.com/CJ-Systems/gitflow-cjs|{{AUR|gitflow-cjs}}}}
+* {{App|gitmoji-cli|A [https://gitmoji.dev/ gitmoji] interactive NodeJS client for using gitmojis on commit messages.|https://github.com/carloscuesta/gitmoji-cli|{{AUR|nodejs-gitmoji-cli}}}}
+
+=== Support of large file synchronization ===
+
+* {{App|git-annex|Distributed file synchronization system written in Haskell allowing managing large data using Git.|https://git-annex.branchable.com|{{Pkg|git-annex}}}}
+
+=== Manage multiple Git repositories ===
+
+* {{App|garden|Command-line tool written in Rust to manage multiple Git repositories.|https://github.com/garden-rs/garden|{{AUR|garden-tools}}}}
+* {{App|gita|Command-line tool written in Python to manage multiple Git repositories.|https://github.com/nosarthur/gita|{{AUR|gita}}}}
+* {{App|git-bulk|Command-line tool written in Bash to manage multiple Git repositories.|https://github.com/tj/git-extras|{{AUR|git-extras}}}}
+* {{App|mani|Command-line tool and TUI written in Go to manage multiple Git repositories.|https://github.com/alajmo/mani|{{AUR|mani}}}}
+* {{App|mu-repo|Command-line tool written in Python to manage multiple Git repositories.|https://github.com/fabioz/mu-repo|{{AUR|mu-repo}}}}
+* {{App|myrepos (mr)|Command-line tool written in Perl to manage multiple Git repositories.|https://myrepos.branchable.com/|{{Pkg|myrepos}}}}
+
+== See also ==
+
+* Git man pages, see {{man|1|git}}
+* [https://git-scm.com/book/en/ Pro Git book]
+* [https://git.github.io/git-reference/ Git Reference] by GitHub
+* [https://web.archive.org/web/20150316035247/https://nathanhoad.net/git-workflow-forks-remotes-and-pull-requests Git workflow: Forks, remotes, and pull requests]
+* [https://wiki.videolan.org/Git VideoLAN wiki article]
+* [https://git-scm.com/book/en/v2/Git-on-the-Server-The-Protocols Git Protocols - Git on the Server]
+* [https://gun.io/blog/how-to-github-fork-branch-and-pull-request How to GitHub]

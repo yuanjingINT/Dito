@@ -1,0 +1,503 @@
+[[Category:CPU]]
+[[Category:Graphics]]
+[[fr:Fan speed control]]
+[[ja:ファンスピード制御]]
+[[zh-hans:Fan speed control]]
+{{Related articles start}}
+{{Related|lm_sensors}}
+{{Related|Undervolting CPU}}
+{{Related|CPU frequency scaling}}
+{{Related articles end}}
+
+Fan control can bring various benefits to your system, such as quieter operation and power savings by completely stopping the fans on low CPU load.
+
+{{Note|Laptop users should be aware about how cooling system works in their hardware. Some laptops have single fan for both CPU and GPU and cools both at the same time. Some laptops have two fans for CPU and GPU, but the first fan cools down CPU and GPU at the same time, while the other one cools CPU only. In some cases, you will not be able to use the [[#Fancontrol (lm-sensors)|Fancontrol]] script due to incompatible cooling architecture (e.g. one fan for both GPU and CPU). See [https://github.com/daringer/asus-fan/issues/47#issue-232063547] for some more information about this topic.}}
+
+{{Warning|Configuring or completely stopping fans on high system load might result in permanently damaged hardware, or thermal throttling at best.}}
+
+== Fancontrol (lm-sensors) ==
+
+{{Style|This partially duplicates [[lm_sensors#Configuration]], it should link there instead.}}
+
+{{ic|fancontrol}} is a part of {{Pkg|lm_sensors}}, which can be used to control the speed of CPU/case fans. It is most suitable for desktops and laptops, where fan controls are available via {{man|5|sysfs}}.
+
+Support for newer motherboards may not yet be in the Linux kernel.
+
+=== lm-sensors ===
+
+{{Warning|The following command is safe by default (pressing {{ic|Enter}} at each prompt). Some advanced options may damage hardware: only modify the defaults if you understand the implications.}}
+
+The first thing to do is to run
+
+ # sensors-detect
+
+This will detect all of the sensors present and they will be used for ''fancontrol''. After that, run the following to check if it detected the sensors correctly:
+
+{{hc|$ sensors|2=
+coretemp-isa-0000
+Adapter: ISA adapter
+Core 0:      +29.0°C  (high = +76.0°C, crit = +100.0°C)
+...
+it8718-isa-0290
+Adapter: ISA adapter
+Vcc:         +1.14 V  (min =  +0.00 V, max =  +4.08 V)
+VTT:         +2.08 V  (min =  +0.00 V, max =  +4.08 V)
++3.3V:       +3.33 V  (min =  +0.00 V, max =  +4.08 V)
+NB Vcore:    +0.03 V  (min =  +0.00 V, max =  +4.08 V)
+VDRAM:       +2.13 V  (min =  +0.00 V, max =  +4.08 V)
+fan1:        690 RPM  (min =   10 RPM)
+temp1:       +37.5°C  (low  = +129.5°C, high = +129.5°C)  sensor = thermistor
+temp2:       +25.0°C  (low  = +127.0°C, high = +127.0°C)  sensor = thermal diode
+}}
+
+{{Note|If the output does not display an RPM value for the CPU fan, one may need to [[#Increase the fan divisor for sensors]]. If the fan speed is shown and higher than 0, this is fine.}}
+
+=== Configuration ===
+
+Once the sensors are properly configured, use {{man|8|pwmconfig}} to test and configure fan speed control. Following the guide should create {{ic|/etc/fancontrol}}, a customized configuration file. In the guide, the default answers are in parenthesis if you press enter without typing anything. Enter {{ic|y}} for yes, {{ic|n}} for no.
+
+ # pwmconfig
+
+{{Note|Some users may experience issues when using {{ic|/sys/class/hwmon/}} paths for their configuration file. ''hwmon'' class device symlinks point to the absolute paths, and are used to group all of the ''hwmon'' sensors together into one directory for easier access. Sometimes, the order of the ''hwmon'' devices change from a reboot, causing ''fancontrol'' to stop working. See [[#Device paths have changed in /etc/fancontrol]] for more information on how to fix this.}}
+
+==== Tweaking ====
+
+Some users may want to manually tweak the configuration file after running {{ic|pwmconfig}} with root privileges, usually to fix something. For manually tweaking the {{ic|/etc/fancontrol}} configuration file, see {{man|8|fancontrol}} for the variable definitions.
+
+Users will probably encounter the ''hwmon'' path issues as noted above in [[#Fancontrol (lm-sensors)]]. See [[#Device paths have changed in /etc/fancontrol]] for more information.
+
+{{Tip|Use {{ic|MAXPWM}} and {{ic|MINPWM}} options that limit fan speed range. See {{man|8|fancontrol}} for details.}}
+
+{{Note|Temperature and fan sensor paths could change as well (usually on a kernel update) (e.g. {{ic|hwmon0/device/temp1_input}} becomes {{ic|hwmon0/temp1_input}}). Check the {{ic|fancontrol.service}} [[unit status]] to find out which path is the troublemaker and correct your configuration file accordingly.}}
+
+=== Running Fancontrol ===
+
+Try to run ''fancontrol'':
+
+ # fancontrol
+
+A properly configured setup will not output errors and will take control of the system fans. Users should hear system fans starting shortly after executing this command. ''fancontrol'' can also be run by [[starting/enabling]] {{ic|fancontrol.service}}.
+
+For an unofficial GUI, [[install]] {{AUR|fancontrol-gui}}.
+
+=== Fancontrol stops working after suspend–wake cycles ===
+
+Unfortunately, ''fancontrol'' does not work after suspending. As per the [https://github.com/lm-sensors/lm-sensors/issues/172 filed bug], you will have to restart ''fancontrol'' after suspending. This can be achieved automatically by a [[Power management/Suspend and hibernate#Hooks in /usr/lib/systemd/system-sleep|systemd hook]].
+
+== NBFC ==
+
+{{Note|NBFC has been unmaintained since Mar 29, 2020. New user configs can still be created manually, however predefined configurations have not been added since that time. There are forks that exist to add new configs, such as [https://github.com/UraniumDonut/nbfc-revive nbfc-revive].}}
+
+NBFC (NoteBook Fan Control) is a cross-platform fan control solution for notebooks, written in C# and works under [[Mono]] runtime. It comes with a powerful configuration system, which allows to adjust it to many different notebook models, including some of the latest ones.
+
+There is another lightweight implementation of NBFC, written in C, named [https://github.com/nbfc-linux/nbfc-linux NBFC-Linux]. It does not depend on the Mono framework. It can be installed as {{AUR|nbfc-linux}}.
+
+=== Installation ===
+
+NBFC can be installed as {{AUR|nbfc}}. Also [[start/enable]] {{ic|nbfc.service}}.
+
+=== Configuration ===
+
+NBFC comes with pre-made profiles. You can find them in {{ic|/opt/nbfc/Configs/}} directory. When applying them, use the exact profile name without a file extension (e.g. {{ic|some profile.xml}} becomes {{ic|"some profile"}}).
+
+Check if there is anything NBFC can recommend:
+
+ $ nbfc config -r
+
+If there is at least one model, try to apply this profile and see how fan speeds are being handled. For example:
+
+ $ nbfc config -a "Asus Zenbook UX430UA"
+
+{{Note|If you are getting {{ic|File Descriptor does not support writing}}, delete {{ic|StagWare.Plugins.ECSysLinux.dll}} [https://github.com/hirschmann/nbfc/issues/439] and [[restart]] {{ic|nbfc.service}}:
+ # mv /opt/nbfc/Plugins/StagWare.Plugins.ECSysLinux.dll /opt/nbfc/Plugins/StagWare.Plugins.ECSysLinux.dll.old
+If above solution did not help, try appending {{ic|1=ec_sys.write_support=1}} to [[kernel parameters]].
+}}
+
+If there are no recommended models, go to [https://github.com/hirschmann/nbfc/tree/master/Configs NBFC git repository] or {{ic|/opt/nbfc/Configs/}} and check if there are any similar models available from the same manufacturer. For example, on '''Asus Zenbook UX430UQ''', the configuration '''Asus Zenbook UX430UA''' did not work well (fans completelly stopped all the time), but '''Asus Zenbook UX410UQ''' worked fantastically.
+
+Run {{ic|nbfc}} to see all options. More information about configuration is available at [https://github.com/hirschmann/nbfc/wiki/ upstream wiki].
+
+== Dell laptops ==
+
+''i8kutils'' is a daemon to configure fan speed according to CPU temperatures on some Dell Inspiron and Latitude laptops. It uses the {{ic|/proc/i8k}} interface provided by the {{ic|i8k}} driver (an alias for {{ic|dell_smm_hwmon}}). Results will vary depending on the exact model of laptop.
+
+If fancontrol will not work on your system, use the {{ic|1=ignore_dmi=1}} [[kernel module parameter]] to load {{ic|dell_smm_hwmon}}.
+
+{{Warning|1=''i8kutils'' BIOS system calls stop the kernel for a moment on some systems (confirmed on Dell 9560), this can lead to side effects like audio dropouts, see https://bugzilla.kernel.org/show_bug.cgi?id=201097}}
+
+=== Installation ===
+
+{{AUR|i8kutils}} is the main package to control fan speed. Additionally, you might want to install these:
+
+* {{Pkg|acpi}} — must be installed to use ''i8kmon''.
+* {{Pkg|tcl}} — must be installed in order to run ''i8kmon'' as a background service (using the {{ic|--daemon}} option).
+* {{Pkg|tk}} — must be installed together with {{Pkg|tcl}} to run as X11 desktop applet.
+* {{AUR|dell-bios-fan-control-git}} — recommended if your BIOS overrides fan control.
+
+=== Configuration ===
+
+The temperature points at which the fan changes speed can be adjusted in the configuration file {{ic|/etc/i8kutils/i8kmon.conf}}. Only three fans speeds are supported (high, low, and off). Look for a section similar to the following:
+
+ set config(0)  {{0 0}  -1  55  -1  55}
+ set config(1)  {{1 1}  45  75  45  75}
+ set config(2)  {{2 2}  65 128  65 128}
+
+This example starts the fan at low speed when the CPU temperature reaches 55 °C, switching to high speed at 75 °C. The fan will switch back to low speed once the temperature drops to 65 °C, and turns off completely at 45 °C.
+
+{{Tip|If when running {{ic|i8kmon}} with the verbose option you notice that the state changes (example of an output: {{ic|1=# (57>=55), state=1, low=45, high=75}}) but right and left fans report state 0, you might consider changing the speed value of the first state in the configuration file from default 1000 to 2000 or higher.}}
+
+=== Installation as a service ===
+
+''i8kmon'' can be started automatically by [[starting/enabling]] {{ic|i8kmon.service}}.
+
+=== BIOS overriding fan control ===
+
+Some newer laptops have BIOS fan control in place which will override the OS level fan control. To test if this the case, run {{ic|i8kmon}} with verbose mode in a command line, make sure the CPU is idle, then see if the fan is turned off or turned down accordingly.
+
+If the BIOS fan control is in place, you can try using {{AUR|dell-bios-fan-control-git}}:
+
+{{Warning|Turning off BIOS fan control could result in damage to your hardware. Make sure you have ''i8kmon'' properly set up beforehand, or leave the CPU idle while you test this program.}}
+
+To enable BIOS fan control:
+
+ # dell-bios-fan-control 1
+
+To disable BIOS fan control:
+
+ # dell-bios-fan-control 0
+
+BIOS fan control can be automatically disabled by [[starting/enabling]] {{ic|dell-bios-fan-control.service}}.
+
+== ThinkPad laptops ==
+
+Some fan control daemons include {{AUR|simpfand-git}} and {{AUR|thinkfan}} (recommended).
+
+=== Installation ===
+
+Install {{AUR|thinkfan}}. Optionally, but recommended, install {{Pkg|lm_sensors}}. If needed, a GUI is available with {{AUR|thinkfan-ui}}. Then have a look at the files:
+
+ # pacman -Ql thinkfan
+
+Note that the ''thinkfan'' package installs {{ic|/usr/lib/modprobe.d/thinkpad_acpi.conf}}, which contains the following [[kernel module parameter]]:
+
+ options thinkpad_acpi fan_control=1
+
+{{Note|New Thinkpad models may require an additional {{ic|1=experimental=1}} kernel module parameter. So, it is important to check fan functionality.}}
+
+So fan control is enabled by default, but you may need you to manually [[regenerate the initramfs]].
+
+Now, reload the module with fan control enabled:
+
+ # modprobe -r thinkpad_acpi
+ # modprobe thinkpad_acpi fan_control=1
+ # cat /proc/acpi/ibm/fan
+
+You should see that the fan level is "auto" by default, but you can echo a level command to the same file to control the fan speed manually:
+
+ # echo level 1 > /proc/acpi/ibm/fan
+
+{| class="wikitable"
+|+ Fan Levels
+|-
+! Level !! Effect
+|-
+| 0 || off
+|-
+| 2 || low speed
+|-
+| 4 || medium speed
+|-
+| 7 || maximum speed
+|-
+| auto || default - automatic, the fan RPM is controlled by the BIOS
+|-
+| full-speed / disengaged || the maximum fan speed; here the controller does not monitor the fan speed
+|}
+
+The ''thinkfan'' daemon will do this automatically.
+
+"7" is not the same as "disengaged". "7" is the maximum regulated speed (corresponds to "full-speed"). disengaged is the maximum unregulated speed.
+See [https://www.thinkwiki.org/wiki/How_to_control_fan_speed#Disengaged_.28full-speed.29_mode ThinkWiki] for more details.
+
+Finally, [[enable]] the {{ic|thinkfan.service}}.
+
+To configure the temperature thresholds, you will need to copy the example configuration file ({{ic|/usr/share/doc/thinkfan/examples/thinkfan.yaml}}) to {{ic|/etc/thinkfan.conf}}, and modify to taste. This file specifies which sensors to read, and which interface to use to control the fan. Some systems have {{ic|/proc/acpi/ibm/fan}} and {{ic|/proc/acpi/ibm/thermal}} available; on others, you will need to specify something like:
+
+ hwmon: /sys/devices/virtual/thermal/thermal_zone0/temp
+
+to use generic ''hwmon'' sensors instead of thinkpad-specific ones.
+
+A configuration example can be found in [[Gentoo:Fan speed control/thinkfan#Configuration]].
+
+=== Running ===
+
+You can test your configuration first by running thinkfan manually (as root):
+
+ # thinkfan -n
+
+and see how it reacts to the load level of whatever other programs you have running.
+
+When you have it configured correctly, [[start/enable]] {{ic|thinkfan.service}}.
+
+== Lenovo Legions laptops ==
+
+The tool [https://github.com/johnfanv2/LenovoLegionLinux Lenovo Legion Linux] allows to change the fan curves that are stored in the embedded controller. It consists of a kernel module that must be compiled and loaded. Currently, there is no package, but it must be compiled and installed from source.
+
+Then the fan curve can be set via the hwmon interface. This can be done with the provided script or the Python GUI.
+
+== ASUS laptops ==
+
+This topic will cover drivers configuration on ASUS laptops for [[#Fancontrol (lm-sensors)|Fancontrol (lm-sensors)]].
+
+=== Kernel modules ===
+
+In configuration files, we are going to use full paths to ''sysfs'' files (e.g. {{ic|/sys/devices/platform/asus-nb-wmi/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1}}). This is because {{ic|hwmon'''1'''}} might change to any other number after reboot. [[#Fancontrol (lm-sensors)|Fancontrol (lm-sensors)]] is written in [[Bash]], so using these paths in configuration file is completely acceptable. You can find complete {{ic|/etc/fancontrol}} configuration file examples at [[ASUS N550JV#Fan control]].
+
+==== asus-nb-wmi ====
+
+{{ic|asus-nb-wmi}} is a kernel module, which is included in the Linux kernel and is loaded automatically on ASUS laptops. It will only allow to control a single fan and if there is a second fan you will not have any controls over it. Note that blacklisting this module will prevent keyboard backlight to work.
+
+Below are the commands to control it. Check if you have any controls over your fan:
+
+ # echo 255 > /sys/devices/platform/asus-nb-wmi/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1           # Full fan speed (Value: 255)
+ # echo 0 > /sys/devices/platform/asus-nb-wmi/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1             # Fan is stopped (Value: 0)
+ # echo 2 > /sys/devices/platform/asus-nb-wmi/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1_enable      # Change fan mode to automatic
+ # echo 1 > /sys/devices/platform/asus-nb-wmi/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1_enable      # Change fan mode to manual
+ # echo 0 > /sys/devices/platform/asus-nb-wmi/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1_enable      # Change fan mode to full speed
+
+If you were able to modify fan speed with above commands, then continue with [[#Generate configuration file with pwmconfig]].
+
+==== asus_fan ====
+
+{{ic|asus_fan}} is a kernel module, which allows to control both fans on some older ASUS laptops. It does not work with the most recent models.
+
+Install the [[DKMS]] {{AUR|asus-fan-dkms-git}} [[kernel module]], providing {{ic|asus_fan}}:
+
+ # modprobe asus_fan
+
+Check if you have any control over both fans:
+
+ # echo 255 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1          # Full CPU fan speed (Value: 255)
+ # echo 0 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1            # CPU fan is stopped (Value: 0)
+ # echo 255 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm2          # Full GFX fan speed (Value: 255)
+ # echo 0 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm2            # GFX fan is stopped (Value: 0)
+ # echo 2 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1_enable     # Change CPU fan mode to automatic
+ # echo 1 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm1_enable     # Change CPU fan mode to manual
+ # echo 2 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm2_enable     # Change GFX fan mode to automatic
+ # echo 1 > /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm2_enable     # Change GFX fan mode to manual
+ # cat /sys/devices/platform/asus_fan/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/temp1_input          # Display GFX temperature (will always be 0 when GFX is disabled/unused)
+
+If everything works, you can [[load the module at boot]] to automate this step.
+
+=== Generate configuration file with pwmconfig ===
+
+If you get an error {{ic|There are no working fan sensors, all readings are 0}} while generating configuration file with {{ic|pwmconfig}}, open first console and execute:
+
+ # watch -n 1 "echo 2 > /sys/devices/platform/'''''kernel_module'''''/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm'''1'''_enable"
+
+If you use {{ic|asus_fan}} kernel module and have 2nd fan, in second console:
+
+ # watch -n 1 "echo 2 > /sys/devices/platform/'''''kernel_module'''''/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/pwm'''2'''_enable"
+
+And finally, in the third console:
+
+ # pwmconfig
+
+Once you are done and the configuration file is generated, you should stop the first and second consoles. Continue with [[#Fancontrol (lm-sensors)]]. After the configuration file is generated, you might need to manually replace PWM values with full ''sysfs'' paths as they are used in these steps, because ''hwmon'' number values might change after reboot.
+
+=== Alternative method using EC registers ===
+
+If the above methods do not work for you, an alternative method is to directly write to certain registers in the embedded controller (EC). Using the [https://github.com/hirschmann/nbfc/wiki/EC-probing-tool EC-Probe tool], you can set the fan mode to one of the three fan speed modes, provided your model offers such feature in Windows.
+
+{{Warning|Writing incorrect values to EC registers can have unintended side-effects and may require a reboot to recover.}}
+
+In ASUS FX504GD model setting the fan speed to one of the three modes uses these register values:
+
+ # ec_probe write 0x5e 0x80 # silent mode
+ # ec_probe write 0x5e 0x40 # balance mode
+ # ec_probe write 0x5e 0xC0 # performance mode
+
+Here we write to register {{ic|0x5e}} that is responsible in setting the fan speed mode.
+
+If these values do not work for you, run the ''ec-probe'' tool in monitor mode in Windows and try to identify which register in the EC changes value when switching through fan speed modes.
+
+=== Setting thermal throttle policy ===
+
+Instead of manually controlling fan speed using {{ic|asus-nb-wmi}}, it is also possible to set the [https://patchwork.kernel.org/project/platform-driver-x86/patch/20191215142634.13888-1-leonmaxx@gmail.com/ thermal throttling policy] to have a more or less aggressive fan control policy. Possible values are {{ic|0}} (default), {{ic|1}} (overboost), and {{ic|2}} (silent).
+
+ # echo ''number'' > /sys/devices/platform/asus-nb-wmi/hwmon/hwmon<nowiki>[[:print:]]*</nowiki>/throttle_thermal_policy
+
+=== Fan control modes on certain TUF series laptops ===
+
+On certain ASUS TUF series laptops, performance and fan control modes can be changed using {{ic|Fn+F5}}. The current mode can be viewed by running the following command:
+
+ $ cat /sys/devices/platform/asus-nb-wmi/fan_boost_mode
+
+{{Note|On some laptops, this setting may instead be at {{ic|/sys/devices/platform/asus-nb-wmi/throttle_thermal_policy}}.}}
+
+You can view the value changing as you use press {{ic|Fn+F5}}. 0 is "Normal Mode", 1 is "Performance Mode", 2 is most likely "Silent Mode".[https://lore.kernel.org/lkml/72b3e0aa-d53a-8a82-1505-f4f00aa2bb46@gmail.com/] It is also possible to write these values into the {{ic|fan_boost_mode}} file as root and have the desired effect.
+
+This was tested on the ASUS TUF FX504GE, ASUS TUF FX504GD, and ASUS TUF FX504GM  models and found to be working.
+
+You can use {{AUR|tuf-fan-boost-notification-git}} to get notifications every time the FanSpeed mode gets changed.
+
+== AMDGPU sysfs fan control ==
+
+[[AMDGPU]] kernel driver offers fan control for graphics cards via ''hwmon'' in ''sysfs''.
+
+=== Manual fan control ===
+
+To switch to manual fan control from automatic, run
+ # echo "1" > /sys/class/drm/card0/device/hwmon/hwmon0/pwm1_enable
+Set up fan speed to e.g. 50% (100% are 255 PWM cycles, thus calculate desired fan speed percentage by multiplying its value by 2.55):
+ # echo "128" > /sys/class/drm/card0/device/hwmon/hwmon0/pwm1
+To reset to automatic fan control, run
+ # echo "2" > /sys/class/drm/card0/device/hwmon/hwmon0/pwm1_enable
+{{Warning|Resetting fan speed to auto may not work due to a driver bug and instead a restart of the driver may be required as a workaround.}}
+
+=== Fan curves control ===
+
+Newer AMD graphical cards such as RDNA3 graphical cards do not support manual fan control due to firmware limitations [https://gitlab.freedesktop.org/drm/amd/-/issues/2764#note_2031564]. For these cases AMD provides a ''fan_curve'' sysfs api for controlling the fan curves, for more information on it see [https://docs.kernel.org/gpu/amdgpu/thermal.html#fan-curve].
+
+=== amdgpu-fan ===
+
+The {{AUR|amdgpu-fan}} package is an automated fan controller for AMDGPU-enabled video cards written in Python. It uses a "speed-matrix" to match the frequency of the fans with the temperature of the GPU, for example:
+
+{{bc|
+speed_matrix:  # -[temp(*C), speed(0-100%)]
+- [0, 0]
+- [40, 30]
+- [60, 50]
+- [80, 100]
+}}
+
+Launch the fan control service by [[starting/enabling]] {{ic|amdgpu-fan.service}}.
+
+=== amdfand-bin ===
+
+Then {{AUR|amdfand-bin}} package is a native alternative to {{AUR|amdgpu-fan}}. Launch the fan control service by [[starting/enabling]] {{ic|amdfand.service}}.
+
+For this tool there are also GUI clients available: {{AUR|amdguid-glow-bin}} (Xorg) and {{AUR|amdguid-wayland-bin}} (Wayland). Before starting the client you need to [[enable/start]] {{ic|amdgui-helper.service}}.
+
+=== fancurve script ===
+
+Not just fan controls are offered via ''hwmon'' in ''sysfs'', but also GPU temperature reading:
+
+ # cat /sys/class/drm/card0/device/hwmon/hwmon0/temp1_input
+
+This outputs GPU temperature in °C + three zeroes, e.g. {{ic|33000}} for 33°C.
+
+The bash script [https://github.com/grmat/amdgpu-fancontrol amdgpu-fancontrol] by grmat offers a fully automatic fan control by using the described ''sysfs hwmon'' functionality. It also allows to comfortably adjust the fancurve's temperature/PWM cycles assignments and a hysteresis by offering abstracted configuration fields at the top of the script.
+
+{{Tip|In order to function correctly, the script needs at least three defined temperature/PWM cycles assignments.}}
+
+For safety reasons, the script sets fan control again to auto when shutting down. This may cause spinning up of fans, which can be worked around at cost of security by setting {{ic|set_fanmode 1}} in the section {{ic|function reset_on_fail}}.
+
+==== Setting up fancurve script ====
+
+To start the script, it is recommend to do so via [[systemd]] init system. This way the script's verbose output can be read via [[journalctl]]/systemctl status. For this purpose, a ''.service'' unit file is already included in the GitHub repository.
+
+It may also be required to restart the script via a [[Power management/Suspend and hibernate#Sleep hooks|root-resume.service]] after hibernation in order to make it automatically function properly again:
+
+{{hc|/etc/systemd/system/root-resume.service|2=
+[Unit]
+Description=Local system resume actions
+After=suspend.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/systemctl restart amdgpu-fancontrol.service
+
+[Install]
+WantedBy=suspend.target
+}}
+
+== Others ==
+
+* {{App|Control FANs|Simple GUI written in Qt to configure FAN PWM via HWMON interface. You could use it to setup the kernel auto point for every FAN who support it.|https://github.com/amedeos/ControlFANs|{{AUR|controlfans-git}}}}
+* {{App|CoolerControl|A fan control daemon with GUI for ''sysfs'' and {{Pkg|liquidctl}} devices.|https://gitlab.com/coolercontrol/coolercontrol|{{AUR|coolercontrol}}}}
+* {{App|ectool|Fan configuration for [[Framework Laptop]]s.|https://github.com/markusressel/fan2go|{{AUR|fw-ectool-git}}}}
+* {{App|fan2go|Simple daemon providing dynamic fan speed control based on temperature sensors.|https://github.com/markusressel/fan2go|{{AUR|fan2go-git}}}}
+* {{App|Fan Control|Control your fans with different behaviors.|https://github.com/wiiznokes/fan-control|{{AUR|fan-control}}}}
+* {{App|MControlCenter|Fan control application for MSI laptops.|https://github.com/dmitry-s93/MControlCenter|{{AUR|mcontrolcenter-bin}}}}
+
+== Troubleshooting ==
+
+=== Increase the fan divisor for sensors ===
+
+If ''sensors'' does not output the CPU fan RPM, it may be necessary to change the fan divisor.
+
+The first line of the ''sensors'' output is the chipset used by the motherboard for readings of temperatures and voltages.
+
+Create a file in {{ic|/etc/sensors.d/}}:
+
+{{hc|/etc/sensors.d/fan-speed-control.conf|
+chip "''coretemp-isa-''*"
+set fan''X''_div 4
+}}
+
+Replacing {{ic|''coretemp-isa-''}} with name of the chipset and {{ic|''X''}} with the number of the CPU fan to change.
+
+Save the file, and run as root:
+
+ # sensors -s
+
+which will reload the configuration files.
+
+Run {{ic|sensors}} again, and check if there is an RPM readout. If not, increase the divisor to 8, 16, or 32. Your mileage may vary.
+
+=== Device paths have changed in /etc/fancontrol ===
+
+The enumerated ''hwmon'' symlinks located in {{ic|/sys/class/hwmon/}} might vary in order because the kernel modules do not load in a consistent order per boot. Because of this, it may cause fancontrol to not function correctly. The error is "Configuration appears to be outdated, please run pwmconfig again". [https://github.com/lm-sensors/lm-sensors/issues/227 Upstream bug].
+
+==== Solution ====
+
+In {{ic|/etc/conf.d/lm_sensors}}, there are 2 arrays that list all of the modules detected when you execute {{ic|sensors-detect}}. These get loaded in by fancontrol. If the file does not exist, run {{ic|sensors-detect}} as root, accepting the defaults. Open (or create) {{ic|/etc/modules-load.d/modules.conf}}. Get all of the modules listed from the 2 variables in {{ic|/etc/conf.d/lm_sensors}} and place them into the {{ic|/etc/modules-load.d/modules.conf}} file, one module per line. Specifying them like this should make a defined order for the modules to load in, which should make the ''hwmon'' paths stay where they are and not change orders for every boot. If this does not work, I highly recommend finding another program to control your fans. If you cannot find any, then you could try using the alternative solution below.
+
+==== Alternative solution: absolute paths ====
+
+Using absolute file paths in fancontrol does not work by default, as its helper script {{ic|pwmconfig}} is programmed to only use the ''hwmon'' paths to get the files. The way it does this is that it detects whether the ''hwmon'' path that is provided in its configuration file {{ic|/etc/fancontrol}} did not change, and uses the variables {{ic|DEVNAME}} and {{ic|DEVPATH}} to determine such change. If your ''hwmon'' paths keep changing, this will prevent fancontrol from running no matter what you do. However, one can circumvent this problem. Open {{ic|/usr/bin/fancontrol}}, and comment out this part of the script:
+
+ if [ "$DIR" = "/" -a -n "$DEVPATH" ]
+ then
+    echo "Unneeded DEVPATH with absolute device paths" >&2
+    exit 1
+ fi
+ if ! ValidateDevices "$DEVPATH" "$DEVNAME"
+  then
+      echo "Configuration appears to be outdated, please run pwmconfig again" >&2
+      exit 1
+  fi
+
+{{Note|
+* Doing this may make ''fancontrol'' write into files you gave it in the configuration file, no matter what the file is. This can corrupt files if you provide the wrong path. Be sure that you are using the correct path for your files.
+* Another thing to note is that while doing this workaround, using ''pwmconfig'' to create your script again will overwrite all of your absolute paths that you have configured. Therefore, it is better to manually change the old paths to the new paths if it is needed instead of using ''pwmconfig''.
+}}
+
+Commenting this out should effectively ignore the ''hwmon'' validation checks. You can also ignore the variables {{ic|DEVNAME}} and {{ic|DEVPATH}} in the configuration file as well. After this, replace all of the ''hwmon'' paths in the other variables with its absolute path. To make it easier, rerun {{ic|pwmconfig}} with root privileges to refresh the ''hwmon'' devices. The ''hwmon'' paths in the configuration file should now point to the correct absolute paths. For each ''hwmon'' path, run the following command (where {{ic|''N''}} is the enumeration of the ''hwmon'' path):
+
+ $ readlink -f /sys/class/hwmon/hwmon''N''/device
+
+This will give you the absolute path of the device.
+
+For example, an {{ic|/etc/fancontrol}} file lists {{ic|FCTEMPS}} as this:
+
+ FCTEMPS=hwmon2/pwm1=hwmon3/temp1_input
+
+Executing {{ic|readlink -f /sys/class/hwmon/hwmon3/device}} can, for example, output {{ic|/sys/devices/platform/coretemp.0/}}. {{ic|cd}} into this directory. If you see a {{ic|/hwmon/hwmon''N''/}} directory, you have to do this in your ''fancontrol'' configuration file to replace the {{ic|hwmon''N''}} path. From the previous example:
+
+ # BEFORE
+ FCTEMPS=hwmon2/pwm1=hwmon3/temp1_input
+ # AFTER
+ FCTEMPS=hwmon2/pwm1=/sys/devices/platform/coretemp.0/hwmon/<nowiki>[[:print:]]*</nowiki>/temp1_input
+
+Essentially, you must replace the ''hwmon'' path with the absolute path, concatenated with {{ic|/hwmon/<nowiki>[[:print:]]*</nowiki>/}} so that bash can catch the random enumerated ''hwmon'' name.
+
+If you do not see the {{ic|/hwmon/hwmon''N''/}} directory, then you do not have to worry about this. This means that the temperature files are in the root of the device directory. Just replace {{ic|hwmon''N''/}} with the absolute file path. For example:
+
+ # BEFORE
+ FCTEMPS=hwmon2/pwm1=hwmon3/temp1_input
+ # AFTER
+ FCTEMPS=hwmon2/pwm1=/sys/devices/platform/coretemp.0/temp1_input
+
+After replacing all of paths, ''fancontrol'' should work fine.

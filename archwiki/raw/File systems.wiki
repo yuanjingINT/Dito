@@ -1,0 +1,370 @@
+[[Category:File systems]]
+[[Category:Lists]]
+[[es:File systems]]
+[[hu:File systems]]
+[[it:File systems]]
+[[ja:ファイルシステム]]
+[[pt:File systems]]
+[[ru:File systems]]
+[[uk:File systems]]
+[[zh-hans:File systems]]
+{{Related articles start}}
+{{Related|Device file#lsblk}}
+{{Related|File permissions and attributes}}
+{{Related|fsck}}
+{{Related|fstab}}
+{{Related|List of applications/Utilities#Disks}}
+{{Related|Partitioning}}
+{{Related|QEMU#Mounting a partition from a raw image}}
+{{Related|udev}}
+{{Related|udisks}}
+{{Related|umask}}
+{{Related|USB storage devices}}
+{{Related articles end}}
+
+From [[Wikipedia:File system|Wikipedia]]:
+
+:In computing, a file system or filesystem controls how data is stored and retrieved. Without a file system, information placed in a storage medium would be one large body of data with no way to tell where one piece of information stops and the next begins. By separating the data into pieces and giving each piece a name, the information is easily isolated and identified. Taking its name from the way paper-based information systems are named, each group of data is called a "file". The structure and logic rules used to manage the groups of information and their names is called a "file system".
+
+Individual drive partitions can be set up using one of the many different available file systems. Each has its own advantages, disadvantages, and unique idiosyncrasies. A brief overview of supported file systems follows; the links are to Wikipedia pages that provide much more information.
+
+== Types of file systems ==
+
+See {{man|5|filesystems}} for a general overview and [[Wikipedia:Comparison of file systems]] for a detailed feature comparison. File systems already loaded by the kernel or built-in are listed in {{ic|/proc/filesystems}}, while all the installed modules can be seen with {{ic|ls /lib/modules/$(uname -r)/kernel/fs}}.
+
+{| class="wikitable sortable"
+|+ In-tree and FUSE file systems
+! File system
+! Creation command
+! Userspace utilities
+! [[Archiso]] [https://gitlab.archlinux.org/archlinux/archiso/-/blob/master/configs/releng/packages.x86_64]
+! Kernel documentation [https://docs.kernel.org/filesystems/index.html]
+! Notes
+|-
+| [[Btrfs]]
+| {{man|8|mkfs.btrfs}}
+| {{Pkg|btrfs-progs}}
+| {{Yes}}
+| [https://docs.kernel.org/filesystems/btrfs.html btrfs.html]
+| [https://btrfs.readthedocs.io/en/latest/Status.html Stability status]
+|-
+| [[VFAT]]
+| {{man|8|mkfs.fat}}
+| {{Pkg|dosfstools}}
+| {{Yes}}
+| [https://docs.kernel.org/filesystems/vfat.html vfat.html]
+| [[Wikipedia:Windows 9x|Windows 9x]] file system. Commonly used for the [[EFI system partition]], USB flash drives and SD cards.
+|-
+| rowspan="2" | [[Wikipedia:exFAT|exFAT]]
+| {{man|8|mkfs.exfat}}
+| {{Pkg|exfatprogs}}
+| {{Yes}}
+|
+| Commonly used for USB flash drives and SD cards.
+|-
+| {{man|8|mkexfatfs}}
+| {{Pkg|exfat-utils}}
+| {{No}}
+| N/A (FUSE-based)
+|
+|-
+| [[F2FS]]
+| {{man|8|mkfs.f2fs}}
+| {{Pkg|f2fs-tools}}
+| {{Yes}}
+| [https://docs.kernel.org/filesystems/f2fs.html f2fs.html]
+
+| Flash-based devices. Cannot be shrunk.
+|-
+| [[ext3]]
+| {{man|8|mkfs.ext3}}
+| {{Pkg|e2fsprogs}}
+| {{Yes}}
+| [https://docs.kernel.org/filesystems/ext3.html ext3.html]
+|
+|-
+| [[ext4]]
+| {{man|8|mkfs.ext4}}
+| {{Pkg|e2fsprogs}}
+| {{Yes}}
+| [https://docs.kernel.org/admin-guide/ext4.html ext4.html]
+|
+|-
+| [[Wikipedia:Hierarchical File System (Apple)|HFS]]
+| {{man|8|mkfs.hfsplus|url=https://manpages.debian.org/unstable/hfsprogs/mkfs.hfsplus.8.en.html}}
+| {{AUR|hfsprogs}}
+| {{No}}
+| [https://docs.kernel.org/filesystems/hfs.html hfs.html]
+| [[Wikipedia:Classic Mac OS|Classic Mac OS]] file system
+|-
+| [[Wikipedia:HFS Plus|HFS+]]
+| {{man|8|mkfs.hfsplus|url=https://manpages.debian.org/unstable/hfsprogs/mkfs.hfsplus.8.en.html}}
+| {{AUR|hfsprogs}}
+| {{No}}
+| [https://docs.kernel.org/filesystems/hfsplus.html hfsplus.html]
+| [[Wikipedia:macOS|macOS]] (8–10.12) file system
+|-
+| [[JFS]]
+| {{man|8|mkfs.jfs}}
+| {{Pkg|jfsutils}}
+| {{Yes}}
+| [https://docs.kernel.org/admin-guide/jfs.html jfs.html]
+|
+|-
+| [[Wikipedia:JFFS2|JFFS2]]
+| {{man|1|mkfs.jffs2}}
+| {{Pkg|mtd-utils}}
+| {{No}}
+|
+|
+|-
+| [[NILFS2]]
+| {{man|8|mkfs.nilfs2}}
+| {{Pkg|nilfs-utils}}
+| {{Yes}}
+| [https://docs.kernel.org/filesystems/nilfs2.html nilfs2.html]
+| Mostly intended for flash based devices. Does not support [[xattrs]] and [[ACL]]s.
+|-
+| rowspan="3" | [[NTFS]]
+|
+|
+| {{Yes}}
+| [https://docs.kernel.org/filesystems/ntfs3.html ntfs3.html]
+| [[Wikipedia:Windows NT|Windows NT]] file system. [https://www.paragon-software.com/home/ntfs3-driver-faq/]
+|-
+| {{man|8|mkfs.ntfs|url=}}
+| {{AUR|ntfsprogs-plus}}
+| {{No}}
+| [https://docs.kernel.org/filesystems/ntfs.html ntfs.html]
+| New driver, available since Linux 7.1. It is based on the old (mostly) read-only driver that was removed in Linux 6.9.
+|-
+| {{man|8|mkfs.ntfs}}
+| {{Pkg|ntfs-3g}}
+| {{Yes}}
+| N/A (FUSE-based)
+| FUSE driver with extended capabilities.
+|-
+| [[Wikipedia:Universal Disk Format|UDF]]
+| {{man|8|mkfs.udf}}
+| {{Pkg|udftools}}
+| {{Yes}}
+| [https://docs.kernel.org/filesystems/udf.html udf.html]
+| ISO/IEC 13346 file system for disc images and DVDs/Blu-rays. Write support is limited to UDF 2.01 and older. UDF 2.50 and 2.60 are supported as read-only.
+|-
+| [[XFS]]
+| {{man|8|mkfs.xfs}}
+| {{Pkg|xfsprogs}}
+| {{Yes}}
+|
+[https://docs.kernel.org/admin-guide/xfs.html xfs.html]<br>
+[https://docs.kernel.org/filesystems/xfs/xfs-delayed-logging-design.html xfs-delayed-logging-design.html]<br>
+[https://docs.kernel.org/filesystems/xfs/xfs-self-describing-metadata.html xfs-self-describing-metadata.html]
+| [https://web.archive.org/web/20220902080136/https://xfs.org/index.php/XFS_FAQ#Q:_Is_there_a_way_to_make_a_XFS_filesystem_larger_or_smaller.3F Cannot be shrunk]
+|}
+
+{| class="wikitable sortable"
+|+ Out-of-tree file systems
+! File system
+! Creation command
+! Kernel patchset
+! Userspace utilities
+! Notes
+|-
+| [[Bcachefs]]
+| [https://wiki.gentoo.org/wiki/Bcachefs#Creation bcachefs format]
+| {{Pkg|bcachefs-dkms}}
+| {{Pkg|bcachefs-tools}}
+| Removed from the kernel on 6.18
+|-
+| [[Wikipedia:Apple File System|APFS]]
+| {{man|8|mkapfs}}
+| {{Pkg|linux-apfs-rw-dkms}}
+| {{Pkg|apfsprogs}}
+| [[Wikipedia:macOS|macOS]] (10.13 and newer) file system. Read-only, experimental write support. See also {{AUR|apfs-fuse-git}} FUSE version.
+|-
+| [[Wikipedia:ReiserFS|ReiserFS]]
+| {{man|8|mkfs.reiserfs|url=https://manpages.debian.org/unstable/reiserfsprogs/mkfs.reiserfs.8.en.html}}
+|
+| {{AUR|reiserfsprogs}}
+| Removed from the kernel on 6.13.
+|-
+| [[Wikipedia:Reiser4|Reiser4]]
+| {{man|8|mkfs.reiser4|url=https://manpages.debian.org/unstable/reiser4progs/mkfs.reiser4.8.en.html}}
+|
+| {{AUR|reiser4progs}}
+|
+|-
+| [[ZFS]]
+|
+| {{AUR|zfs-linux}}, {{AUR|zfs-dkms}}
+| {{AUR|zfs-utils}}
+| [[Wikipedia:OpenZFS|OpenZFS]] port
+|}
+
+=== Journaling ===
+
+The ext3/4, HFS+, JFS, NTFS, ReiserFS, and XFS file systems use [[Wikipedia:Journaling file system|journaling]]. Journaling provides fault-resilience by logging changes before they are committed to the file system. In the event of a system crash or power failure, such file systems are faster to bring back online and less likely to become corrupted. The logging takes place in a dedicated area of the file system. The configurability of the journaling features varies for the file systems. ext3/4 has most flexibility - its journaling options can be enabled/disabled, HFS+ can be safely configured via macOS only, JFS and XFS require journaling, and with ReiserFS the journal writes to disk can be disabled (but not the journal itself).
+
+ext3/4 offer data-mode journaling, which can optionally log data in addition to the metadata. Data-mode journaling comes with a speed penalty, because it does two write operations: first to the journal and then to the disk. Therefore, data-mode journaling is not enabled by default.
+
+In the same vein, Reiser4 offers configurable [https://reiser4.wiki.kernel.org/index.php/Reiser4_transaction_models "transaction models"]: a special model called [https://reiser4.wiki.kernel.org/index.php/V4#Wandering_Logs wandering logs], which eliminates the need to write to the disk twice; '''write-anywhere''', a pure [[wikipedia:Copy-on-write#In computer storage|copy-on-write]] approach; and a combined approach called '''hybrid''' which heuristically alternates between the two.
+
+File systems based on copy-on-write (also known as write-anywhere), such as Reiser4, Btrfs, Bcachefs and ZFS, by design operate on full atomicity and also provide checksums for both metadata and inline data (operations entirely occur, or they entirely do not, and in properly functioning hardware data does not corrupt due to operations half-occurring). Therefore, these file systems are by design much less prone to data loss than other file systems and have no need to use traditional journal to protect metadata, because they are never updated in-place. Although Btrfs still has a journal-like log tree, it is only used to speed-up fdatasync/fsync. Note Bcachefs and ZFS allow to change checksum features after file system creation, Btrfs and Reiser4 not.
+
+FAT, exFAT, ext2, and HFS provide neither journaling nor atomicity, They are for temporary or legacy use and not recommended for use when reliable storage is needed.
+
+=== FUSE-based file systems ===
+
+See [[FUSE]].
+
+=== Stackable file systems ===
+
+* {{App|[[eCryptfs]]|The enterprise cryptographic file system is a package of disk encryption software for Linux. It is implemented as a POSIX-compliant file system–level encryption layer, aiming to offer functionality similar to that of GnuPG at the operating system level.|https://ecryptfs.org|{{Pkg|ecryptfs-utils}}}}
+* {{App|mergerfs|a FUSE based union file system.|https://github.com/trapexit/mergerfs|{{AUR|mergerfs}}}}
+* {{App|mhddfs|Multi-HDD FUSE file system, a FUSE based union file system.|http://mhddfs.uvw.ru|{{AUR|mhddfs}}}}
+* {{App|[[overlayfs]]|OverlayFS is a file system service for Linux which implements a union mount for other file systems.|https://docs.kernel.org/filesystems/overlayfs.html|{{Pkg|linux}}}}
+* {{App|unionfs-fuse|A user space Unionfs implementation.|https://github.com/rpodgorny/unionfs-fuse|{{AUR|unionfs-fuse}}}}
+
+=== Read-only file systems ===
+
+* {{App|DwarFS|DwarFS is a fast high compression read-only file system for Linux and Windows. DwarFS more or less supports the same features as SquashFS, but is able to compress better, and has configurable hash algorithm.|https://github.com/mhx/dwarfs|{{Aur|dwarfs}}}}
+* {{App|[[Wikipedia:EROFS|EROFS]]|Enhanced Read-Only File System is a lightweight read-only file system, it aims to improve performance and compress storage capacity.|https://erofs.docs.kernel.org/|{{Pkg|erofs-utils}}}}
+* {{App|[[Wikipedia: SquashFS|SquashFS]]|SquashFS is a compressed read-only file system. SquashFS compresses files, inodes and directories, and supports block sizes up to 1 MiB for greater compression.|https://github.com/plougher/squashfs-tools|{{Pkg|squashfs-tools}}}}
+
+=== Clustered file systems ===
+
+* {{App|[[BeeGFS]]|A parallel file system, developed and optimized for high-performance computing.|https://www.beegfs.io/c/|{{AUR|beegfs-client}}}}
+* {{App|[[Ceph]]|Unified, distributed storage system designed for excellent performance, reliability and scalability.|https://ceph.com/|{{AUR|ceph}}}}
+* {{App|[[Glusterfs]]|Cluster file system capable of scaling to several peta-bytes.|https://www.gluster.org/|{{Pkg|glusterfs}}}}
+* {{App|[[IPFS]]|A peer-to-peer hypermedia protocol to make the web faster, safer, and more open. IPFS aims replace HTTP and build a better web for all of us. Uses blocks to store parts of a file, each network node stores only content it is interested, provides deduplication, distribution, scalable system limited only by users. (currently in alpha)|https://ipfs.io/|{{Pkg|kubo}}}}
+* {{App|[[MinIO]]|MinIO offers high-performance, S3 compatible object storage.|https://min.io|{{AUR|minio}}}}
+* {{App|[[Wikipedia: MooseFS|MooseFS]]|MooseFS is a fault tolerant, highly available and high performance scale-out network distributed file system.|https://moosefs.com|{{Pkg|moosefs}}}}
+* {{App|[[Wikipedia: OpenAFS|OpenAFS]]|Open source implementation of the AFS distributed file system|https://www.openafs.org|{{AUR|openafs}}}}
+* {{App|[[Wikipedia: OrangeFS|OrangeFS]]|OrangeFS is a scale-out network file system designed for transparently accessing multi-server-based disk storage, in parallel. Has optimized MPI-IO support for parallel and distributed applications. Simplifies the use of parallel storage not only for Linux clients, but also for Windows, Hadoop, and WebDAV. POSIX-compatible. Part of Linux kernel since version 4.6.|https://www.orangefs.org/}}
+
+=== Shared-disk file system ===
+
+* {{App|[[Wikipedia:GFS2|GFS2]]|GFS2 allows all members of a cluster to have direct concurrent access to the same shared block storage|https://pagure.io/gfs2-utils|{{AUR|gfs2-utils}}}}
+* {{App|[[Wikipedia:OCFS2|OCFS2]]|The Oracle Cluster File System (version 2) is a shared disk file system developed by Oracle Corporation and released under the GNU General Public License|https://oss.oracle.com/projects/ocfs2/|{{AUR|ocfs2-tools}}}}
+* {{App|[[Wikipedia:VMware VMFS|VMware VMFS]]|VMware's VMFS (Virtual Machine File System) is used by the company's flagship server virtualization suite, vSphere.|https://core.vmware.com/resource/vmware-vsphere-vmfs|{{AUR|vmfs-tools}}}}
+
+== Identify existing file systems ==
+
+To identify existing file systems, you can use [[lsblk]]:
+
+{{hc|1=$ lsblk -f|2=
+NAME   FSTYPE LABEL     UUID                                 MOUNTPOINT
+sdb
+└─sdb1 vfat   Transcend 4A3C-A9E9
+}}
+
+An existing file system, if present, will be shown in the {{ic|FSTYPE}} column. If [[mount]]ed, it will appear in the {{ic|MOUNTPOINT}} column.
+
+== Create a file system ==
+
+File systems are usually created on a [[partition]], inside logical containers such as [[LVM]], [[RAID]] and [[dm-crypt]], or on a regular file (see [[Wikipedia:Loop device]]). This section describes the partition case.
+
+{{Note|1=File systems can be written directly to a disk, known as a ''superfloppy'' or [[Partitioning#Partitionless disk|partitionless disk]]. Certain limitations are involved with this method, particularly if [[Arch boot process|booting]] from such a drive. See [[Btrfs#Partitionless Btrfs disk]] for an example.}}
+
+{{Warning|
+* After creating a new file system, data previously stored on this partition can unlikely be recovered. '''Create a backup of any data you want to keep'''.
+*The purpose of a given partition may restrict the choice of file system. For example, an [[EFI system partition]] must contain a [[FAT32]] file system, and the file system containing the {{ic|/boot}} directory must be supported by the [[boot loader]].
+}}
+
+Before continuing, [[lsblk|identify the device]] where the file system will be created and whether or not it is mounted. For example:
+
+{{hc|$ lsblk -f|
+NAME   FSTYPE   LABEL       UUID                                 MOUNTPOINT
+sda
+├─sda1                      C4DA-2C4D
+├─sda2 ext4                 5b1564b2-2e2c-452c-bcfa-d1f572ae99f2 /mnt
+└─sda3                      56adc99b-a61e-46af-aab7-a6d07e504652
+}}
+
+Mounted file systems '''must''' be [[#Unmount a file system|unmounted]] before proceeding. In the above example an existing file system is on {{ic|/dev/sda2}} and is mounted at {{ic|/mnt}}. It would be unmounted with:
+
+ # umount /dev/sda2
+
+To find just mounted file systems, see [[#List mounted file systems]].
+
+To create a new file system, use {{man|8|mkfs}}. See [[#Types of file systems]] for the exact type, as well as userspace utilities you may wish to install for a particular file system.
+
+For example, to create a new file system of type [[ext4]] (common for Linux data partitions) on {{ic|/dev/sda1}}, run:
+
+ # mkfs.ext4 /dev/sda1
+
+{{Tip|
+* Use the {{ic|-L}} flag of ''mkfs.ext4'' to specify a [[Persistent block device naming#by-label|file system label]]. ''e2label'' can be used to change the label on an existing file system.
+* File systems may be ''resized'' after creation, with certain limitations. For example, an [[XFS]] file system's size can be increased, but not reduced. See [[Wikipedia:Comparison of file systems#Resize capabilities]] and the respective file system documentation for details.}}
+
+The new file system can now be mounted to a directory of choice.
+
+== Mount a file system ==
+
+To manually mount a file system located on a device (e.g., a partition) to a directory, use {{man|8|mount}}. This example mounts {{ic|/dev/sda1}} to {{ic|/mnt}}.
+
+ # mount /dev/sda1 /mnt
+
+This attaches the file system on {{ic|/dev/sda1}} at the directory {{ic|/mnt}}, making the contents of the file system visible. Any data that existed at {{ic|/mnt}} before this action is made invisible until the device is unmounted.
+
+[[fstab]] contains information on how devices should be automatically mounted if present. See the [[fstab]] article for more information on how to modify this behavior.
+
+If a device is specified in {{ic|/etc/fstab}} and only the device or mount point is given on the command line, that information will be used in mounting. For example, if {{ic|/etc/fstab}} contains a line indicating that {{ic|/dev/sda1}} should be mounted to {{ic|/mnt}}, then the following will automatically mount the device to that location:
+
+ # mount /dev/sda1
+
+Or
+
+ # mount /mnt
+
+''mount'' contains several options, many of which depend on the file system specified.
+The options can be changed, either by:
+
+* using flags on the command line with ''mount''
+* editing [[fstab]]
+* creating [[udev]] rules
+* [[Arch build system|compiling the kernel yourself]]
+* or using file system–specific mount scripts (located at {{ic|/usr/bin/mount.*}}).
+
+See these related articles and the article of the file system of interest for more information.
+
+{{Tip|
+* File systems can also be mounted with ''systemd-mount'' instead of ''mount''. If the mount point is not specified, the file system will be mounted at {{ic|/run/media/system/''device_identifier''/}}. This allows to easily mount a file system without having to decide where to mount it. See {{man|1|systemd-mount}} for usage and more details.
+* To mount file systems as an ordinary user, see [[udisks#Usage]]. This also allows mounting without having root permissions, a full graphical environment or a file manager which utilizes udisks.
+}}
+
+=== List mounted file systems ===
+
+To list all mounted file systems, use {{man|8|findmnt}}:
+
+ $ findmnt
+
+''findmnt'' takes a variety of arguments which can filter the output and show additional information. For example, it can take a device or mount point as an argument to show only information on what is specified:
+
+ $ findmnt /dev/sda1
+
+''findmnt'' gathers information from {{ic|/etc/fstab}}, {{ic|/etc/mtab}}, and {{ic|/proc/self/mounts}}.
+
+=== Unmount a file system ===
+
+To unmount a file system use {{man|8|umount}}. Either the device containing the file system (e.g., {{ic|/dev/sda1}}) or the mount point (e.g., {{ic|/mnt}}) can be specified:
+
+ # umount /dev/sda1
+
+or
+
+ # umount /mnt
+
+== Troubleshooting ==
+
+=== "linux Structure needs cleaning" ===
+
+[[#Unmount a file system|Unmount]] the file system and run [[fsck]] on the problematic volume.
+
+== See also ==
+
+* {{man|5|filesystems}}
+* {{man|1|systemd-mount}}
+* [https://docs.kernel.org/filesystems/index.html Documentation of file systems supported by Linux]
+* [[Wikipedia:File systems]]
+* [[Wikipedia:Mount (Unix)]]

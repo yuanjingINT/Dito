@@ -1,0 +1,380 @@
+[[Category:Sandboxing]]
+[[ja:Firejail]]
+[[zh-hans:Firejail]]
+[[ru:Firejail]]
+{{Related articles start}}
+{{Related|Security}}
+{{Related|AppArmor}}
+{{Related|systemd/Sandboxing}}
+{{Related|Bubblewrap}}
+{{Related articles end}}
+[https://firejail.wordpress.com/ Firejail] is an easy to use [[Setuid]] sandbox program that reduces the risk of security breaches by restricting the running environment of untrusted applications using Linux namespaces, seccomp-bpf and Linux capabilities.
+
+{{Warning|Running untrusted code is never safe, sandboxing cannot change this.}}
+
+== Installation ==
+
+[[Install]] the {{Pkg|firejail}} package. A GUI application for use with Firejail is also available, {{Pkg|firetools}}.
+
+{{Note|For information about {{man|7|user_namespaces}} support in Arch Linux kernels, see [[Security#Sandboxing applications]]. [https://github.com/netblue30/firejail/issues/1842#issuecomment-376642039 Firejail can use it even if it is disabled].}}
+
+{{Warning|While upstream is gradually adopting whitelists (cf {{ic|/etc/firejail/firefox.profile}}), most of the supplied profiles still rely heavily on blacklists. This means that anything not explicitly forbidden by the profile will be accessible to the application. For example, if you have btrfs snapshots available in {{ic|/mnt/btrfs}}, a jailed program may be forbidden from accessing {{ic|$HOME/.ssh}}, but would still be able to access {{ic|/mnt/btrfs/@some-snapshot/$HOME/.ssh}}. Make sure to audit your profiles; see [[#Testing profiles]].}}
+
+== Configuration ==
+
+Most users will not require any custom configuration and can proceed to [[#Usage]].
+
+Firejail uses profiles to set the security protections for each of the applications executed inside of it - you can find the default profiles in {{ic|/etc/firejail/''application''.profile}}. Should you require custom profiles for applications not included, or wish to modify the defaults, you may place new rules or copies of the defaults in the {{ic|~/.config/firejail}} directory. You may have multiple custom profile files for a single application, and you may share the same profile file among several applications.
+
+If firejail does not have a profile for a particular application, it uses its restrictive system-wide default profile. This can result in the application not functioning as desired, without first creating a custom and less restrictive profile.
+
+Refer to {{man|5|firejail-profile}}.
+
+== Usage ==
+
+To execute an application using firejail's default protections for that application (the default profile), execute the following:
+
+ $ firejail ''program_name''
+
+One-time additions to the default profile can be added as command line options (see {{man|1|firejail}}). For example, to execute ''okular'' with seccomp protection, execute the following:
+
+ $ firejail --seccomp okular
+
+You may define multiple non-default profiles for a single program. Once you create your profile file, you can use it by executing:
+
+ $ firejail --profile=''/absolute/path/to/profile program_name''
+
+=== Using Firejail by default ===
+
+To use Firejail by default for all applications for which it has profiles, [https://github.com/netblue30/firejail/wiki/Frequently-Asked-Questions#a-program-isnt-firejailed run the firecfg tool with sudo]:
+
+ $ sudo firecfg
+
+This creates symbolic links in {{ic|/usr/local/bin/}} pointing to {{ic|/usr/bin/firejail}} for  programs for which Firejail has default or self-created profiles. Note that {{man|1|firecfg}} only symlinks the programs listed in {{ic|/etc/firejail/firecfg.config}}. Certain CLI programs are absent, such as: ''tar'', ''curl'', and ''git''. These need to be symlinked manually. See [https://github.com/netblue30/firejail/issues/2507 Profiles not in firecfg #2507] for why they are not included. ''firecfg'' additionally adds the current user to Firejail user access database and checks the {{ic|/usr/share/applications/*.desktop}} files if they contain the full path to the respective executable, removes the full path and copies them to {{ic|~/.local/share/applications/}}. This ensures that the symlinks in {{ic|/usr/local/bin/}} will be used, which prevents Firejail getting bypassed. If [[sudo]] is not installed on your system, you should execute:
+
+ # firecfg
+
+as root and 
+
+ $ firecfg --fix
+
+as user in order to fix the ''.desktop'' files.
+
+There may be cases for which you need to manually modify the {{ic|1=Exec=}} line of the ''.desktop'' file in {{ic|~/.local/share/applications/}} to explicitly call Firejail.
+
+{{Tip|A [[pacman hook]] can be used to automatically run ''firecfg'' on [[pacman]] operations:
+
+{{hc|/etc/pacman.d/hooks/firejail.hook|2=
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = usr/bin/*
+Target = usr/share/applications/*.desktop
+
+[Action]
+Description = Configure symlinks in /usr/local/bin based on firecfg.config...
+When = PostTransaction
+Depends = firejail
+Exec = /bin/sh -c 'firecfg >/dev/null 2>&1'
+}}
+
+}}
+
+To manually map individual applications, execute:
+
+ # ln -s /usr/bin/firejail /usr/local/bin/''application''
+
+{{Note|1=<nowiki/>
+* {{ic|/usr/local/bin}} must be set before {{ic|/usr/bin}} in the {{ic|PATH}} [[environment variable]]. The default Arch Linux {{ic|/etc/profile}} script satisfies this precondition [https://gitlab.archlinux.org/archlinux/packaging/packages/filesystem/-/blob/main/profile?ref_type=heads#L14-17].
+* To run a symbolic program with custom Firejail setting, simple prefix ''firejail'' as seen in [[#Usage]].
+* For a daemon, you will need to overwrite the systemd unit file for that daemon to call firejail, see [[systemd#Editing provided units]].
+* Symbolic links to ''gzip'' and ''xz'' interfere with ''makepkg''<nowiki/>'s ability to preload {{ic|libfakeroot.so}}. See [https://bbs.archlinux.org/viewtopic.php?id=230913 BBS#230913].
+}}
+
+=== Use with hardened_malloc ===
+
+{{Note|Some programs will not work using {{ic|libhardened_malloc.so}}, such as PyCharm, Firefox.}}
+
+{{AUR|hardened_malloc}} is a hardened implementation of glibc's {{ic|malloc()}} allocator, originally written for Android but extended for use on the desktop. While not integrated into glibc yet, it can be used selectively with {{ic|LD_PRELOAD}}. The proper way to launch an application within firejail using hardened_malloc is demonstrated below. To make it permanent, you would need to create your own entry in {{ic|/usr/local/bin/}} for the desired application.
+
+ $ firejail --env=LD_PRELOAD='/usr/lib/libhardened_malloc.so' /usr/bin/firefox
+
+Alternatively, add the following to a custom profile:
+
+ env LD_PRELOAD=/usr/lib/libhardened_malloc.so
+
+Profiles that have private-lib will need the following in custom profiles:
+
+ private-lib /lib/libhardened_malloc.so
+
+The various environment variables and settings that can be used to tune hardened_malloc can be found on its [https://github.com/GrapheneOS/hardened_malloc github page].
+
+=== Enable AppArmor support ===
+
+Since 0.9.60-1, Firejail has supported more direct integration with [[AppArmor]] through a generic AppArmor profile. During installation, the profile, {{ic|firejail-default}}, is placed in {{ic|/etc/apparmor.d}} directory, and needs to be loaded into the kernel by running the following command as root:
+
+ # apparmor_parser -r /etc/apparmor.d/firejail-default
+
+See {{man|1|firejail|APPARMOR}}.
+
+Local customizations of the apparmor profile are supported by editing the file {{ic|/etc/apparmor.d/local/firejail-local}}
+
+AppArmor is already enabled for a [https://github.com/netblue30/firejail#profile-statistics large number] of Firejail profiles. There are several ways to enable [[AppArmor]] confinement on top of a Firejail security profile:
+
+* Pass the {{ic|--apparmor}} flag to Firejail in the command line, e.g. {{ic|$ firejail --apparmor firefox}}
+* Use a custom profile and add the {{ic|apparmor}} command.
+* Enable Apparmor globally in {{ic|/etc/firejail/globals.local}} and disable as needed through the use of {{ic|ignore apparmor}} in {{ic|/etc/firejail/''ProgramName''.local}}.
+
+Note that enabling AppArmor by above methods '''always''' means that {{ic|/etc/apparmor.d/firejail-default}} is used. If you rather want to use a ''specific'' AppArmor profile for an application, you have to use the above mentioned {{ic|ignore apparmor}} command. However, that is [https://github.com/netblue30/firejail/wiki/Frequently-Asked-Questions#how-does-it-compare-with-apparmor not recommended], as using both Firejail and AppArmor for the same applications often creates problems.
+
+=== Verifying Firejail is being used ===
+
+ $ firejail --list
+
+A more comprehensive output is produced by
+
+ $ firejail --tree
+
+== Creating custom profiles ==
+
+=== Whitelists and blacklists ===
+
+'''Blacklists''' deny access to a specific file or directory. All other files and directories, which are not added to the blacklist, are not changed.
+
+* Deny access to a directory or file: {{ic|blacklist <directory/file>}}
+* Ignore a {{ic|blacklist}} line that comes after: {{ic|noblacklist <directory/file>}}   
+
+The order in which they appear in a profile is important: ''noblacklist'' directives must be added '''above''' ''blacklist'' directives.
+
+'''Whitelists''' block everything under the same "top directory", that is not ''explicitly'' whitelisted. This means that if you whitelist for example {{ic|/etc/something}}, this file will be accessible, but for example if there's another file {{ic|/etc/something_else}}, that will not be accessible. In  Firejail, a "top directory" means, if the whitelisted file's path is for example {{ic|/etc/somedir/somefile}}, then the top directory would be {{ic|/etc}}. All other top directories like {{ic|/opt}}, {{ic|/usr}} and so on, haven't changed, so all files there are still accessible, unless a file or directory inside them is also whitelisted.
+
+* Allow access to a directory or file and forbid everything else in the "top directory": {{ic|whitelist <directory/file>}}
+* Ignore a {{ic|whitelist}} line that comes after: {{ic|nowhitelist <directory/file>}}
+
+The order in which they appear in a profile is important: ''nowhitelist'' directives must be added '''above''' ''whitelist'' directives.
+
+=== Profile writing ===
+
+The basic process is:
+
+# Copy {{ic|/usr/share/doc/firejail/profile.template}} to {{ic|/etc/firejail/}} or {{ic|~/.config/firejail/}} and rename it to {{ic|''ProfileName''.profile}} where ''ProfileName'' should match the name of the executable to be sandboxed
+# Change the line {{ic|include PROFILE.local}} to {{ic|include ProfileName.local}}
+# Gradually comment/uncomment the various options while checking at each stage that the application runs inside the new sandbox. Do not change the order of the sections in that template.
+# Detailed explanations of the possible options for a Firejail profile can be found in the {{man|5|firejail-profile}} man page
+# Test the profile for security holes, see [[#Testing profiles]]
+
+If you want to create a whitelisted profile (i.e. a profile which contains ''whitelist'' directives), you can [https://firejail.wordpress.com/documentation-2/building-custom-profiles/#whitelisted build a whitelist] of permitted locations by executing:
+
+ $ firejail --build ''application''
+
+{{Note|<nowiki></nowiki>
+* Keep in mind that a whitelisted profile is problematic for applications that need to access random locations (like text editors or file managers).
+* The idea is to be as restrictive as possible, while still maintaining usability. This may involve sacrificing potentially dangerous functionality and a change in cavalier work habits.
+* By default, seccomp filters work on a blacklist (which can be found in {{ic|/usr/share/doc/firejail/syscalls.txt}}). It is possible to use {{ic|seccomp.keep}} to build a custom whitelist of filters for an application. [https://firejail.wordpress.com/documentation-2/seccomp-guide/]. A convenient way to automate these steps is to execute {{ic|/usr/lib/firejail/syscalls.sh}}. If the application is still broken because of missing syscalls, you should follow the instructions at the bottom of {{ic|/usr/share/doc/firejail/syscalls.txt}}.
+}}
+
+==== Persistent local customisation ====
+
+The standard profile layout includes the capability to make persistent local customisations through the inclusion of {{ic|.local}} files[https://github.com/netblue30/firejail/wiki/Creating-overrides]. Basically, each officially supported profile contains the lines {{ic|include ProgramName.local}} and {{ic|include globals.local}}. These ''*.local'' files might be located in {{ic|/etc/firejail/}} or in {{ic|~/.config/firejail/}}. Since the order of precedence is determined by which is read first, this makes for a very powerful way of making local customisations.
+For example, with reference [https://github.com/netblue30/firejail/issues/1510#issuecomment-326443650 this firejail question], to globally enable Apparmor and disable Internet connectivity, one could simply create/edit {{ic|/etc/firejail/globals.local}} to include the lines
+
+ # enable Apparmor and disable Internet globally
+ net none
+ apparmor
+
+Then, to allow, for example, "curl" to connect to the internet, yet still maintain its apparmor confinement, one would create/edit {{ic|/etc/firejail/curl.local}} to include the lines.
+
+ # enable internet for curl
+ ignore net
+
+Since {{ic|curl.local}} is read before {{ic|globals.local}}, {{ic|ignore net}} overrides {{ic|net none}}, and, as a bonus, the above changes would be persistent across future updates.
+
+=== Testing profiles ===
+
+In order to test and audit a Firejail profile, you may find the following to be useful:
+
+# {{ic|firejail --debug $Program > $PathToOutputFile}} Gives a detailed breakdown of the sandbox
+# {{ic|firejail --debug-blacklists $Program}} and {{ic|firejail --debug-whitelists $Program}} show the blacklisted and whitelisted directories and files for the current profile.
+# {{ic|firejail --debug-caps}} gives a list of caps supported by the current Firejail software build. This is useful when building a [https://l3net.wordpress.com/2015/03/16/firejail-linux-capabilities-guide/ caps whitelist].
+# {{ic|firejail --help}} for a full list of {{ic|--debug}} options
+# {{ic|firemon PID}} monitors the running process. See {{ic|firemon --help}} for details
+# Executing {{ic|sudo jailcheck}} tests running sandboxes. See the {{man|1|jailcheck}} man page for details.
+# {{Pkg|checksec}} may also be useful in testing which standard security features are being used
+
+== Firejail with Xorg ==
+
+{{Accuracy|Why does sandboxing X11 require DNS?}} 
+
+On [[Xorg]] any program can listen to all keyboard input and record all screens. The purpose of sandboxing X11 is to restrict this behavior, which is especially problematic for complex programs working with potentially malicious input like browsers.
+
+[[Xephyr]] and [[Xpra]] allow you to sandbox Xorg. Although Xpra provides full clipboard support, it is recommended to use Xephyr due to the very notable and permanent lag with nested X11 sessions.
+
+For a complete setup with (not ideal) clipboard support (clipboard is still always shared), see [[Gentoo:User:Sakaki/Sakaki's EFI Install Guide/Sandboxing the Firefox Browser with Firejail#Graphical Isolation via Xephyr|Sakaki's Gentoo guide]], especially the [[Gentoo:User:Sakaki/Sakaki's EFI Install Guide/Sandboxing the Firefox Browser with Firejail#Setting Up Clipboard Sharing and Display Rescaling for Xephyr|section about the clipboard and automatic rescaling]].
+
+Alternatively, if clipboard support is not needed but windows need to be managed, install a standalone [[window manager]] such as [[Openbox]].
+
+{{ic|xephyr-screen ''Width''x''Height''}} can be set in {{ic|/etc/firejail/firejail.config}} where {{ic|''Width''}} and {{ic|''Height''}} are in pixels and based on your screen resolution.
+
+To open the sandbox:
+
+ $ firejail --x11=xephyr --net=''device'' openbox
+
+{{ic|''device''}} is your active [[network interface]], which is needed to ensure that DNS works. Then right click and select your applications to run.
+
+{{Note|If you use [[Unbound]], [[dnsmasq]], [[Pdnsd]] or any other local resolver on 127.0.0.1, you would leave {{ic|1=--net=''device''}} out of the command as DNS should work automatically.}}
+
+See the [https://firejail.wordpress.com/documentation-2/x11-guide/#configurexephyr Firejail Wordpress site] for a simpler guide.
+
+According to the guide:
+
+:The sandbox replaces the regular X11 server with Xpra or Xephyr server. This prevents X11 keyboard loggers and screenshot utilities from accessing the main X11 server.
+
+Note that the statement:
+
+:The only way to disable the abstract socket {{ic|@/tmp/.X11-unix/X0}} is by using a network namespace. If for any reasons you cannot use a network namespace, the abstract socket will still be visible inside the sandbox. Hackers can attach keylogger and screenshot programs to this socket.
+
+is incorrect, [[Xinit#xserverrc|xserverrc]] can be edited to {{ic|-nolisten local}}, which disables the abstract sockets of X11 and helps isolate it.
+
+=== Sandboxing a browser ===
+
+[[Openbox]] can be configured to start a certain browser at startup. {{ic|''program''.profile}} is the respective profile contained in {{ic|/etc/firejail}}, and {{ic|--startup "''command''"}} is the command line used to start the program. For example, to start Chromium in the sandbox:
+
+ $ firejail --x11=xephyr --profile=/etc/firejail/chromium.profile openbox --startup "chromium"
+
+You can control the size of the screen with the parameter:
+
+ --xephyr-screen=400x250
+
+== Tips and tricks ==
+
+=== Hardening Firejail ===
+
+The security risk of Firejail being a SUID executable can be mitigated by adding the line
+
+ force-nonewprivs yes
+
+to {{ic|/etc/firejail/firejail.config}}. However, this can break specific applications. On Arch Linux, VirtualBox doesn't start anymore. With the {{Pkg|linux-hardened}} kernel Wireshark and Chromium-based browsers are also affected.
+
+Further hardening measures include creating a special firejail group with adding the user to that group and changing the file mode for the firejail executable. For details see [https://firejail.wordpress.com/documentation-2/basic-usage/#suid here].
+
+{{Tip|you can add a pacman hook to automatically change firejail owner and mode:
+
+{{hc|/etc/pacman.d/hooks/firejail-permissions.hook|2=
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = firejail
+[Action]
+Depends = coreutils
+Depends = bash
+When = PostTransaction
+Exec = /usr/bin/sh -c "chown root:firejail /usr/bin/firejail && chmod 4750 /usr/bin/firejail"
+Description = Setting /usr/bin/firejail owner to "root:firejail" and mode "4750"
+}}
+
+Make sure to create the {{ic|firejail}} group and add your user to it.
+
+}}
+
+=== Paths containing spaces ===
+
+If you need to reference, whitelist, or blacklist a directory within a custom profile, such as with {{aur|palemoon}}, you must do so using the absolute path, without encapsulation or escapes:
+ /home/user/.moonchild productions
+
+=== Private mode ===
+
+Firejail also includes a one time private mode, in which no mounts are made in the chroots to your home directory. In doing this, you can execute applications without performing any changes to disk. For example, to execute okular in private mode, do the following:
+
+ $ firejail --seccomp --private okular
+
+== Troubleshooting ==
+
+Firejail can be hard to debug. The symptoms of a misconfigured or otherwise unfitting setup range from random segmentation faults and hangs in the applications to simple error messages.
+
+Some applications are harder to sandbox than others. For example [[web browsers]] and [[Electron]] applications tend to need more troubleshooting than others since there is much that can go wrong. It is crucial to check the [https://github.com/netblue30/firejail/wiki/Frequently-Asked-Questions FAQ] and [https://github.com/netblue30/firejail/issues open issues] first, since debugging can take quite some time.
+
+{{Tip|Also see the [https://github.com/netblue30/firejail/wiki upstream wiki], [https://debugging.works/blog/debugging-firejail/ this blog post] and especially its page on [https://github.com/netblue30/firejail/wiki/Debugging-Firejail debugging Firejail].}}
+
+=== Remove Firejail symbolic links ===
+
+To remove Firejail created symbolic links (e.g. reset to default):
+
+ # firecfg --clean
+
+If you do not want to use Firejail for a specific application (e.g., because you prefer to rather confine it with AppArmor), you have to manually remove the related symbolic link:
+
+ # rm /usr/local/bin/''application''
+
+As a subsequent execution of ''firecfg'' would re-add the removed symlinks, the respective applications should be commented in {{ic|/etc/firejail/firecfg.config}}.
+
+Verify if any leftovers of [[Desktop entries]] are still overruled by Firejail.
+
+=== PulseAudio ===
+
+{{Note|Using PulseAudio version 9.0 or later should fix this issue.}}
+
+If Firejail causes [[PulseAudio]] issues with sandboxed applications [https://github.com/netblue30/firejail/wiki/Frequently-Asked-Questions#pulseaudio-7080-issue], the following command may be used:
+
+ $ firecfg --fix-sound
+
+This commands creates a custom {{ic|~/.config/pulse/client.conf}} file for the ''current'' user with {{ic|1=enable-shm = no}} and possible other workarounds.
+
+=== hidepid ===
+
+If the system uses the [[hidepid]] [[kernel parameter]], Firemon can only be run as root. This, among other things, will cause problems with the Firetools GUI incorrectly reporting "Capabilities", "Protocols" and the status of "Seccomp"[https://github.com/netblue30/firejail/issues/1564].
+
+=== Proprietary Nvidia drivers ===
+
+Some users report problems when using Firejail and proprietary graphic drivers from [[NVIDIA]] (e.g. [https://github.com/netblue30/firejail/issues/1753], [https://github.com/netblue30/firejail/issues/879] or [https://github.com/netblue30/firejail/issues/841]). This can often be solved by disabling the {{ic|noroot}} Firejail option in the application's profile file.
+
+=== --net options and Linux kernel >=4.20.0 ===
+
+There is a bug on firejail 0.5.96 with linux >= 4.20.0, see [https://github.com/netblue30/firejail/issues/2314] and [https://github.com/netblue30/firejail/pull/2327]
+
+Example error message:
+
+ $ firejail --noprofile --net=eth0 ls
+ Parent pid 8521, child pid 8522
+ Error send: arp.c:182 arp_check: Invalid argument
+ Error: proc 8521 cannot sync with peer: unexpected EOF
+ Peer 8522 unexpectedly exited with status 1
+
+=== Warning: Cannot confine the application using AppArmor ===
+
+{{Merge|#Enable AppArmor support|The requirement to enable AppArmor should be made explicit in the previous text.}}
+
+For some applications (e.g. [[Firefox]]) starting with Firejail may result in warnings like:
+
+ Warning: Cannot confine the application using AppArmor.
+ Maybe firejail-default AppArmor profile is not loaded into the kernel.
+ As root, run "aa-enforce firejail-default" to load it.
+
+When running the suggested command you might see:
+
+ ERROR: Cache read/write disabled: interface file missing. (Kernel needs AppArmor 2.4 compatibility patch.)
+
+This means that [[AppArmor]] is not enabled as a kernel parameter, so you have to set it according to [[AppArmor#Installation]].
+
+=== /usr/bin/patch: **** Can't open patch file ===
+
+This means the {{ic|PKGBUILD}} uses {{ic|patch}} with the {{ic|-i}} argument so a whitelist for {{ic|$SRCDEST}} in {{ic|/etc/makepkg.conf}} is needed.
+
+Create [[#Persistent local customisation|the override]] {{ic|patch.local}} with the value of your {{ic|$SRCDEST}}:
+
+ whitelist ''/path/to/makepkg/sources''
+
+Changing the {{ic|PKGBUILD}} to use {{ic|stdin}} also works:
+
+ patch -p1 < ../''file.patch''
+
+=== Daemonizing/backgrounded processes hang ===
+
+There is a [https://github.com/netblue30/firejail/issues/3491 known issue] that prevents processes from daemonizing. There is currently no solution to this except not using Firejail to sandbox the affected application. Because it is a bug within Firejail, no configuration can solve this issue. Fortunately the applications mentioned in the issue usually do not have a large attack surface, so the risks of running them without a sandbox are comparatively low.
+
+== See also ==
+
+* [https://github.com/netblue30/firejail Firejail GitHub project page]
+* [https://tech.michaelaltfield.net/2026/02/03/single-site-browser-firejail-proxychains/ Guide to using firejail with proxychains]

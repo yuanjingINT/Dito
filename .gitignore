@@ -1,0 +1,24 @@
+# 依赖与运行时
+node_modules/
+.venv*/
+venv/
+__pycache__/
+*.pyc
+
+# 模型权重与大产物（可重新下载/训练）
+models/
+dist/
+*.gguf
+*.safetensors
+*.bin
+!desktop/icon.png
+
+# 训练数据构建产物（脚本可重建）
+training/data/*.jsonl
+training/datasets/**/*.jsonl
+training/unsloth_compiled_cache/
+unsloth_compiled_cache/
+
+# 日志与临时文件
+*.log
+.DS_Store

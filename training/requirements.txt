@@ -1,0 +1,11 @@
+# 训练所需 Python 依赖（已装进 .venv-train）
+transformers>=4.57
+torch>=2.4
+accelerate>=1.0
+peft>=0.13
+trl>=0.9
+datasets>=3.0
+bitsandbytes>=0.44
+modelscope>=1.15
+sentencepiece
+protobuf

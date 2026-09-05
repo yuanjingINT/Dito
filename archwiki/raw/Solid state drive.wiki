@@ -1,0 +1,455 @@
+[[Category:Storage]]
+[[es:Solid State drive]]
+[[hu:Solid state drive]]
+[[ja:ソリッドステートドライブ]]
+[[ru:Solid state drive]]
+[[zh-hans:Solid state drive]]
+{{Related articles start}}
+{{Related|Solid state drive/NVMe}}
+{{Related|Solid state drive/Memory cell clearing}}
+{{Related|Benchmarking/Data storage devices}}
+{{Related|Improving performance#Storage devices}}
+{{Related articles end}}
+
+This article covers special topics for operating [[Wikipedia:Solid-state drive|solid state drives]] (SSDs) and other flash-memory based storage devices.
+
+If you want to partition an SSD for a specific purpose, it may be useful to consider the [[Wikipedia:List of file systems#File systems optimized for flash memory, solid state media|List of file systems optimized for flash memory]].
+
+For general usage, simply choose your preferred [[file system]] and enable [[#TRIM]].
+
+== Usage ==
+
+=== TRIM ===
+
+Compared to hard drives, where deleting a file is only handled at the file system level[https://www.redhat.com/sysadmin/linux-delete-file-rm], SSDs benefit from informing the disk controller when blocks of memory are free to be reused. Since the flash cells they are made of are worn out a little with each write operation, the disk controllers use algorithms to share the write operations on all the cells: this process is called [[Wikipedia:Wear leveling|wear leveling]]. Without the NVMe [[Wikipedia:Trim (computing)#NVM_Express|DEALLOCATE]], SAS [[Wikipedia:Trim (computing)#SCSI|UNMAP]] or [[Wikipedia:ATA_TRIM|ATA_TRIM]] command (supported by most SSDs), the disk controller takes more time to do a write operation as soon as there is no empty memory blocks, as it has to shuffle data around to erase a cell before writing to it (see [[Wikipedia:Write amplification]]): a [https://www.techspot.com/review/737-ocz-vector-150-ssd/page9.html TechSpot benchmark] shows the performance impact before and after filling an SSD with data.
+
+{{Note|If you want to use TRIM, use '''either''' periodic TRIM or continuous TRIM. Continuous TRIM is '''not''' the most preferred way to issue TRIM commands among the Linux community. For example, Ubuntu enables periodic TRIM by default [https://askubuntu.com/questions/1034169/is-trim-enabled-on-my-ubuntu-18-04-installation], Debian does not recommend using [[Debian:SSDOptimization#Mounting SSD filesystems|continuous TRIM]] and Red Hat recommends using periodic TRIM over using continuous TRIM if feasible [https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/managing_file_systems/discarding-unused-blocks_managing-file-systems].}}
+
+As of Linux kernel version 3.8 onwards, support for TRIM was continually added for the different [[file systems]]. See the following table for an indicative overview:
+
+{| class="wikitable sortable"
+! File system !! Continuous TRIM <br> ({{ic|discard}} option) !! Periodic TRIM <br> (''fstrim'') !! References<br> and notes
+|-
+| [[Bcachefs]] || {{Yes}} || {{No}} ||
+|-
+| [[Btrfs]] || {{Yes}} || {{Yes}} || Asynchronous discard is [[Btrfs#SSD TRIM|enabled]] by default since kernel 6.2.
+|-
+| [[Wikipedia:exFAT|exFAT]] || {{Yes}} || {{Yes}} || ''fstrim'' is supported since kernel 5.13, [https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit?id=654762df2ec7d61b05acc788afbffaba52d658fe]
+|-
+| [[ext3]] || {{Yes}} || {{Yes}} ||
+|-
+| [[ext4]] || {{Yes}} || {{Yes}} || "discard, nodiscard(*)" in [https://docs.kernel.org/admin-guide/ext4.html?highlight=discard,%20nodiscard(*)#options]
+|-
+| [[F2FS]] || {{Yes}} || {{Yes}} ||
+|-
+| [[JFS]] || {{Yes}} || {{Yes}} || [https://www.phoronix.com/scan.php?page=news_item&px=MTE5ODY]
+|-
+| [[Wikipedia:NILFS|NILFS2]] || {{Yes}} || {{Yes}} ||
+|-
+| rowspan=3 | [[NTFS]]
+| {{Yes}} || {{Yes}} || The [https://docs.kernel.org/filesystems/ntfs.html ntfs] kernel driver.
+|-
+| {{Yes}} || {{No}} || The [https://docs.kernel.org/filesystems/ntfs3.html ntfs3] kernel driver.
+|-
+| {{No}} || {{Yes}} || The [[NTFS-3G]] FUSE driver.
+|-
+| [[VFAT]] || {{Yes}} || {{Yes}} || ''fstrim'' is supported since kernel 4.19, [https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=f663b5b38fffeb31841f8bfaf0ef87a445b0ffee]
+|-
+| [[XFS]] || {{Yes}} || {{Yes}} || [https://xfs.org/index.php/FITRIM/discard]
+|-
+| [[Swap]] || {{Yes}} || {{No}} || Not technically a "file system", but TRIM is still relevant. The "once" option provides scheduled trimming at startup. See {{man|8|swapon}}.
+|}
+
+{{Warning|Users need to be certain that their SSD supports TRIM before attempting to use it. Data loss can occur otherwise!}}
+
+To verify TRIM support, run:
+
+ $ lsblk --discard
+
+And check the values of DISC-GRAN (discard granularity) and DISC-MAX (discard max bytes) columns. Non-zero values indicate TRIM support.
+
+For SATA SSDs only, the {{Pkg|hdparm}} package can detect TRIM support via {{ic|hdparm -I /dev/sda {{!}} grep TRIM}} as the [[root user]]. {{ic|hdparm}} does however not support NVMe SSDs.
+
+==== Periodic TRIM ====
+
+The {{Pkg|util-linux}} package provides {{ic|fstrim.service}} and {{ic|fstrim.timer}} [[systemd]] unit files. [[Enabling]] the timer will activate the service weekly. The service executes {{man|8|fstrim}} on all mounted file systems on devices that support the ''discard'' operation.
+
+The timer relies on the timestamp of {{ic|/var/lib/systemd/timers/stamp-fstrim.timer}} (which it will create upon first invocation) to know whether a week has elapsed since it last ran. Therefore there is no need to worry about too frequent invocations, in an ''anacron''-like fashion.
+
+To query the units activity and status, see [[journalctl]]. To change the periodicity of the timer or the command run, [[edit]] the provided unit files.
+
+==== Continuous TRIM ====
+
+Instead of issuing TRIM commands once in a while (by default once a week if using {{ic|fstrim.timer}}), it is also possible to issue TRIM commands each time files are deleted instead. The latter is known as the continuous TRIM.
+
+{{Warning|Before [[Wikipedia:Serial ATA#SATA revision 3.1|SATA 3.1]] all TRIM commands were non-queued, so continuous trimming would produce frequent system freezes. In this case, applying [[#Periodic TRIM]] less often is better alternative. Similar issue holds also for a number of devices, see the {{ic|__ata_dev_quirks}} entries with {{ic|ATA_QUIRK_NO_NCQ_TRIM}} in [https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/drivers/ata/libata-core.c Linux source code], for which queued TRIM command execution was blacklisted due to serious data corruption. In such case, depending on the device, the system may be forced to send non-queued TRIM commands the SSD instead of queued TRIM. See [[Wikipedia:Trim_(computing)#Disadvantages]] for details.}}
+
+Using the {{ic|discard}} option for a mount in {{ic|/etc/fstab}} enables continuous TRIM in device operations. For example:
+
+ /dev/disk/by-designator/root  /  ext4  defaults,'''discard'''  0 1
+
+{{Note|1=Specifying the discard mount option in {{ic|/etc/fstab}} does not work with an XFS {{ic|/}} partition. According to [https://bbs.archlinux.org/viewtopic.php?id=143254 this thread], it has to be set using the {{ic|1=rootflags=discard}} [[kernel parameter]].}}
+
+On the ext4 file system, the {{ic|discard}} flag can also be set as a [[Access Control Lists#Enable ACL|default mount option]] using ''tune2fs'':
+
+ # tune2fs -o discard /dev/sd'''''XY'''''
+
+Using the default mount options instead of an entry in {{ic|/etc/fstab}} is particularly useful for external drives, because such partition will be mounted with the default options also on other machines. This way, there is no need to edit {{ic|/etc/fstab}} on every machine.
+
+{{Note|The default mount options are not listed in {{ic|/proc/mounts}}.}}
+
+==== Trim an entire device ====
+
+If you want to trim your entire SSD at once, ''e.g.'' for a new install or if you want to sell the drive, you can use the [[Solid state drive/Memory cell clearing#Common method with blkdiscard|blkdiscard]] command.
+
+==== Trim unpartitioned space ====
+
+[[fdisk]] can trim only the free space sectors between partitions so that those sectors may be reused for wear levelling. Use the {{ic|T}} command, and press {{ic|f}} at the prompt that follows.
+
+Or use the {{ic|--discard-free}} option in ''sfdisk'':
+
+ # sfdisk --discard-free /dev/sd''X''
+
+==== LVM ====
+
+TRIM requests that get passed from the file system to the logical volume are automatically passed to the physical volume(s). No additional configuration is necessary.
+
+No [[LVM]] operations (''lvremove'', ''lvreduce'' and all others) issue TRIM requests to physical volume(s) by default. This is done to allow restoring previous volume group configuration with {{man|8|vgcfgrestore}}. The setting {{ic|issue_discards}} in {{ic|/etc/lvm/lvm.conf}} controls whether discards are sent to a logical volume's underlying physical volumes when the logical volume is no longer using the physical volumes' space.
+
+{{Note|Carefully read the comment in {{ic|/etc/lvm/lvm.conf}} before changing the {{ic|issue_discards}} setting. It does not in any way affect TRIM requests that get passed from the file system to the disk (e.g. file deletions inside a file system) nor does it affect space management within a thin pool.}}
+
+{{Warning|Enabling {{ic|issue_discards}} will prevent volume group metadata restoration with ''vgcfgrestore''. There will be no recovery options in case of a mistakenly issued LVM command.}}
+
+==== dm-crypt ====
+
+{{Warning|dm-crypt supports passing through discard requests to the underlying block device. This may or may not improve performance on SSD storage [https://lore.kernel.org/linux-raid/508FA2C6.2050800@hesbynett.no/], but has security implications, so it is not enabled by default.}}
+
+Follow the instructions in [[dm-crypt/Specialties#Discard/TRIM support for solid state drives (SSD)]] to enable discard support for LUKS and plain dm-crypt devices.
+
+==== swap ====
+
+To enable discard for swap space, either add the {{ic|discard}} option to a swap device's entry in [[fstab]] or pass {{ic|--discard}} when calling {{ic|swapon}}.
+
+Discard is ''not'' automatically enabled for swap partitions when using [[systemd#GPT partition automounting|GPT partition automounting]].
+
+See {{man|8|swapon}} for discussion on when swap is discarded: {{ic|1=discard=once}} or {{ic|1=discard=pages}}. If {{ic|discard}} is specified without a specific mode, the default is to enable both.
+
+{{Warning|Enabling discard on RAID setups using mdadm will cause system lockup on boot and during runtime, if using swapon.}}
+
+=== Maximizing performance ===
+
+Follow the tips in [[Improving performance#Storage devices]] to maximize the performance of your drives.
+
+==== SSD memory cell clearing ====
+
+On occasion, users may wish to completely reset an SSD's cells to the same virgin state they were at the time the device was installed, thus restoring it to its [https://www.anandtech.com/show/2738/8 factory default write performance]. Write performance is known to degrade over time even on SSDs with native TRIM support: TRIM only safeguards against file deletes, not replacements such as an incremental save.
+
+The reset can be accomplished by following the appropriate procedure denoted in [[Solid state drive/Memory cell clearing]], either for [[Solid state drive/Memory cell clearing#SATA drive|SATA]] or [[Solid state drive/Memory cell clearing#NVMe drive|NVMe]] SSDs.
+
+{{Note|If the reason for the reset is to wipe data, you may not want to rely on the SSD controller to perform it securely, ''e.g.'' if you do not trust the manufacturer or are wary of potential bugs. In this case, see [[Securely wipe disk#Flash memory]] for further information and examples to perform a manual wipe.}}
+
+=== Security ===
+
+==== Frozen mode ====
+
+Some motherboard firmware issue a ATA SECURITY FREEZE LOCK command to SATA devices on initialization, setting the drive to frozen mode which transitions it to SEC2 state (security disabled, not locked, frozen). Likewise some SSD (and HDD) are set to this state in the factory already. This can be seen in [[hdparm]] and [[smartctl]] output:
+
+{{hc|# hdparm -I /dev/sda|output=
+ Security:
+ 	Master password revision code = 65534
+ 		supported
+ 	'''not	enabled'''
+ 	'''not	locked'''
+ 		'''frozen'''
+ 	not	expired: security count
+ 		supported: enhanced erase
+ 	4min for SECURITY ERASE UNIT. 2min for ENHANCED SECURITY ERASE UNIT.
+}}
+
+{{hc|# smartctl -g security /dev/sda|
+ATA Security is:  Disabled, frozen [SEC2]
+}}
+
+Operations like formatting the device or installing operating systems are not affected by the frozen mode.
+
+The above ''hdparm'' output shows the device is '''not locked''' by an HDD-password on boot and the '''frozen''' state safeguards the device against malwares which may try to lock it by setting a password to it at runtime.
+
+If you intend to set a password to a "frozen" device yourself, a motherboard BIOS with support for it is required. A lot of notebooks have support, because it is required for [[Self-encrypting drives|hardware encryption]], but support may not be trivial for a desktop/server board. For the Intel DH67CL/BL motherboard, for example, the motherboard has to be set to "maintenance mode" by a physical jumper to access the settings.[https://sstahlman.blogspot.in/2014/07/hardware-fde-with-intel-ssd-330-on.html?showComment=1411193181867#c4579383928221016762]
+
+{{Warning|Do not try to change the above '''lock''' security settings with ''hdparm'' unless you know exactly what you are doing.}}
+
+If you intend to erase the SSD, see [[Securely wipe disk#hdparm]] and [[/Memory cell clearing]].
+
+===== Setting the SATA SSD state to frozen mode after waking up from sleep =====
+
+When waking up from S3 sleep, the SATA SSD will most likely have reverted to SEC1 state (security disabled, not locked, not frozen), leaving it vulnerable to ATA SECURITY ERASE UNIT commands like those described in [[/Memory cell clearing]].
+
+In order to prevent this issue, a script can be run [[Power management/Suspend and hibernate#Hooks in /usr/lib/systemd/system-sleep|after waking up from sleep]]:
+
+{{hc|/usr/lib/systemd/system-sleep/ssd-freeze.sh|2=
+#!/bin/sh
+if [ "$1" = 'post' ]; then
+	sleep 1
+	if hdparm --security-freeze /dev/disk/by-id/''ata-name-of-disk''; then
+		logger "$0: SSD freeze command executed successfully"
+	else
+		logger "$0: SSD freeze command failed"
+	fi	
+fi
+}}
+
+If the system has multiple storage devices and/or portable USB-drives, another option is to adapt [[Hdparm#Persistent configuration using udev rule]] to issue a {{ic|--security-freeze}} for all drives (incl. HDD).
+
+==== Hardware encryption ====
+
+As noted in [[#Frozen mode]], setting a password for a storage device (SSD/HDD) in the BIOS may also initialize the hardware encryption of devices supporting it. If the device also conforms to the OPAL standard, this may also be achieved without a respective BIOS feature to set the passphrase. See [[Self-encrypting drives]].
+
+== Troubleshooting ==
+
+It is possible that the issue you are encountering is a firmware bug which is not Linux specific, so before trying to troubleshoot an issue affecting the SSD device, you should first check if updates are available for:
+
+* The [[#Firmware|SSD's firmware]]
+* The [[Flashing BIOS from Linux|motherboard's BIOS/UEFI firmware]]
+
+Even if it is a firmware bug it might be possible to avoid it, so if there are no updates to the firmware or you hesitant on updating firmware then the following might help.
+
+=== Resolving NCQ errors ===
+
+Some SSDs and SATA chipsets do not work properly with Linux Native Command Queueing (NCQ). The tell-tale errors in the [[journal]] look like:
+
+ ata9: exception Emask 0x0 SAct 0xf SErr 0x0 action 0x10 frozen
+ ata9.00: failed command: READ FPDMA QUEUED
+ ata9.00: cmd 60/04:00:d4:82:85/00:00:1f:00:00/40 tag 0 ncq 2048 in
+ res 40/00:18:d3:82:85/00:00:1f:00:00/40 Emask 0x4 (timeout)
+
+To disable NCQ on boot, add {{ic|1=libata.force=noncq}} to the kernel command line in the [[boot loader]] configuration. To disable NCQ only for disk 0 on port 9 use: {{ic|1=libata.force=9.00:noncq}}
+
+Alternatively, you may disable NCQ for a specific drive without rebooting via sysfs:
+
+ # echo 1 > /sys/block/sdX/device/queue_depth
+
+If this (and also updating the firmware) does not resolve the problem or causes other issues, then [[Reporting bug guidelines|file a bug report]].
+
+=== Resolving SATA power management related errors ===
+
+Some SSDs (e.g. Transcend MTS400 or Crucial M550 SSDs) are failing with certain SATA controllers when [[wikipedia:Aggressive Link Power Management|SATA Active Link Power Management (ALPM)]], is enabled. 
+
+ALPM is enabled by default since linux-4.16, or may be enabled at runtime by a power saving daemon (e.g. [[TLP]], [[Laptop Mode Tools]]). See [[Power management#SATA Active Link Power Management]] for more on this.
+
+=== External SSD with TRIM support ===
+
+{{Style|Several [[Help:Style|style]] and formatting problems, especially too many explicit commands - see [[Help:Style#File editing requests]].}}
+
+{{Expansion|The path for geting vendor and product IDs from /sys/block/ is not fully specified.|section=More_specific_path_in_/sys/block/_to_get_idVendor_and_idProduct}}
+
+Several USB-to-SATA bridge chips (like VL715, VL716 etc.) and also USB-to-PCIe bridge chips (like the [https://www.jmicron.com/PDF/brief/jms583.pdf JMicron JMS583] used in external NVMe enclosures like [https://icybox.de/en/product.php?id=71 IB-1817M-C31]) support TRIM-like commands that can be sent through the [[wikipedia:USB Attached SCSI|USB Attached SCSI]] driver (named "uas" under Linux).
+
+But the kernel may not automatically detect this capability, and therefore might not use it.
+Assuming your block device in question is {{ic|/dev/sd''X''}}, you can find out whether that is the case by using the command from {{Pkg|sg3_utils}}:
+
+ # sg_readcap -l /dev/sd''X''
+
+If in its output you find a line stating {{ic|1=Logical block provisioning: lbpme=0}} then you know that the kernel assumes the device does not support "[https://www.seagate.com/files/staticfiles/support/docs/manual/Interface%20manuals/100293068k.pdf#G4.1427908 Logical Block Provisioning Management]" because the (LBPME) bit is not set.
+
+If this is the case, then you should next find out whether the [https://www.seagate.com/files/staticfiles/support/docs/manual/Interface%20manuals/100293068k.pdf#G4.3076244 "Vital Product Data" (VPD) page on "Logical Block Provisioning"] of your device tells of supported mechanisms for unmapping data. You can do this using the command:
+
+ # sg_vpd -a /dev/sd''X''
+
+Look for lines in the output that look like this:
+
+ Logical block provisioning VPD page (SBC)
+   LBPU=1
+   LBPWS=0
+   LBPWS10=0
+
+This example would tell you the device supports the "UNMAP" command.
+
+Have a look at the output of
+
+ $ cat /sys/block/sd''X''/device/scsi_disk/*/provisioning_mode
+
+If the kernel did not detect the capability of your device to unmap data, then this will likely return "full". Apart from "full", the kernel SCSI storage driver currently knows the following values for provisioning_mode:
+
+ unmap
+ writesame_16
+ writesame_10
+ writesame_zero
+ disabled
+
+For the example above, you could now write "unmap" to "provisioning_mode" to ask the kernel to use that:
+
+ # echo "unmap" >/sys/block/sd''X''/device/scsi_disk/*/provisioning_mode
+
+This should immediately enable you to use tools like ''blkdiscard'' on {{ic|/dev/sd''X''}} or ''fstrim'' on file systems mounted on {{ic|/dev/sd''X''}}.
+
+If you want to enable a "provisioning_mode" automatically when an external device of a certain vendor/product is attached, this can be automated via the "[[udev]]" mechanism. First find the USB Vendor and Product IDs:
+
+ $ cat /sys/block/sd''X''/../../../../../../idVendor
+ $ cat /sys/block/sd''X''/../../../../../../idProduct
+
+Then create a [[udev]] rule file (example here using {{ic|idVendor}} {{ic|152d}} and {{ic|idProduct}} {{ic|0583}}):
+
+{{hc|/etc/udev/rules.d/10-uas-discard.rules|2=
+ACTION=="add{{!}}change", ATTRS{idVendor}=="152d", ATTRS{idProduct}=="0583", SUBSYSTEM=="scsi_disk", ATTR{provisioning_mode}
+}}
+
+You can also use the {{ic|lsusb}} command to look for the relevant {{ic|idVendor}}/{{ic|idProduct}}.
+
+==== Booting via encrypted external SSD ====
+
+Further to above steps, if you are booting your system via the external SSD with an encrypted root partition, then you must perform additional steps to allow TRIM for the unmap provisioning mode at boot time.
+
+First, follow [[Dm-crypt/Specialties#Discard/TRIM support for solid state drives (SSD)]] to enable TRIM support on the encrypted partition.
+
+Then, add the udev rules file created above to the {{ic|FILES}} array of {{ic|/etc/mkinitcpio.conf}}:
+
+ FILES=(/etc/udev/rules.d/10-uas-discard.rules)
+
+Finally, [[regenerate the initramfs]] to include the udev rule.
+
+Reboot the system for changes to take effect.
+
+== Firmware ==
+
+If supported by the device vendor, it is recommended to update firmware using the [[fwupd]] utility.
+
+To check your current firmware version:
+
+ # smartctl -i /dev/''ssd_device''
+
+=== ADATA ===
+
+Updating SSD firmware under Linux is not supported by ADATA. A Windows-only utility called SSD ToolBox is provided by ADATA through their [https://www.adata.com/en/support/consumer?tab=downloads&download=driver support page] and through their ADATA XPG [https://www.xpg.com/en/support/xpg?tab=downloads&download=driver support page] to monitor, TRIM, benchmark and update ADATA SSD firmware.
+
+{{Warning|It is discouraged to attempt to update firmware through [[Wine]] as it is not designed to handle hardware interfaces and an incomplete firmware update can potentially brick your device.}}
+
+=== Crucial ===
+
+Crucial provides an option for updating the firmware with an ISO image. These images can be found after selecting the product on their [https://www.crucial.com/usa/en/support-ssd SSD support page] and downloading the "Manual Boot File."
+
+{{Note|ISO images provided by Crucial do not seem to be hybrid. If you will use just the {{ic|dd}} command to copy the image to some device, the [[MBR]] will not be present, making such device unbootable. Install {{Pkg|syslinux}} and run {{ic|isohybrid path/to/image.iso}}.}}
+
+Owners of an M4 Crucial model, may check if a firmware upgrade is needed with {{ic|smartctl}}.
+
+{{hc|$ smartctl --all /dev/sd'''X'''|
+==> WARNING: This drive may hang after 5184 hours of power-on time:
+https://www.tomshardware.com/news/Crucial-m4-Firmware-BSOD,14544.html
+See the following web page for firmware updates:
+https://www.crucial.com/usa/en/support-ssd
+}}
+
+Users seeing this warning are advised to backup all sensible data and '''consider upgrading immediately'''. Check [https://www.rojtberg.net/1008/updating-crucial-mx100-firmware-with-ubuntu/ this instructions] to update Crucial MX100 firmware by using the ISO image and Grub.
+
+Besides the bootable ISO, {{AUR|micron-storage-executive-cli}} is a command-line tool for flashing firmwares and also offers additional SSD information.
+
+=== Intel ===
+
+Intel has a Linux live system based [https://downloadcenter.intel.com/download/18363 Firmware Update Tool] for operating systems that are not compatible with its Windows [https://downloadcenter.intel.com/download/30380/ Intel® Memory and Storage Tool (GUI)] software.
+
+There is also a newer Linux command-line utility that can reflash firmware called the [https://downloadcenter.intel.com/download/29337/Intel-Memory-and-Storage-Tool-CLI-Command-Line-Interface-?product=83425 Intel Memory and Storage (MAS) Tool] available as {{AUR|intel-mas-cli-tool}}.  There is a [https://downloadmirror.intel.com/822151/342329_CLI_IMAS_Tool_Install_Guide_Public_Rev011US.pdf PDF user guide] available.
+
+An example for checking the firmware status is:
+
+{{hc|# intelmas show -intelssd 0|
+DevicePath : /dev/nvme0n1
+DeviceStatus : Healthy
+Firmware : 002C
+FirmwareUpdateAvailable : The selected Intel SSD contains current firmware as of this tool release.
+}}
+
+{{ic|-intelssd 0}} can be omitted if there is only one Intel SSD in the system, or {{ic|1}} passed for the second SSD, and so on.
+
+If an update is available, it is performed by running {{ic|intelmas load -intelssd 0}}. The PDF user guide suggests that this procedure needs to be performed twice in Linux, with a power cycle in between. The latest firmware for all devices is distributed as part of the MAS Tool itself, so does not need to be downloaded separately.
+
+=== Kingston ===
+
+KFU tool is available for the Sandforce based drives, {{AUR|kingston_fw_updater}}.
+
+=== Mushkin ===
+
+The lesser known Mushkin brand solid state drives also use Sandforce controllers, and have a Linux utility (nearly identical to Kingston's) to update the firmware.
+
+=== OCZ ===
+
+OCZ has a [https://www.ocz.com/us/download/clout Command Line Online Update Tool (CLOUT)] available for Linux. The existing packages are {{AUR|ocz-ssd-utility}}, {{AUR|ocztoolbox}} and {{AUR|oczclout}}.
+
+=== Samsung ===
+
+Although Samsung deems firmware update methods outside of their Magician software as "unsupported", they still ''can'' work. The Magician software can create a bootable USB drive containing the firmware update, however Samsung no longer provides the software for consumer SSDs. Samsung also provides pre-made [https://www.samsung.com/semiconductor/minisite/ssd/download/tools.html bootable ISO images] that can be used to update the firmware. Another option is to use Samsung's ''magician'' utility provided by {{AUR|samsung_magician-consumer-ssd}}. Magician only supports Samsung-branded SSDs; those manufactured by Samsung for OEMs (e.g., Lenovo) are not supported.
+
+{{Note|Samsung does not make it obvious at all that they actually provide these. They seem to have 4 different firmware update pages and each references different ways of doing things.}}
+
+Users preferring to run the firmware update from a live USB created under Linux (without using Samsung's Magician software under Microsoft Windows) can refer to [https://web.archive.org/web/20160322230114/fomori.org/blog/?p=933] for more details. Note that this blog post details creating a bootable USB drive with Master Boot Record ([[MBR]]) that some newer motherboards, e.g. [https://www.intel.com/content/www/us/en/support/articles/000057401/intel-nuc.html Intel NUC] no longer support.
+
+==== Update under Linux ====
+
+The SSD firmware can be updated natively (without making a bootable USB stick) as shown below. First visit the [https://www.samsung.com/semiconductor/minisite/ssd/download/tools Samsung downloads page], go to the "Samsung SSD Firmware" section, and download the latest firmware for your SSD—it should be an ISO image.
+
+{{Note|Some ISO images will lack the {{ic|initrd}} Linux image mentioned below. See [[#Older SSDs]] instead.}}
+
+Extract the {{ic|initrd}} Linux image from the ISO image:
+
+ $ bsdtar xf ''samsung_ssd_firmware''.iso initrd
+
+Extract {{ic|root/fumagician/}}. This directory contains the firmware update files:
+
+ $ bsdtar xf initrd root/fumagician
+
+Finally, run {{ic|root/fumagician/fumagician}} with root privileges and [[reboot]] your system (if the firmware was successfully updated).
+
+If after reboot the firmware version does not change, run {{ic|root/fumagician/fumagician 2> log}} and search for errors in the log file. For example, if the log shows 'unzip is not available', install unzip or extract it from the initrd.
+
+===== Older SSDs =====
+
+Some of the SSD firmware ISO images contain a FreeDOS image instead of an {{ic|initrd}} Linux image, so the steps needed to update the SSD firmware differ from above. The following table lists these SSDs (and relevant paths):
+
+{| class="wikitable"
+! SSD model !! FreeDOS image path !! Firmware package path
+|-
+| 470, 830 || {{ic|BTDSK.IMG}} || {{ic|SSR/}}
+|-
+| 840 || {{ic|isolinux/btdsk.img}} || rowspan="2" | {{ic|samsung/DSRD/}}
+|-
+| 840 EVO (mSATA), Pro || {{ic|ISOLINUX/BTDSK.IMG}}
+|}
+
+First, extract the FreeDOS image from the ISO image:
+
+ $ bsdtar xf ''samsung_ssd_firmware''.iso ''freedos_image_path''
+
+Mount the FreeDOS image to {{ic|/mnt/}}:
+
+ # mount ''freedos_image_path'' /mnt
+
+Get the disk number of the SSD under ''Disk Number'' from the Magician SSD management utility:
+
+ # magician --list
+
+Update the SSD firmware for the specified disk by providing the firmware package path:
+
+ # magician --disk ''disk_num'' --firmware-update --fwpackage-path /mnt/''firmware_package_path''
+
+Finally, verify whether the firmware was successfully updated by checking the version under ''Firmware'' from the output of {{ic|magician --list}} (with root privileges). Reboot your system if so.
+
+=== SanDisk ===
+
+SanDisk makes ISO firmware images to allow SSD firmware update on operating systems that are unsupported by their SanDisk SSD Toolkit.
+
+One must choose the firmware for the correct ''SSD model'', '''and''' the correct ''capacity'' that it has (e.g. 60GB, '''or''' 256GB). After burning the ISO firmware image, simply restart the PC to boot with the newly created CD/DVD boot disk (may work from a USB stick).
+
+The iso images just contain a linux kernel and an initrd. Extract them to {{ic|/boot}} partition and boot them with [[GRUB]] or [[Syslinux]] to update the firmware.
+
+See also:
+
+* SanDisk Extreme SSD [https://forums.sandisk.com/t/sandisk-extreme-ssd-firmware-download-for-mac-and-linux-and-pc/74022 Manual Firmware update version R211]
+* SanDisk Ultra SSD [https://forums.sandisk.com/t/sandisk-ultra-ssd-firmware-download-for-mac-and-linux-and-pc/74277 Manual Firmware update version 365A13F0]
+* SanDisk Ultra+ SSD [https://forums.sandisk.com/t/sandisk-ultra-ssd-manual-firmware-update-version-x2316rl/74263 Manual Firmware update version X2316RL] - use {{ic|smartctl -i dev/disk/by-id/*SanDisk!(*part*)}} as root to determine if a "H2" or "HP" model is used.
+
+== See also ==
+
+* [https://www.reddit.com/r/archlinux/comments/rkwjm/what_should_i_keep_in_mind_when_installing_on_ssd/ Discussion on Reddit about installing Arch on an SSD]
+* [https://lore.kernel.org/linux-btrfs/20120830215008.GB2879@localhost.localdomain/ Re: Varying Leafsize and Nodesize in Btrfs]
+* [https://lore.kernel.org/linux-btrfs/5052700D.4020003@gmail.com/ Re: SSD alignment and Btrfs sector size]
+* [https://forums.anandtech.com/threads/erase-block-alignment-misinformation.2266113/ Erase Block (Alignment) Misinformation?]
+* [https://superuser.com/questions/492084/is-alignment-to-erase-block-size-needed-for-modern-ssds Is alignment to erase block size needed for modern SSD's?]
+* [https://lore.kernel.org/linux-btrfs/jgui4j$th5$1@dough.gmane.org/ Btrfs support for efficient SSD operation (data blocks alignment)]

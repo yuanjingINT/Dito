@@ -1,0 +1,695 @@
+[[Category:Multimedia]]
+[[fi:PipeWire]]
+[[hu:PipeWire]]
+[[ja:PipeWire]]
+[[pt:PipeWire]]
+[[ru:PipeWire]]
+[[zh-hans:PipeWire]]
+{{Related articles start}}
+{{Related|/Examples}}
+{{Related|Sound system}}
+{{Related|WirePlumber}}
+{{Related|/Troubleshooting}}
+{{Related articles end}}
+
+[https://pipewire.org PipeWire] is a new low-level multimedia framework. It aims to offer capture and playback for both audio and video with minimal latency and support for [[PulseAudio]], [[JACK]], [[ALSA]] and [[GStreamer]]-based applications.
+
+The daemon based on the framework can be configured to be both an audio server (with PulseAudio and JACK features) and a video capture server.
+
+PipeWire also supports containers like [[Flatpak]] and does not rely on the {{ic|audio}} and {{ic|video}} [[user group]]s. Instead, it uses a [[Polkit]]-like security model, asking Flatpak or Wayland for permission to record screen or audio.
+
+== Installation ==
+
+[[Install]] the {{Pkg|pipewire}} package from the official repositories. There is also {{Pkg|lib32-pipewire}} for [[multilib]] support.
+
+Optionally, install {{Pkg|pipewire-docs}} to review the documentation.
+
+Pipewire can work as drop-in replacement for other audio servers. See [[#Audio]] for details.
+
+=== Session manager ===
+
+Like [[JACK]], PipeWire implements no connection logic internally. The burden of watching for new streams and connecting them to the appropriate output device or application is left to an external component known as a session manager.
+
+==== WirePlumber ====
+
+[[WirePlumber]] is the recommended session manager. It is based on a modular design, with Lua plugins that implement the actual management functionality.
+
+The stock configuration files are stored in {{ic|/usr/share/wireplumber}}. The recommended way to customize Wireplumber is adding snippets overriding specific settings in {{ic|/etc/wireplumber}} or {{ic|~/.config/wireplumber}}. [https://pipewire.pages.freedesktop.org/wireplumber/daemon/locations.html#config-locations].
+
+WirePlumber changed its configuration format in version 0.5 from {{ic|.lua}} to {{ic|.conf}}. See https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/migration.html#config-migration for migration instructions.
+
+==== PipeWire Media Session ====
+
+{{Pkg|pipewire-media-session}} is deprecated and no longer recommended. It was mostly implemented for testing and as an example for building new session managers.
+
+=== Startup ===
+
+Pipewire uses [[systemd/User]] for management of the server and automatic [[socket activation]]: it will start automatically when needed.
+
+To preemptively start PipeWire at login, [[enable/start]] the {{ic|pipewire.service}}, {{ic|pipewire-pulse.service}} and {{ic|wireplumber.service}} [[user unit]]s.
+
+=== GUI ===
+
+* {{App|Cable|A PyQt application to dynamically modify PipeWire and WirePlumber settings at runtime.|https://github.com/magillos/Cable|{{AUR|cable}}}}
+* {{App|coppwr|Low level control and diagnostic GUI for PipeWire.|https://github.com/dimtpap/coppwr|{{AUR|coppwr}}}}
+* {{App|Helvum|GTK-based patchbay for PipeWire, inspired by the JACK tool ''catia''. Does not save wire sets.|https://gitlab.freedesktop.org/pipewire/helvum|{{Pkg|helvum}}}}
+* {{App|pwvucontrol|Pipewire Volume Control. Alternative to pavucontrol.|https://github.com/saivert/pwvucontrol|{{AUR|pwvucontrol}}}}
+* {{App|qpwgraph|Qt-based Graph/Patchbay for PipeWire, inspired by the JACK tool QjackCtl. Saves wire sets.|https://gitlab.freedesktop.org/rncbc/qpwgraph|{{Pkg|qpwgraph}}}}
+* {{App|Simple Wireplumber GUI|A simple GTK4 GUI for PipeWire. With this tool you can easily rename and see the properties of your audio devices if you are running PipeWire as your audio server and WirePlumber as its session and policy manager.|https://github.com/dyegoaurelio/simple-wireplumber-gui|{{AUR|simple-wireplumber-gui}}}}
+* {{App|sonusmix|Pipewire audio routing tool|https://codeberg.org/sonusmix/sonusmix|{{AUR|sonusmix}}}}
+* {{App|Pipewire Control Center|GTK4/libadwaita control center for PipeWire — signal paths routing apps through effect chains to any output, parametric equalizer, live meters, mic cleanup, patchbay, monitoring, virtual devices, filter chains, HRIR surround, drop-in configs.|https://github.com/knightinfected/PipeWireController|{{AUR|pipewire-control-center}}}}
+
+=== TUI ===
+
+* {{App|pipemixer|A TUI volume control application for pipewire built with ncurses.|https://github.com/heather7283/pipemixer|{{AUR|pipemixer}}}}
+* {{App|wiremix|A simple TUI audio mixer for PipeWire.|https://github.com/tsowell/wiremix|{{Pkg|wiremix}}}}
+
+== Configuration ==
+
+The PipeWire package provides an initial set of [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Config-PipeWire#configuration-file-pipewireconf configuration files] in {{ic|/usr/share/pipewire}}. You should not edit these files directly, as package updates will overwrite your changes. To configure PipeWire, you can copy files from {{ic|/usr/share/pipewire}} to the alternate system-wide location {{ic|/etc/pipewire}}, or to the user location {{ic|~/.config/pipewire}}. An equally named file in a directory with a higher precedence makes the analogous files ignored.
+
+PipeWire brings a custom [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/FAQ#what-is-the-pro-audio-profile Pro Audio] (do not confuse with [[pro audio]]) profile in addition to the PulseAudio profiles, selectable through {{Pkg|pavucontrol}}.
+
+== Usage ==
+
+=== Audio ===
+
+PipeWire can be used as an audio server, similar to PulseAudio and JACK. It aims to replace both PulseAudio and JACK, by providing a PulseAudio-compatible server implementation and ABI-compatible libraries for JACK clients. See the blog post [https://blogs.gnome.org/uraeus/2020/09/04/pipewire-late-summer-update-2020/ PipeWire Late Summer Update 2020] for more information.
+
+First, install {{Pkg|pipewire-audio}}. Depending on the type of audio clients, you may also need to take some extra steps. You may need to install additional firmware for your audio device, see [[Advanced Linux Sound Architecture#Firmware]].
+
+==== ALSA clients ====
+
+Install {{Pkg|pipewire-alsa}} (and remove {{Pkg|pulseaudio-alsa}} if it was installed) to route all applications using the ALSA API through PipeWire.
+
+==== PulseAudio clients ====
+
+Install {{Pkg|pipewire-pulse}}. It will replace {{Pkg|pulseaudio}} and {{Pkg|pulseaudio-bluetooth}}. Reboot, re-login or [[stop]] {{ic|pulseaudio.service}} and [[start]] the {{ic|pipewire-pulse.service}} [[user unit]] to see the effect.
+
+Normally, no further action is needed as the user service {{ic|pipewire-pulse.socket}} should be enabled automatically by the package. To check if the replacement is working, run the following command for the ''Server Name'' and default input/output:
+
+{{hc|$ pactl info|2=
+...
+Server Name: PulseAudio (on PipeWire ''x.y.z'')
+...
+Default Sink: alsa_output.{bus}-{device}.{profile}
+Default Source: alsa_input.{bus}-{device}.{profile}
+...
+}}
+
+{{man|1|pactl}} is provided by PulseAudio client library package ({{pkg|libpulse}}), which is installed with ''pipewire-pulse'' as a dependency.
+
+===== Setting overall or individual channel volume =====
+
+To adjust output channel volume, the ''sink'' needs to be specified using {{ic|pactl get-sink-volume {sink}}} using the value of ''Default Sink:'' (above) or ''Name:'' (below), default sink device (''@DEFAULT_SINK@''), or ''Sink #'' (e.g. ''1'' below):
+{{hc|$ pactl list sinks {{!}} grep -B1 -A9 State:|2=
+Sink #1
+        State: RUNNING
+        Name: alsa_output.pci-0000_2d_00.4.analog-surround-51
+...
+        Driver: PipeWire
+...
+        Mute: no
+        Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: 65536 / 100% / 0.00 dB,   rear-left: 65536 / 100% / 0.00 dB,   rear-right: 65536 / 100% / 0.00 dB,   front-center: 65536 / 100% / 0.00 dB,   lfe: 65536 / 100% / 0.00 dB
+                balance 0.00
+}}
+Hint: if audio is playing, {{man|1|grep}} for ''RUNNING'' as other devices will be ''SUSPENDED''.
+
+The ''balance'' ratio is calculated automatically. To set the overall volume of the default device use: {{bc|pactl set-sink-volume @DEFAULT_SINK@ 75%}}
+To set individual channels, provide each channel volume separately:
+{{bc|pactl set-sink-volume @DEFAULT_SINK@ 100% 75% 100% 75% 100% 100%}}
+
+''Source'' inputs are handled similarly.  For further configuration (e.g. regarding modules) see the official upstream Wiki about [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Migrate-PulseAudio Migration from PulseAudio] and [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Config-PulseAudio Pipewire-Pulse Configuration].
+
+==== JACK clients ====
+
+Install {{Pkg|pipewire-jack}} for [[JACK]] support. There is also {{Pkg|lib32-pipewire-jack}} for [[multilib]] support.
+
+{{man|1|pw-jack}} may be used to start JACK clients, but it is technically not required, as it only serves as a wrapper around the {{ic|PIPEWIRE_REMOTE}}, {{ic|PIPEWIRE_DEBUG}} and {{ic|PIPEWIRE_LATENCY}} environment variables.
+
+It is possible to request a custom buffer size by setting a quotient of buffersize/samplerate (which equals the block latency in seconds):
+
+ PIPEWIRE_LATENCY="128/48000" ''application''
+
+==== Bluetooth devices ====
+
+PipeWire handles [[Bluetooth#Audio|Bluetooth audio devices]] if the {{Pkg|pipewire-audio}} package is installed.
+
+===== Automatic profile selection =====
+
+[[WirePlumber]] has profile auto-switching enabled by default. It can automatically switch between HSP/HFP and A2DP profiles whenever an input stream is detected. You can disable it with the following command:
+
+ $ wpctl settings --save bluetooth.autoswitch-to-headset-profile false
+
+{{Pkg|pipewire-media-session}} has it disabled by default. You can set {{ic|bluez5.autoswitch-profile}} property to {{ic|true}} to enable it:
+
+{{hc|/etc/pipewire/media-session.d/bluez-monitor.conf (or ~/.config/pipewire/media-session.d/bluez-monitor.conf)|output=
+...
+rules = [
+    {
+        ...
+        actions = {
+            update-props = {
+                ...
+                '''bluez5.autoswitch-profile = true'''
+...
+}}
+
+==== PipeWire patch sets for command line ====
+
+{{Pkg|qpwgraph}} can be used to visualize and create connections, and also save and load patch sets.
+
+For non-GUI needs, the following are bash scripts to save wiresets, load wiresets, and dewire all connections. For saving and loading, use a command-line parameter for the filename.
+
+{{hc|pw-savewires|<nowiki>
+#!/bin/bash
+
+if [[ "$#" -ne 1 ]]; then
+    echo
+    echo 'usage: pw-savewires filename'
+    echo
+    exit 1
+fi
+
+rm -- "$1" &> /dev/null
+
+link_nodeOutput=''
+
+while IFS= read -r line; do
+    if [[ "$line" =~ [|] ]];
+    then
+        link_nodeInput=`echo $line | cut -d ">" -f 2`
+        echo "Saving $link_nodeOutput, ${link_nodeInput//' '}"
+        echo "$link_nodeOutput ${link_nodeInput//' '}" >> "$1"
+    else
+        link_nodeOutput="$line"
+    fi
+done < <(pw-link -lo)
+</nowiki>}}
+
+{{hc|pw-loadwires|<nowiki>
+#!/bin/bash
+
+if [[ "$#" -ne 1 ]]; then
+    echo
+    echo 'usage: pw-loadwires filename'
+    echo
+    exit 1
+fi
+
+while IFS= read -r line; do
+    echo "Connecting $line"
+    pw-link $line
+done < <(cat -- "$1")
+</nowiki>}}
+
+{{hc|pw-dewire|<nowiki>
+#!/bin/bash
+
+link_nodeOutput=''
+
+while IFS= read -r line; do
+    if [[ "$line" =~ [|] ]];
+    then
+        link_nodeInput=`echo $line | cut -d ">" -f 2`
+        echo "Removing $link_nodeOutput, ${link_nodeInput//' '}"
+        pw-link -d $link_nodeOutput ${link_nodeInput//' '}
+    else
+        link_nodeOutput="$line"
+    fi
+done < <(pw-link -lo)
+</nowiki>}}
+
+==== Sharing audio devices with computers on the network ====
+
+PipeWire supports sharing audio over the network using several mechanisms, including:
+
+* [[Wikipedia:AES67|AES67]]
+* [[Wikipedia:Real-time Transport Protocol|RTP]]
+* [[Wikipedia:AirPlay|Apple Airplay]] (without DRM features)
+* JACK ([https://github.com/jackaudio/jack2/blob/develop/README_NETJACK2 netjack2])
+* [https://roc-streaming.org/ Roc]
+* [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Guide-Network-RTP PipeWire Native RTP]
+* [https://docs.pipewire.org/page_module_pulse_tunnel.html PulseAudio's network protocol]
+* [https://github.com/badaix/snapcast Snapcast]
+
+The PipeWire wiki includes an [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Network overview and comparison page] for the different network protocols.
+
+The Pulse Tunnel method is described below. The PipeWire PulseAudio implementation supports [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Config-PulseAudio#network-support network streaming]. An easy way to share audio between computers on the network is to use the [[Avahi]] daemon for discovery. To enable this functionality, [[install]] the {{Pkg|pipewire-zeroconf}} package.
+
+Make sure that the {{ic|avahi-daemon.service}} is running (and UDP port {{ic|5353}} is open if using a [[Avahi#Firewall|firewall]]) on all computers that will be sharing audio.
+
+{{Note|Some GUI volume managers hide network cards by default. (ex: in Plasma one has to "Configure Audio Volume..." and check "Show virtual devices".}}
+
+To share the local audio devices load the appropriate modules on the host (make sure to use the local IP address):
+
+ $ pactl load-module module-native-protocol-tcp listen=''192.168.1.10''
+ $ pactl load-module module-zeroconf-publish
+
+Then load the discovery module on the clients:
+
+ $ pactl load-module module-zeroconf-discover
+
+It is also possible to load the modules automatically by creating a dedicated configuration file. On the host:
+
+{{hc|/etc/pipewire/pipewire-pulse.conf.d/50-zeroconf-publish.conf (or ~/.config/pipewire/pipewire-pulse.conf.d/50-zeroconf-publish.conf)|2=
+pulse.cmd = [
+    { cmd = "load-module" args = "module-native-protocol-tcp listen=''192.168.1.10''" }
+    { cmd = "load-module" args = "module-zeroconf-publish" }
+]
+}}
+
+On the client:
+
+{{hc|/etc/pipewire/pipewire-pulse.conf.d/50-zeroconf-discover.conf (or ~/.config/pipewire/pipewire-pulse.conf.d/50-zeroconf-discover.conf)|2=
+pulse.cmd = [
+    { cmd = "load-module" args = "module-zeroconf-discover" }
+]
+}}
+
+===== Streaming audio to an AirPlay receiver =====
+
+It is possible to stream audio to a device that is posing as an [[Wikipedia:AirPlay#Receivers|AirPlay Receiver]]. To enable this functionality, load the [https://docs.pipewire.org/page_module_raop_discover.html RAOP Discover module]:
+
+ $ pactl load-module module-raop-discover
+
+It is also possible to load this module automatically by creating a dedicated configuration file:
+
+{{hc|/etc/pipewire/pipewire.conf.d/raop-discover.conf (or ~/.config/pipewire/pipewire.conf.d/raop-discover.conf)|2=
+context.modules = [
+   {
+       name = libpipewire-module-raop-discover
+       args = { }
+   }
+]
+}}
+
+Some speakers' AirPlay implementations (like Sonos AirPlay 2 speakers) may require opening up ports 6001 and 6002 for incoming UDP traffic on your source device.
+
+===== Streaming audio machine to machine via Roc =====
+
+[https://roc-streaming.org/ Roc streaming] is a realtime audio network protocol with forward error correction. It is easy to setup, since Pipewire supports it by default.
+
+First [[install]] the {{Pkg|pipewire-roc}} package.
+
+On target / host / DAC:
+
+{{hc|~/.config/pipewire/pipewire.conf.d/|2=
+context.modules = [
+  { name = libpipewire-module-roc-source
+    args = {
+        local.ip = 0.0.0.0
+        roc.resampler.backend = default
+        roc.resampler.profile = default
+        roc.latency-tuner.backend = default
+        roc.latency-tuner.profile = default
+        fec.code = default
+        sess.latency.msec = 100
+        local.source.port = 10001
+        local.repair.port = 10002
+        local.control.port = 10003
+    }
+  }
+]
+}}
+
+See [https://docs.pipewire.org/page_module_roc_source.html PipeWire documentation] for more options.
+
+{{Note|This works very well for Raspberry Pi DACs with recent Raspberry Pi operating system releases.}}
+
+On sender / client:
+
+{{hc|~/.config/pipewire/pipewire.conf.d/roc-sink.conf|2=
+context.modules = [
+  { name = libpipewire-module-roc-sink
+    args = {
+        fec.code = default
+        remote.ip = <IP address of host>
+        remote.source.port = 10001
+        remote.repair.port = 10002
+        remote.control.port = 10003
+        sink.props = {
+            node.name = "my-roc-sink"
+            node.description = "my-roc-sink"
+        }
+    }
+  }
+]
+}}
+
+See [https://docs.pipewire.org/page_module_roc_sink.html PipeWire documentation] for more options.
+
+{{Note|{{ic|node.description}} sets the displayed name of the sink read by ''pulsemixer'', while {{ic|node.name}} is read by ''pactl''. It is advisable to set both.}} 
+
+[[Restart]] the {{ic|pipewire.service}} [[user unit]] on both machines.
+
+==== Run PipeWire on top of native JACK ====
+
+PipeWire can also run as a [[JACK]] client on top of the native JACK daemon if desired.
+
+See [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/JACK JACK and PipeWire (PipeWire wiki)] and [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Config-JACK#jack-bridge JACK Bridge (PipeWire wiki)] for more information and additional configuration (like available channels for example).
+
+To use it install the {{pkg|pipewire-jack-client}} and start JACK. Pipewire should be bridged automatically.
+
+{{Note|Since pipewire [https://gitlab.freedesktop.org/pipewire/pipewire/-/releases/0.3.81 0.3.81] loading the jackdbus module is done automatically and is no longer necessary.
+It can manually be loaded (as explained by {{man|1|pactl}}) like a PulseAudio module: {{ic|pactl load-module module-jackdbus-detect}} before starting jack.
+}}
+
+==== Use ALSA dmix devices as PipeWire sinks ====
+
+It is possible to have a PipeWire server (or multiple, for each user) output to ALSA via [[Advanced Linux Sound Architecture#Software mixing|ALSA dmix devices]]. This allows you to use ALSA as the primary audio output system while being able to use non-ALSA devices such as Bluetooth headphones.
+
+===== ALSA dmix setup =====
+
+Suppose you have two cards, {{ic|PCH}} and {{ic|HDMI}}:
+
+{{hc|/proc/asound/cards|
+ 0 [PCH            ]: HDA-Intel - HDA Intel PCH
+                      HDA Intel PCH at 0xdff40000 irq 146
+ 1 [HDMI           ]: HDA-Intel - HDA ATI HDMI
+                      HDA ATI HDMI at 0xdfe60000 irq 147
+}}
+
+and your PCMs look like:
+
+{{hc|/proc/asound/pcm|
+00-00: ALC1220 Analog : ALC1220 Analog : playback 1 : capture 1
+00-02: ALC1220 Alt Analog : ALC1220 Alt Analog : capture 1
+01-03: HDMI 0 : HDMI 0 : playback 1
+01-07: HDMI 1 : HDMI 1 : playback 1
+01-08: HDMI 2 : HDMI 2 : playback 1
+01-09: HDMI 3 : HDMI 3 : playback 1
+01-10: HDMI 4 : HDMI 4 : playback 1
+01-11: HDMI 5 : HDMI 5 : playback 1
+}}
+
+and suppose your ALSA configuration looks something like this:
+
+{{hc|/etc/asound.conf|
+ctl.!default {
+  type hw
+  card PCH
+}
+
+pcm.!default {
+  type plug
+  slave.pcm "'''dmix:PCH,0'''"
+}
+
+pcm.dhdmi {
+  type plug
+  slave.pcm "'''dmix:HDMI,9'''"
+}
+}}
+
+In this particular example, the dmix devices would be {{ic|dmix:PCH,0}} and {{ic|dmix:HDMI,9}}.
+
+===== PipeWire dmix setup =====
+
+First of all, stop WirePlumber from monitoring and adding hardware ALSA devices by disabling the {{ic|monitor.alsa}} feature:
+
+{{hc|/etc/wireplumber/wireplumber.conf.d/disable-alsa-monitor.conf (or ~/.config/wireplumber/wireplumber.conf.d/disable-alsa-monitor.conf)|output=
+wireplumber.profiles = {
+  main = {
+    monitor.alsa = disabled
+  }
+}
+}}
+
+Now, configure PipeWire to use dmix devices. The default configuration file ({{ic|/usr/share/pipewire/pipewire.conf}}) contains a [https://gitlab.freedesktop.org/pipewire/pipewire/-/blob/1.2.5/src/daemon/pipewire.conf.in#L287-306 commented out example] which you can use as a basis.
+
+Add your own element to the {{ic|context.objects}} array:
+
+{{hc|/etc/pipewire/pipewire.conf.d/alsa-dmix.conf (or ~/.config/pipewire/pipewire.conf.d/alsa-dmix.conf)|output=
+context.objects = [
+    # We do not start with dmix, but with an input device.
+    # Do not forget to add an input device.
+    # On a friend's Laptop, I saw Zoom having a nervous
+    # breakdown and endlessly crying because no input device
+    # was configured! You have been warned.
+    { factory = adapter
+        args = {
+            factory.name           = api.alsa.pcm.source
+            node.name              = "alsa-mic-internal" # name of pulse device (mpv)
+            node.description       = "Mic Internal" # name of pulse device (pavucontrol)
+            media.class            = "Audio/Source"
+            api.alsa.path          = "'''hw:PCH,0'''"
+        }
+    }
+    # Okay, now we add our dmix PCMs
+    { factory = adapter
+        args = {
+            factory.name           = api.alsa.pcm.sink # sink for dmix
+            node.name              = "alsa-dmix-internal" # name of pulse device (mpv)
+            node.description       = "PCM Internal" # name of pulse device (pavucontrol)
+            media.class            = "Audio/Sink" # Sink for dmix
+            api.alsa.path          = "'''dmix:PCH,0'''"
+        }
+    }
+
+    { factory = adapter
+        args = {
+            factory.name           = api.alsa.pcm.sink # sink for dmix
+            node.name              = "alsa-dmix-hdmi" # name of pulse device (mpv)
+            node.description       = "PCM HDMI" # name of pulse device (pavucontrol)
+            media.class            = "Audio/Sink" # Sink for dmix
+            # remember this is a non-default dmix from /etc/asound.conf
+            api.alsa.path          = "'''dmix:HDMI,9'''"
+        }
+    }
+]
+}}
+
+As a user (non-root), check out the output of {{ic|wpctl status}}, and set the default input(source) and output(sink) devices to your liking with {{ic|wpctl set-default ''ID''}}. {{ic|''ID''}} is the number before sink/source names.
+
+Now, you can fully test your configuration.
+
+==== Switching between device profiles ====
+
+Some hardware audio devices, like {{ic|snd_hda_intel}}, function differently depending on which profile the device is running in. In the case of {{ic|snd_hda_intel}}, there are separate profiles for HDMI and analog output.
+
+Switching to HDMI with WirePlumber:
+
+{{hc|
+$ wpctl set-profile <device-ID> 3
+$ wpctl status
+|output=
+...
+├─ Sinks:
+│  *   53. Built-in Audio Digital Stereo (HDMI) [vol: 1.00]
+...
+}}
+
+Switching to analog with WirePlumber:
+
+{{hc|
+$ wpctl set-profile <device-ID> 1
+$ wpctl status
+|output=
+...
+├─ Sinks:
+│  *   51. Built-in Audio Analog Stereo        [vol: 0.60]
+...
+}}
+
+==== Multi-user audio sharing ====
+Sometimes it is useful to let other users connect to your PipeWire instance. For example, if you login into a different user's account using [[Xephyr]] and want the audio you play in the Xephyr session to come out the speakers which are managed by the outer user.
+
+One method to do this is to configure the outer user's pipewire-pulse config to listen for localhost tcp connections.  
+
+Create a file like under the outer user's home directory:
+{{hc|
+~/.config/pipewire/pipewire-pulse.conf.d/pulse-server.conf
+|output=
+pulse.properties {{=}} {
+    server.address {{=}} [
+        "unix:native"
+        "tcp:127.0.0.1:4713"   # Now the outer user's pipewire server listens on the IP4 loopback
+    ]
+}
+}}
+
+Then set the environment variable {{ic|PULSE_SERVER{{=}}tcp:127.0.0.1:4713}} in the inner user's session. For example, {{ic|export}}ing it before you start [[Xephyr]] as the inner user. More information and alternative setups can be found on [https://bbs.archlinux.org/viewtopic.php?id=265878 this forum thread].
+
+=== WebRTC screen sharing ===
+
+Most applications used to rely on X11 for capturing the desktop (or individual applications), for example when using WebRTC in web browsers (e.g. on Google Meet). On Wayland, the screen sharing mechanism is handled through the [[XDG Desktop Portal]] and PipeWire, which enables sharing content under Wayland with fine-grained access controls.
+
+{{Tip|Test whether WebRTC screen sharing is working by using [https://mozilla.github.io/webrtc-landing/gum_test.html Mozilla's GetUserMedia WebRTC test page].}}
+
+{{Note|1={{Pkg|xdg-desktop-portal}} 1.10.0 fixed a mismatch between specification and implementation of its D-Bus interface. [https://github.com/flatpak/xdg-desktop-portal/pull/609] Hence, some clients may not work with xdg-desktop-portal 1.10.0 or newer.}}
+
+Firefox (84+) and Chromium (110+) support this method by default, while on older versions of Chromium (73+), one needs to enable [https://bugs.chromium.org/p/chromium/issues/detail?id=682122 WebRTC PipeWire support] by setting the corresponding (experimental) flag at the URL {{ic|chrome://flags/#enable-webrtc-pipewire-capturer}} or via CLI argument {{ic|1=--enable-features=WebRTCPipeWireCapturer}}.
+
+{{Pkg|obs-studio}} (27+) supports this method by using the new PipeWire capture source.
+
+=== Video ===
+
+{{Expansion|{{Pkg|pipewire-v4l2}}}}
+
+Although the software is not yet production-ready, it is safe to play around with. Most applications that rely on [[GStreamer]] to handle e.g. video streams should work out-of-the-box using the PipeWire GStreamer plugin, see [[GStreamer#PipeWire]]. Applications like e.g. {{AUR|cheese}} are therefore already able to share video input using it.
+
+Using {{Pkg|pipewire-v4l2}}, it should also be possible to use the {{ic|pw-v4l2}} script to preload a library ({{ic|/lib/pipewire-0.3/v4l2/libpw-v4l2.so}}) that intercepts v4l2 calls and routes video through pipewire.
+
+== Audio post-processing ==
+
+=== Pipewire module-filter-chain ===
+
+Pipewire has an internal module called [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Filter-Chain filter-chain] that can create nodes to process audio input and output. See {{ic|/usr/share/pipewire/filter-chain/}} for examples including equalization, virtual surround sound, LADSPA plugins and channel mixing.
+
+==== LADSPA ====
+
+You can install many LADSPA plugins from the official repositories and use them in Pipewire filter chains.
+To list plugin labels and available controls provided by a specific file use {{ic|analyseplugin}} from the {{Pkg|ladspa}} package:
+
+ $ analyseplugin /usr/lib/ladspa/lsp-plugins-ladspa.so
+
+==== Systemwide parametric equalization ====
+
+PipeWire filter-chain supports Parametric EQ [https://docs.pipewire.org/page_module_filter_chain.html]. Create a configuration file inside {{ic|/etc/pipewire/pipewire.conf.d/}} (or {{ic|~/.config/pipewire/pipewire.conf.d/}}), then edit it to incorporate desired parameters using the following example:
+
+{{bc|1=
+context.modules = [
+    {
+        name = libpipewire-module-filter-chain
+        args = {
+            node.description = "Equalizer Sink"
+            media.name       = "Equalizer Sink"
+            filter.graph = {
+                nodes = [
+                    {
+                        type  = builtin
+                        name  = eq
+                        label = param_eq
+                        config = {
+                            filters = [
+                                { type = bq_peaking, freq = 100, gain = 0.0, q = 1.0 },
+                                { type = bq_peaking, freq = 500, gain = 0.0, q = 1.0 },
+                                { type = bq_peaking, freq = 2000, gain = 0.0, q = 1.0 },
+                            ]
+                        }
+                    }
+                ]
+                links = []
+            }
+            audio.channels = 2
+            audio.position = [ FL FR ]
+            capture.props = {
+                node.name   = "effect_input.eq"
+                media.class = Audio/Sink
+            }
+            playback.props = {
+                node.name   = "effect_output.eq"
+                node.passive = true
+            }
+        }
+    }
+]
+
+}}
+
+You can use arbitrary amount of filters.
+
+If you require a pre-amp, apply a {{ic|bq_highshelf}} filter at frequency 0, for example:
+
+ { type = bq_highshelf, freq = 0, gain = -5.0, q = 1.0 },
+
+Restart Pipewire, select "Equalizer Sink" as your default sound output device; this should then apply to all applications.
+
+Alternatively, instead of specifying the {{ic|filters}} array, you can provide a {{ic|filename}} property, pointing to a parametric equalizer configuration generated from the [https://github.com/jaakkopasanen/AutoEq AutoEQ] project or [https://squig.link/ Squiglink], like:
+
+{{bc|1=
+config = {
+    filename = "/path/to/parametric.txt"
+}
+}}
+
+=== EasyEffects ===
+
+EasyEffects (formerly [[PulseAudio#PulseEffects|PulseEffects]]) is a Qt utility which provides a large array of audio effects and filters to individual application output streams and microphone input streams. Notable effects include an input/output equalizer, output loudness equalization and bass enhancement, input de-esser and noise reduction plug-in. See [https://github.com/wwmm/easyeffects#readme the GitHub page] for a full list of effects.
+
+{{Note|Firefox has an issue with microphone stream, see [https://github.com/wwmm/easyeffects/issues/957#issuecomment-830640221 EasyEffects issue 957].}}
+
+In order to use EasyEffects, install {{Pkg|easyeffects}}. See [https://github.com/wwmm/easyeffects/wiki/Community-presets Community Presets] for a collection of preset configurations. See [https://github.com/jaakkopasanen/AutoEq AutoEq] for collection of algorithmically generated EQ presets for headphones.
+
+=== NoiseTorch ===
+
+NoiseTorch is an alternative way for noise suppression, packaged with {{AUR|noisetorch}}. There also exists {{AUR|noisetorch-git}}.
+
+After starting it the module can be loaded for the selected microphone. It is possible to adjust the voice activation threshold, which should be set to the highest level, not filtering out any actual voice.
+
+You can start audio processing with systemd automatically, see [https://github.com/noisetorch/NoiseTorch/wiki/Start-automatically-with-Systemd]. Note that the noisetorch binary path is different if installed from AUR.
+
+=== Noise suppression for voice ===
+
+[[Install]] the {{Pkg|noise-suppression-for-voice}} package for librnoise adapted to the ladspa filter chain, and {{Pkg|swh-plugins}} for a gate.
+
+The instructions given on [https://github.com/werman/noise-suppression-for-voice#pipewire GitHub] are mostly usable but out of date. In pipewire 1.6.3, the filter chain module moved to searching for plugins in prefined locations, [https://github.com/PipeWire/pipewire/commit/6bc07dfe0e18043aaf99f866b2c37f20e4a5e065#diff-ab0f086f94d735213c98cade15abd1caad434f9b7d555438791127d6b0be2f1b changing the plugin format].
+
+{{Note|If following the instructions above and since PipeWire [https://gitlab.freedesktop.org/pipewire/pipewire/-/releases/1.4.10 1.4.10], you may need to specify that your audio input is Mono. You can do this by adding the following 2 lines to the end of both the {{ic|capture.props}} and {{ic|playback.props}} sections of your configuration:
+{{hc|~/.config/pipewire/pipewire.conf.d/99-input-denoising.conf|
+audio.channels {{=}} 1
+audio.position {{=}} [ MONO ]
+}}
+}}
+
+=== JamesDSP ===
+
+[https://github.com/Audio4Linux/JDSP4Linux#readme JamesDSP for Linux] (available as {{AUR|jamesdsp}}) provides open-source sound effects for PipeWire and PulseAudio. It uses its own effects engine and without depending on LADSPA, Calf, etc. JamesDSP was initially published as an audio effects processor for Android devices.
+
+=== Using LADSPA, LV2 and VST plugins ===
+
+If you want to choose between the full list of available LADSPA, LV2 and VST plugins, you can apply them using {{Pkg|carla}} with {{Pkg|pipewire-jack}}.
+
+Start Carla and go to ''Settings > Configure Carla > Engine''. Make sure ''Audio driver'' is set to ''JACK'' and choose a [https://kx.studio/ns/dev-docs/CarlaBackend/group__CarlaBackendAPI.html#gaec3a1d85b80c5211a443b7afb3306ea6 process mode] depending on your needs. You can also choose the process mode by running Carla with a specific command, for example {{ic|carla-rack}} for the ''Continuous Rack'' mode.
+
+You can connect application outputs to Carla manually, but if you want to pass multiple applications through Carla, it might be more convenient to create a single virtual device between applications and Carla and optionally use it as a default device. At the begin, create a new null sink named {{ic|default_null_sink}}.
+
+{{hc|/etc/pipewire/pipewire.conf.d/10-default-null-sink.conf (or ~/.config/pipewire/pipewire.conf.d/10-default-null-sink.conf)|2=
+context.objects = [
+  {
+    factory = adapter
+    args = {
+      factory.name = support.null-audio-sink
+      node.name = "default_null_sink"
+      media.class = Audio/Sink
+      audio.position = [ FL FR ]
+      monitor.channel-volumes = true
+      monitor.passthrough = true
+    }
+  }
+]
+}}
+
+Restart PipeWire to apply changes.
+
+Alternatively, you can create a temporary virtual device with {{man|1|pw-cli}} or, if {{Pkg|pipewire-pulse}} is installed, with {{man|1|pactl}}. See [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/Virtual-Devices the PipeWire wiki] for details.
+
+In the ''Rack'' tab, add whichever plugin you want. Make sure they are ''stereo'' type. You can change their order. In the ''Continuous Rack'' process mode, the one on top of the list will be the first to receive the audio stream, just like in EasyEffects. Afterwards go to the ''Patchbay'' tab and connect the {{ic|default_null_sink}} L/R monitors to Carla inputs, then Carla outputs to the playbacks of your desired device (speakers, earphones, HDMI, etc). Save the configuration to a local file, for example {{ic|~/Documents/carla_sink_effects.carxp}}. Carla will automatically restore the connections after opening this file.
+
+You can test the effects while a multimedia application is reproducing audio, i.e. watching a video on a website through Firefox. There are two methods to do it. The first one, inside Carla ''Patchbay'' tab, disconnecting all Firefox connections and linking its L/R outputs to {{ic|default_null_sink}} playbacks. The second through {{Pkg|pavucontrol}}, locating Firefox audio stream and redirecting it to {{ic|default_null_sink}} (this should remember the connection to automatically redirect the application to the same sink on the next instance).
+
+To run Carla with the ''Continuous Rack'' process mode and load the saved file at startup, create a [[systemd/User|systemd user service]]:
+
+{{hc|~/.config/systemd/user/jack-carla-rack.service|output=
+[Unit]
+Description=Load Carla Rack JACK host
+
+[Service]
+Environment=PIPEWIRE_LINK_PASSIVE=true
+Type=exec
+ExecStart=/usr/bin/carla-rack --no-gui %h/Documents/carla_sink_effects.carxp
+
+[Install]
+WantedBy=default.target
+}}
+
+Then [[enable]] the {{ic|jack-carla-rack.service}} [[user unit]].
+
+Note that if you set the {{ic|default_null_sink}} as the default device in system settings, all applications will be redirected to it and the volume keys will change its level, not the one on the speakers. If you want to control volume speakers, leave them as the default in system settings and redirect your desired application to {{ic|default_null_sink}} inside pavucontrol (Pipewire compatibility layer will remember the connection on the next instance of the same application).
+
+== See also ==
+
+* [https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/home Wiki] — PipeWire Wiki on Freedesktop GitLab
+* [https://blogs.gnome.org/uraeus/2018/01/26/an-update-on-pipewire-the-multimedia-revolution-an-update/ Pipewire Update Blog Post] — Blog post from January 2018 outlining the state of PipeWire at the time
+* [https://blogs.gnome.org/uraeus/2020/09/04/pipewire-late-summer-update-2020/ PipeWire Late Summer Update 2020] — Blog post from September 2020

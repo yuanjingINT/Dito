@@ -1,0 +1,141 @@
+[[Category:Graphical user interfaces]]
+[[Category:Lists of software]]
+[[de:Login-Manager]]
+[[es:Display manager]]
+[[fr:Display manager]]
+[[hu:Display manager]]
+[[ja:ディスプレイマネージャ]]
+[[pt:Display manager]]
+[[ru:Display manager]]
+[[zh-hans:Display manager]]
+{{Related articles start}}
+{{Related|Start X at login}}
+{{Related articles end}}
+
+A [[Wikipedia:X display manager (program type)|display manager]], or login manager, is typically a graphical user interface that is displayed at the end of the boot process in place of the default shell. There are various implementations of display managers, just as there are various types of [[window managers]] and [[desktop environments]]. There is usually a certain amount of customization and themeability available with each one.
+
+== List of display managers ==
+
+=== Console ===
+
+* {{App|[[CDM]]|Login manager written in Bash.|https://github.com/evertiro/cdm|{{AUR|cdm}}}}
+* {{App|[[Console TDM]]|Extension for ''xinit'' written in pure Bash.|https://github.com/dopsi/console-tdm|{{AUR|console-tdm}}}}
+* {{App|emptty|Simple CLI Display Manager on TTY with X and Wayland support written in Go.|https://github.com/tvrzna/emptty/|{{Pkg|emptty}}}}
+* {{App|Lemurs|TUI display manager for Linux, written in Rust. Supports X, Wayland and TTY shell sessions.|https://github.com/coastalwhite/lemurs|{{pkg|lemurs}}}}
+* {{App|lidm|A fully colorful customizable TUI display manager made in C|https://github.com/javalsai/lidm|{{AUR|lidm}}}}
+* {{App|loginx|A getty/login/xinit combination with a friendly curses ui.|https://sourceforge.net/projects/loginx/|{{AUR|loginx}}}}
+* {{App|[[Ly]]|TUI (ncurses-like) display manager for Linux and BSD. Supports X and Wayland sessions.|https://codeberg.org/fairyglade/ly|{{Pkg|ly}}}}
+* {{App|nodm|Display manager for automatic logins. Discontinued since 2017.|https://github.com/spanezz/nodm|{{Pkg|nodm}}}}
+* {{App|tbsm|A Bash session or application launcher. Supports X and Wayland sessions.|https://loh-tar.github.io/tbsm/|{{AUR|tbsm}}}}
+
+=== Graphical ===
+
+* {{App|[[atrium]]|Wayland display manager designed around multiseat support.|https://github.com/kavau/atrium|{{AUR|atrium}}}}
+* {{App|[[Entrance]]|[[Enlightenment]] display manager. Highly experimental. Development is currently semi-active.|https://github.com/wltjr/entrance|{{AUR|entrance-git}}}}
+* {{App|[[GDM]]|[[GNOME]] display manager.|https://wiki.gnome.org/Projects/GDM|{{Pkg|gdm}}}}
+* {{App|[[LightDM]]|Cross-desktop display manager, can use various front-ends written in any toolkit.|https://github.com/ubuntu/lightdm/|{{Pkg|lightdm}}}}
+* {{App|[[LXDM]]|[[LXDE]] display manager. Can be used independent of the LXDE desktop environment.|https://sourceforge.net/projects/lxdm/|{{Pkg|lxdm}}}}
+* {{App|[[Plasma Login Manager]]|The preferred [[KDE Plasma]] display manager; designed to be a successor to SDDM.|https://invent.kde.org/plasma/plasma-login-manager/|{{Pkg|plasma-login-manager}}}}
+* {{App|[[SDDM]]|QML-based display manager and successor to KDM; recommended for [[LXQt]].|https://github.com/sddm/sddm|{{Pkg|sddm}}}}
+* {{App|[[SLiM]]|Lightweight and elegant graphical login solution. Resurrected in 2022, not fully compatible with systemd.|https://slim-fork.sourceforge.io/|{{Pkg|slim}}}}
+* {{App|[[XDM]]|X display manager with support for XDMCP, host chooser.|{{man|8|xdm}}|{{Pkg|xorg-xdm}}}}
+* {{App|WDM|WINGs Display Manager, hasn't been updated since 2012. |https://github.com/raorn/wdm|{{AUR|wdm-crm-git}}}}
+
+=== Login daemons ===
+
+* {{App|[[greetd]]|Login daemon which supports both console and graphical greeters.|https://git.sr.ht/~kennylevinsen/greetd|{{Pkg|greetd}}}}
+
+== Loading the display manager ==
+
+To enable graphical login at boot, [[enable]] the appropriate systemd service:
+
+* atrium — {{ic|atrium.service}}
+* GDM — {{ic|gdm.service}}
+* LightDM — {{ic|lightdm.service}}
+* LXDM — {{ic|lxdm.service}}
+* Plasma Login Manager — {{ic|plasmalogin.service}}
+* SDDM — {{ic|sddm.service}}
+* SLiM — {{ic|slim.service}}
+* XDM — {{ic|xdm.service}}
+** If {{Pkg|xdm-archlinux}} is installed, enable {{ic|xdm-archlinux.service}} instead.
+
+If the default target to boot into is {{ic|graphical.target}} then this should work out of the box. If not, you might have to reset a custom {{ic|default.target}} symlink to point to the default {{ic|graphical.target}}. See [[systemd#Change default target to boot into]].
+
+After enabling the display manager's service a symlink {{ic|display-manager.service}} should be set in {{ic|/etc/systemd/system/}}. You may need to use {{ic|--force}} to override old symlinks.
+
+{{hc|$ file /etc/systemd/system/display-manager.service|
+/etc/systemd/system/display-manager.service: symbolic link to /usr/lib/systemd/system/sddm.service
+}}
+
+=== Using systemd-logind ===
+
+In order to check the status of your user session, you can use ''loginctl''. All [[polkit]] actions like suspending the system or mounting external drives will work out of the box.
+
+ $ loginctl show-session $XDG_SESSION_ID
+
+== Session configuration ==
+
+Many display managers read available sessions from {{ic|/usr/share/xsessions/}} directory. It contains standard [https://specifications.freedesktop.org/desktop-entry-spec/latest/ desktop entry files] for each desktop environment or window manager. Some display managers use a separate {{ic|/usr/share/wayland-sessions/}} to list [[Wayland]]-specific sessions.
+
+To add/remove entries to your display manager's session list, create/remove the ''.desktop'' files in {{ic|/usr/share/xsessions/}} as desired. A typical ''.desktop'' file will look something like:
+
+ [Desktop Entry]
+ Name=Openbox
+ Comment=Log in using the Openbox window manager (without a session manager)
+ Exec=/usr/bin/openbox-session
+ TryExec=/usr/bin/openbox-session
+ Icon=openbox.png
+ Type=Application
+
+=== Run ~/.xinitrc as a session ===
+
+Installing {{AUR|xinit-xsession}} will provide an option to run your [[xinitrc]] as a session. Simply set {{ic|xinitrc}} as the session in your display manager's settings and make sure that the {{ic|~/.xinitrc}} file is executable.
+
+=== Starting applications without a window manager ===
+
+You can also launch an application without any decoration, desktop, or window management. For example, to launch {{AUR|google-chrome}}, create a {{ic|web-browser.desktop}} file in {{ic|/usr/share/xsessions/}} like this:
+
+ [Desktop Entry]
+ Name=Web Browser
+ Comment=Use a web browser as your session
+ Exec=/usr/bin/google-chrome --auto-launch-at-startup
+ TryExec=/usr/bin/google-chrome --auto-launch-at-startup
+ Icon=google-chrome
+ Type=Application
+
+In this case, once you login, the application set with {{ic|Exec}} will be launched immediately. When you close the application, you will be taken back to the login manager (same as logging out of a normal desktop environment or window manager).
+
+It is important to remember that most graphical applications are not intended to be launched this way and you might have manual tweaking to do or limitations to live with (there is no window manager, so do not expect to be able to move or resize ''any'' windows, including dialogs; nonetheless, you might be able to set the window geometry in the application's configuration files).
+
+See also [[xinitrc#Starting applications without a window manager]].
+
+== Tips and tricks ==
+
+=== Autostarting ===
+
+Most display managers source {{ic|/etc/xprofile}}, {{ic|~/.xprofile}} and {{ic|/etc/X11/xinit/xinitrc.d/}}. For more details, see [[xprofile]].
+
+=== Set language for user session ===
+
+For display managers that use [https://freedesktop.org/wiki/Software/AccountsService/ AccountsService] the [[locale]] for the user session can be set by editing:{{hc|/var/lib/AccountsService/users/$USER|2=
+[User]
+Language=''your_locale''}}
+
+where ''your_locale'' is a value such as {{ic|en_GB.UTF-8}}.
+
+Alternatively, you can achieve this using [[D-Bus]]:
+{{ic|busctl call org.freedesktop.Accounts /org/freedesktop/Accounts/User$UID org.freedesktop.Accounts.User SetLanguage s ''your_locale''}}
+
+GNOME and KDE users can also set languages in GNOME or KDE settings. 
+
+Log out and then back in again for the changes to take effect.
+
+=== Unlock Gnome Keyring / KDE KWallet automatically on autologin with LUKS===
+
+{{Expansion|Does this feature apply to [[Dm-crypt/System_configuration#Using_systemd-cryptsetup-generator|sd-encrypt]] only?}}
+
+Since systemd version 255, [https://www.freedesktop.org/software/systemd/man/latest/pam_systemd_loadkey.html pam_systemd_loadkey] can be used to unlock a GNOME/Kwallet keyring, if the user password matches the LUKS passphrase of the system. For this to work, you need to enable autologin in the display manager.
+
+== See also ==
+
+* [https://kl.wtf/posts/2022/03/12/login-managers-an-introduction.html#pluggable-authentication-modules Login managers: An introduction] - Discusses implementation of a login manager

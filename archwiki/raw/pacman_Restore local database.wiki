@@ -1,0 +1,132 @@
+{{Lowercase title}}
+[[Category:Package manager]]
+[[es:Pacman (Español)/Restore local database]]
+[[fr:Pacman (Français)/Restore local database]]
+[[hu:Pacman (Magyar)/Restore local database]]
+[[ja:Pacman/ローカルデータベースの復元]]
+[[pt:Pacman (Português)/Restore local database]]
+[[ru:Pacman (Русский)/Restore local database]]
+[[zh-hans:Pacman/Restore local database]]
+
+== Symptoms ==
+
+The local pacman database may need to be restored if:
+
+* {{ic|pacman -Q}} produces no output, while {{ic|pacman -Syu}} incorrectly reports that the system is up to date.
+* Installing a package with {{ic|pacman -S <package>}} lists already satisfied dependencies instead of proceeding.
+
+This usually indicates corruption or deletion of {{ic|/var/lib/pacman/local}}.
+
+== Prerequisites ==
+
+Check if the pacman log file is present:
+
+ $ ls /var/log/pacman.log
+
+If the log file does not exist, this method cannot be used.  
+Alternatives:
+* [https://bbs.archlinux.org/viewtopic.php?pid=670876 Xyne's package detection script] (may help reconstruct the package list).
+* Full system reinstallation, if no other recovery is possible.
+
+== Generating the recovery list ==
+
+{{Warning|Ensure that cached packages from other architectures are removed before continuing.}}
+
+[[Install]] {{Pkg|pacman-contrib}} to access {{ic|paclog-pkglist}}.
+
+=== Create the recovery script ===
+
+Save the following script as {{ic|pacrecover}} and make it [[executable]]:
+
+{{hc|pacrecover|<nowiki>
+#!/bin/bash -e
+
+# load configuration settings from the makepkg configuration file
+. /etc/makepkg.conf
+
+# determine the cache directory from pacman configuration, defaulting to /var/cache/pacman/pkg, remove prefix with sed
+PKGCACHE=$( (grep -m 1 '^CacheDir' /etc/pacman.conf || echo 'CacheDir = /var/cache/pacman/pkg') | sed 's/CacheDir = //')
+
+# define directories to search for package files
+pkgdirs=("$@" "$PKGDEST" "$PKGCACHE")
+
+# read package name and version from input and construct a search pattern for package files
+while read -r -a parampart; do
+
+        # loop through each directory to search for matching package files
+        for pkgdir in "${pkgdirs[@]}"; do
+
+                # check each file matching the pattern in the current directory
+                 for i in "$pkgdir"/"${parampart[0]}"-"${parampart[1]}"-*.pkg.tar.{xz,zst}; do
+
+                        # if a file exists, print its path and go to checking next input entry
+                        [ -f "${i}" ] && { echo "${i}" ; continue 3; }
+                done
+
+                # If no file is found, output the package name to stderr
+        done || echo "${parampart[0]}" 1>&2 
+done
+</nowiki>}}
+
+=== Generate package lists ===
+
+Run:
+
+ $ paclog-pkglist /var/log/pacman.log | ./pacrecover >files.list 2>pkglist.orig
+
+* {{ic|files.list}} – paths to locally available packages.  
+* {{ic|pkglist.orig}} – packages missing from cache (must be downloaded).  
+
+Later operation may result in mismatch between files of older versions of package, still present on machine, and files, found in new version. Such mismatches will have to be fixed manually.
+
+Restrict the second list to packages present in repositories:
+
+ $ { cat pkglist.orig; pacman -Slq; } | sort | uniq -d > pkglist
+
+{{Note|If this fails with {{ic|failed to initialise alpm library}}, check for {{ic|/var/lib/pacman/local/ALPM_DB_VERSION}}. If missing, run {{ic|pacman-db-upgrade}} as root, then {{ic|pacman -Sy}}. Retry afterwards.}}
+
+
+Ensure that base packages are included:
+
+ $ comm -23 <({ echo base ; expac -l '\n' '%E' base; } | sort) pkglist.orig >> pkglist
+
+Proceed once the contents of both lists are satisfactory, since they will be used to restore pacman's installed package database; {{ic|/var/lib/pacman/local/}}.
+
+== Performing the recovery ==
+
+Define a helper function:
+
+{{hc|recovery-pacman|<nowiki>
+recovery-pacman() {
+    pacman "$@" \
+    --log /dev/null \
+    --noscriptlet \
+    --dbonly \
+    --overwrite "*" \
+    --nodeps \
+    --needed
+}
+</nowiki>}}
+
+Option meanings:
+* {{ic|--log /dev/null}}: avoids polluting the log.  
+* {{ic|--needed}}: skips already installed packages.  
+* {{ic|--nodeps}}: allows installation of cached packages with outdated dependencies.  
+* {{ic|--dbonly}}, {{ic|--overwrite "*"}}, {{ic|--noscriptlet}}: restrict pacman to database reconstruction only.
+
+=== Steps ===
+
+# Update sync databases: {{bc|# pacman -Sy}}
+# Install locally available packages: {{bc|# recovery-pacman -U $(< files.list)}}
+# Install remaining packages from repositories: {{bc|# recovery-pacman -S $(< pkglist)}}
+# Recreate explicit/implicit install status: {{bc|<nowiki># pacman -D --asdeps $(pacman -Qq)
+# pacman -D --asexplicit $(pacman -Qtq)</nowiki>}}
+# (Optional) Verify installation: {{bc|# pacman -Qk}}
+# (Optional) Identify unowned files: See [[Pacman/Tips and tricks#Identify files not owned by any package]].
+# Update all packages: {{bc|# pacman -Su}}
+
+== See also ==
+
+* [[Pacman]]
+* [[Pacman/Tips and tricks]]
+* [[System maintenance]]

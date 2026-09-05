@@ -1,0 +1,457 @@
+{{Lowercase title}}
+[[Category:Synchronization]]
+[[Category:Backup]]
+[[Category:Commands]]
+[[de:Rsync]]
+[[es:Rsync]]
+[[fr:Rsync]]
+[[ja:Rsync]]
+[[ru:Rsync]]
+[[zh-hans:Rsync]]
+{{Related articles start}}
+{{Related|System backup}}
+{{Related|Synchronization and backup programs}}
+{{Related articles end}}
+[https://rsync.samba.org/ rsync] is an open source utility that provides fast incremental file transfer.
+
+== Installation ==
+
+[[Install]] the {{Pkg|rsync}} package.
+
+''rsync'' must be installed on both the source and the destination machine.
+
+=== Front-ends ===
+
+* {{App|Grsync|GTK front-end.|https://www.opbyte.it/grsync/|{{Pkg|grsync}}}}
+* {{App|luckyBackup|Qt front-end written in C++.|https://luckybackup.sourceforge.net/index.html|{{Aur|luckybackup}}}}
+* {{App|nbRsync|JavaFX GUI for rsync with integrated scheduler.|https://trixon.se/projects/nbrsync/}}
+
+Other tools using rsync are {{AUR|rdiff-backup}}, {{AUR|osync}} and {{AUR|yarsync}}.
+
+== As cp/mv alternative ==
+
+{{Note|1=Using rsync instead of cp/mv is efficient across different filesystems, but not for copying or moving files on the same filesystem. See [https://bbs.archlinux.org/viewtopic.php?id=271953]}}
+
+{{ic|rsync}} can be used as an advanced alternative for the {{ic|cp}} or {{ic|mv}} command, especially for copying larger files:
+
+ $ rsync -P source destination
+
+The {{ic|-P}} option is the same as {{Ic|--partial --progress}}, which keeps partially transferred files and shows a progress bar.
+
+You may want to use the {{ic|-r}}/{{ic|--recursive}} option to recurse into directories.
+
+Files can be copied locally as with cp, but the motivating purpose of rsync is to copy files remotely, i.e. between two different hosts. Remote locations can be specified with a host-colon syntax:
+
+ $ rsync source host:destination
+
+or
+
+ $ rsync host:source destination
+
+Network file transfers use the [[SSH]] protocol by default and {{ic|host}} can be a real hostname or a predefined profile/alias from {{ic|.ssh/config}}.
+
+Whether transferring files locally or remotely, rsync first creates a file-list containing information (by default, it is the file size and last modification timestamp) which will then be used to determine if a file needs to be constructed. For each file to be constructed, a weak and strong checksum is found for all blocks such that each block is of length '''S''' bytes, non-overlapping, and has an offset which is divisible by '''S'''. Using this information a large file can be constructed using rsync without having to transfer the entire file. For a more detailed practical and mathematical explanation refer to [https://rsync.samba.org/how-rsync-works.html how rsync works] and [https://rsync.samba.org/tech_report/tech_report.html the rsync algorithm], respectively.
+
+To use sane defaults quickly, you could use some aliases:
+{{bc|1=
+cpr() {
+  rsync --archive -hh --partial --info=stats1,progress2 --modify-window=1 "$@"
+} 
+mvr() {
+  rsync --archive -hh --partial --info=stats1,progress2 --modify-window=1 --remove-source-files "$@"
+} }}
+
+* {{ic|-hh}}: output numbers in a human-readable format
+* {{ic|1=--info=stats1,progress2}}: {{ic|stats1}} displays rsync transfer statistics with verbosity level 1. {{ic|progress2}} prints total transfer progress as opposed to per-file transfer progress ({{ic|progress1}})
+* {{ic|1=--modify-window=1}}: when comparing the timestamps of two files, treat their timestamps as being equivalent if their timestamps have a difference of less than 1 second
+* {{ic|--remove-source-files}}: remove files from the source directory after they have been successfully synced
+
+{{Note|The use of the term ''checksum'' is '''not''' interchangeable with the behavior of the {{ic|--checksum}} option. The {{ic|--checksum}} option affects the file skip heuristic used prior to any file being transferred. Independent of {{ic|--checksum}}, a ''checksum'' is always used for the block-based file construction which is how rsync transfers a file.}}
+
+=== Trailing slash caveat ===
+
+Arch by default uses GNU cp (part of GNU {{Pkg|coreutils}}). However, rsync follows the convention of BSD cp, which gives special treatment to source directories with a trailing slash "/". Whereas
+
+ $ rsync -r source destination
+
+creates a directory "destination/source" with the contents of "source", the command
+
+ $ rsync -r source/ destination
+
+copies all of the files in "source/" directly into "destination", with no intervening subdirectory - just as if you had invoked it as
+
+ $ rsync -r source/. destination
+
+This behavior is different from that of GNU cp, which treats "source" and "source/" identically (but not "source/."). Also, some shells automatically append the trailing slash when tab-completing directory names. Because of these factors, there can be a tendency among new or occasional rsync users to forget about rsync's different behavior, and inadvertently create a mess or even overwrite important files by leaving the trailing slash on the command line.
+
+Thus it can be prudent to use a wrapper script to automatically remove trailing slashes before invoking rsync:
+
+ #!/bin/bash
+ new_args=()
+ for i in "${@}"; do
+     case "${i}" in
+         /)
+             i="/"
+         ;;
+         */)
+             i="${i%/}"
+         ;;
+         esac
+     new_args+=("${i}")
+ done
+ exec rsync "${new_args[@]}"
+
+This script can be put somewhere in the path, and aliased to rsync in the shell init file.
+
+== As a backup utility ==
+
+The rsync protocol can easily be used for backups, only transferring files that have changed since the last backup. This section describes a very simple scheduled backup script using rsync, typically used for copying to removable media.
+
+=== Automated backup ===
+
+For the sake of this example, the script is created in the {{ic|/etc/cron.daily}} directory, and will be run on a daily basis if a cron [[daemon]] is installed and properly configured. Configuring and using [[cron]] is outside the scope of this article.
+
+First, create a script containing the appropriate command options:
+
+{{hc|/etc/cron.daily/backup|
+#!/bin/sh
+rsync -a --delete --quiet /path/to/backup /location/of/backup}}
+
+* {{ic|-a}}: indicates that files should be archived, meaning that most of their characteristics are preserved (but '''not''' ACLs, hard links or extended attributes such as capabilities)
+* {{ic|--delete}}: means files deleted on the source are to be deleted on the backup as well
+
+Here, {{ic|/path/to/backup}} should be changed to what needs to be backed-up (e.g. {{ic|/home}}) and {{ic|/location/of/backup}} is where the backup should be saved (e.g. {{ic|/media/disk}}).
+
+Finally, the script must be [[executable]].
+
+=== Automated backup with SSH ===
+
+If backing-up to a remote host using [[SSH]], use this script instead:
+
+{{hc|/etc/cron.daily/backup|
+#!/bin/sh
+rsync -a --delete --quiet -e ssh /path/to/backup remoteuser@remotehost:/location/of/backup
+}}
+
+* {{ic|-e ssh}}: tells rsync to use SSH
+* {{ic|remoteuser}}: is the user on the host {{ic|remotehost}}
+* {{ic|-a}}: groups all these options {{ic|-rlptgoD}} (recursive, links, perms, times, group, owner, devices)
+
+{{Note|
+Rsync will try to modify any previously backed up files on the target machine to match their current state at the source machine, with each incremental backup. This means that when backing up files that are owned by root over SSH (and when preserving permissions and ownerships such as with the {{ic|-a}} option), root access to the target machine is needed. The preferred way to achieve this for automation is to set up the SSH daemon to allow root to login using a [https://unix.stackexchange.com/a/92397 public key without password] and run the rsync command as root.}}
+
+=== Automated backup with NetworkManager ===
+
+This script starts a backup when network connection is established.
+
+First, create a script containing the appropriate command options:
+
+{{hc|/etc/NetworkManager/dispatcher.d/backup|2=
+#!/bin/sh
+
+if [ x"$2" = "xup" ] ; then
+        rsync --force --ignore-errors -a --delete --bwlimit=2000 --files-from=files.rsync /path/to/backup /location/of/backup
+fi
+}}
+
+* {{ic|-a}}: group all this options {{ic|-rlptgoD}} recursive, links, perms, times, group, owner, devices
+* {{ic|--files-from}}: read the relative path of {{ic|/path/to/backup}} from this file
+* {{ic|--bwlimit}}: limit I/O bandwidth; Kilo-bytes per second
+
+The script must be owned by root (see [[NetworkManager#Network services with NetworkManager dispatcher]] for details).
+
+=== Automated backup with systemd and inotify ===
+
+{{Note|
+* Due to the limitations of inotify and systemd (see [https://www.quora.com/Linux-Kernel/Inotify-monitoring-of-directories-is-not-recursive-Is-there-any-specific-reason-for-this-design-in-Linux-kernel this question and answer]), recursive filesystem monitoring is not possible. Although you can watch a directory and its contents, it will not recurse into subdirectories and watch the contents of them; you must explicitly specify every directory to watch, even if that directory is a child of an already watched directory.
+* This setup is based on a [[systemd/User]] instance.
+}}
+
+Instead of running time interval backups with time based schedules, such as those implemented in [[cron]], it is possible to run a backup every time one of the files you are backing up changes. {{ic|systemd.path}} units use {{ic|inotify}} to monitor the filesystem, and can be used in conjunction with {{ic|systemd.service}} files to start any process (in this case your rsync backup) based on a filesystem event.
+
+First, create the {{ic|systemd.path}} unit that will monitor the files you are backing up:
+
+{{hc|~/.config/systemd/user/backup.path|<nowiki>
+[Unit]
+Description=Checks if paths that are currently being backed up have changed
+
+[Path]
+PathChanged=%h/documents
+PathChanged=%h/music
+
+[Install]
+WantedBy=default.target
+</nowiki>}}
+
+Then create a {{ic|systemd.service}} file that will be activated when it detects a change. By default a service file of the same name as the path unit (in this case {{ic|backup.path}}) will be activated, except with the {{ic|.service}} extension instead of {{ic|.path}} (in this case {{ic|backup.service}}).
+
+{{Note|If you need to run multiple rsync commands, use {{ic|1=Type=oneshot}}. This allows you to specify multiple {{ic|1=ExecStart=}} parameters, one for each rsync command, that will be executed. Alternatively, you can simply write a script to perform all of your backups, just like [[cron]] scripts.}}
+
+{{hc|~/.config/systemd/user/backup.service|<nowiki>
+[Unit]
+Description=Backs up files
+
+[Service]
+ExecStart=/usr/bin/rsync %h/./documents %h/./music -CERrltm --delete ubuntu:
+</nowiki>}}
+
+Now all you have to do is [[enable/start]] {{ic|backup.path}} like a normal systemd service and it will start monitoring file changes and automatically start {{ic|backup.service}}.
+
+=== Differential backup on a week ===
+
+This is a useful option of rsync, resulting in a full backup (on each run) and keeping a differential backup copy of changed files only in a separate directory for each day of a week.
+
+First, create a script containing the appropriate command options:
+
+{{hc|/etc/cron.daily/backup|2=
+#!/bin/sh
+
+DAY=$(date +%A)
+
+if [ -e /location/to/backup/incr/$DAY ] ; then
+  rm -fr /location/to/backup/incr/$DAY
+fi
+
+rsync -a --delete --quiet --inplace --backup --backup-dir=/location/to/backup/incr/$DAY /path/to/backup/ /location/to/backup/full/
+}}
+
+The {{ic|--inplace}} option implies {{ic|--partial}} and updates destination files in-place.
+
+=== Snapshot backup ===
+
+The same idea can be used to maintain a tree of snapshots of your files. In other words, a directory with date-ordered copies of the files. The copies are made using hardlinks, which means that only files that did change will occupy space. Generally speaking, this is the idea behind Apple's TimeMachine.
+
+This basic script is easy to implement and creates quick incremental snapshots using the {{ic|--link-dest}} option to hardlink unchanged files: 
+
+{{hc|/usr/local/bin/snapbackup.sh|<nowiki>
+#!/bin/sh
+
+# Basic snapshot-style rsync backup script 
+
+# Config
+OPT="-aPh"
+LINK="--link-dest=/snapshots/username/last/" 
+SRC="/home/username/files/"
+SNAP="/snapshots/username/"
+LAST="/snapshots/username/last"
+date=`date "+%Y-%b-%d:_%T"`
+
+# Run rsync to create snapshot
+rsync $OPT $LINK $SRC ${SNAP}$date
+
+# Remove symlink to previous snapshot
+rm -f $LAST
+
+# Create new symlink to latest snapshot for the next backup to hardlink
+ln -s ${SNAP}$date $LAST
+</nowiki>}}
+
+There must be a symlink to a full backup already in existence as a target for {{ic|--link-dest}}. If the most recent snapshot is deleted, the symlink will need to be recreated to point to the most recent snapshot. If {{ic|--link-dest}} does not find a working symlink, rsync will proceed to copy all source files instead of only the changes. 
+
+A more sophisticated version keeps an up-to-date full backup {{ic|$SNAP/latest}} and in case a certain number of files has changed since the last full backup, it creates a snapshot {{ic|$SNAP/$DATETAG}} of the current full-backup utilizing {{ic|cp -al}} to hardlink unchanged files:
+
+{{hc|/usr/local/bin/rsnapshot.sh|<nowiki>
+#!/bin/sh
+
+## my own rsync-based snapshot-style backup procedure
+## (cc) marcio rps AT gmail.com
+
+# config vars
+
+SRC="/home/username/files/" #dont forget trailing slash!
+SNAP="/snapshots/username"
+OPTS="-rltgoi --delay-updates --delete --chmod=a-w"
+MINCHANGES=20
+
+# run this process with real low priority
+
+ionice -c 3 -p $$
+renice +12  -p $$
+
+# sync
+
+rsync $OPTS $SRC $SNAP/latest >> $SNAP/rsync.log
+
+# check if enough has changed and if so
+# make a hardlinked copy named as the date
+
+COUNT=$( wc -l $SNAP/rsync.log|cut -d" " -f1 )
+if [ $COUNT -gt $MINCHANGES ] ; then
+        DATETAG=$(date +%Y-%m-%d)
+        if [ ! -e $SNAP/$DATETAG ] ; then
+                cp -al $SNAP/latest $SNAP/$DATETAG
+                chmod u+w $SNAP/$DATETAG
+                mv $SNAP/rsync.log $SNAP/$DATETAG
+               chmod u-w $SNAP/$DATETAG
+         fi
+fi
+</nowiki>}}
+
+To make things really, really simple this script can be run from a [[systemd/Timers]] unit.
+
+=== Full system backup ===
+
+This section is about using ''rsync'' to transfer a copy of the entire {{ic|/}} tree, excluding a few selected directories. This approach is considered to be better than [[disk cloning]] with {{ic|dd}} since it allows for a different size, partition table and filesystem to be used, and better than copying with {{ic|cp -a}} as well, because it allows greater control over file permissions, attributes, [[Access Control Lists]] and [[extended attributes]].
+
+''rsync'' will work even while the system is running, but files changed during the transfer may or may not be transferred, which can cause undefined behavior of some programs using the transferred files. For mitigation log out all users and shut down all programs and databases.
+
+This approach works well for migrating an existing installation to a new hard drive or [[SSD]].
+
+Run the following command as root to make sure that rsync can access all system files and preserve the ownership:
+
+ # rsync -aAXHv --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' --exclude='/media/*' --exclude='/lost+found/' / ''/path/to/backup''
+
+By using the {{ic|-aAX}} set of options, the files are transferred in archive mode which ensures that symbolic links, devices, permissions, ownerships, modification times, [[ACL]]s, and extended attributes are preserved, assuming that the target [[file system]] supports the feature. The option {{ic|-H}} preserves hard links, but uses more memory.
+
+The {{ic|--exclude}} option causes files/directories that match the given patterns to be excluded. Instead or in conjunction, the {{ic|1=--exclude-from=''file''}} option excludes files/directories that match patterns (one per line) in {{ic|''file''}}, similar to the example described in [[#Advanced usage of filter rules]] but without the {{ic|+}}/{{ic|-}} syntax.
+
+The directories {{ic|/dev}}, {{ic|/proc}}, {{ic|/sys}}, {{ic|/tmp}}, and {{ic|/run}} are included in the above command, but the ''contents'' of those directories are excluded. This is because they are populated on boot, but the directories themselves are not created. {{ic|/lost+found}} is filesystem-specific. Quoting the exclude patterns will avoid expansion by the [[shell]], which is necessary, for example, when backing up over [[SSH]]. Ending the excluded paths with {{ic|*}} ensures that the directories themselves are created if they do not already exist.
+
+{{Note|
+* If you plan on backing up your system somewhere other than {{ic|/mnt}} or {{ic|/media}}, do not forget to add it to the list of exclude patterns to avoid an infinite loop.
+* If there are any bind mounts in the system, they should be excluded as well so that the bind mounted contents is copied only once.
+* If you use a [[swap file]], make sure to exclude it as well.
+* Consider if you want to backup the {{ic|/home/}} directory. If it contains your data it might be considerably larger than the system. Otherwise consider excluding unimportant sub-directories such as  {{ic|/home/*/.thumbnails/*}}, {{ic|/home/*/.cache/mozilla/*}}, {{ic|/home/*/.cache/chromium/*}}, and {{ic|/home/*/.local/share/Trash/*}}, depending on software installed on the system.
+* If [[GVFS]] is installed, {{ic|/home/*/.gvfs}} must be excluded to prevent rsync errors.
+* If [[Dhcpcd]] ≥ 9.0.0 is installed, exclude the {{ic|/var/lib/dhcpcd/*}} directory as it mounts several system directories as sub-directories there.
+}}
+
+You may want to include additional rsync options, or remove some, such as the following. See {{man|1|rsync}} for the full list.
+
+* If you run on a system with very low memory, consider removing {{ic|-H}} option; however, it should be no problem on most modern machines. There can be many hard links on the file system depending on the software used (e.g. if you are using [[Flatpak]]). Many hard links reside under the {{ic|/usr/}} directory.
+* You may want to add rsync's {{ic|--delete}} option if you are running this multiple times to the same backup directory. In this case make sure that the source path does not end with {{ic|/*}}, or this option will only have effect on the files inside the subdirectories of the source directory, but it will have no effect on the files residing directly inside the source directory.
+* If you use any sparse files, such as virtual disks, [[Docker]] images and similar, you should add the {{ic|-S}} option.
+* The {{ic|--numeric-ids}} option will disable mapping of user and group names; instead, numeric group and user IDs will be transfered. This is useful when backing up over [[SSH]] or when using a live system to backup different system disk.
+* Choosing {{ic|1=--info=progress2}} option instead of {{ic|-v}} will show the overall progress info and transfer speed instead of the list of files being transferred.
+* To avoid crossing a filesystem boundary when recursing, add the option {{ic|-x}}/{{ic|--one-file-system}}. This will prevent backing up any mount point in the hierarchy.
+
+=== Restore a backup ===
+
+If you wish to restore a backup, use the same rsync command that was executed but with the source and destination reversed ([[#Trailing slash caveat|you may also want to add a trailing slash to the source]]). If you used {{ic|--exclude}} options you should probably remove those for the restore command.
+
+=== Advanced usage of filter rules ===
+
+Instead of specifying include and exclude rules separately rsync can read all of these from a single filter file. rsync then processes the rules in a top-down order; the first matching rule wins.
+
+{{hc|backup.filter|
+# Exclude patterns
+
+- .thumbnails/***
+- node_modules/***
+- venv/***
+
+# Include patterns
+
++ /Documents/***
++ /Books/***
++ /Music/***
+
+# Exclude everything else
+- /**
+}}
+
+{{ic|***}} is a special rsync pattern which matches a folder and all of its contents recursively.
+
+Check {{man|1|rsync|PATTERN MATCHING RULES}} and {{man|1|rsync|FILTER RULES IN DEPTH}} for more details.
+
+Then run rsync with:
+
+ $ rsync -aAXHv --filter="merge backup.filter" $SRC $DEST
+
+The key word is the {{ic|--filter "merge ..."}} parameter which will take the filter file and parse the rules in order for each sync-ed file.
+
+=== Copy from list of paths ===
+
+An alternative to the [[#Advanced usage of filter rules]] method is to use the {{ic|--files-from}} option. This can take an input from a text file containing a list of directory or file paths, with each entry being separated by new lines. It should be noted that the {{ic|-r}} flag must manually be specified for this option if the user wants recursive directory copying, even when {{ic|-a}} is already included.
+
+For example, a list of directories and all recursive directories can be archived with the following:
+
+ $ rsync -aAXHvr --files-from="dir_list.txt" $SRC $DEST
+
+== File system cloning ==
+
+rsync provides a way to do a copy of all data in a file system while preserving as much information as possible, including the file system metadata. It is a procedure of data cloning on a file system level where source and destination file systems do not need to be of the same type. It can be used for backing up, file system migration or data recovery.
+
+rsync's ''archive'' mode comes close to being fit for the job, but it does not back up the special file system metadata such as access control lists, extended attributes or sparse file properties. For successful cloning at the file system level, some additional options need to be provided:
+
+ rsync -qaAXHSU SOURCE_DIR DESTINATION_DIR
+
+And their meaning is (from the manpage):
+
+ --acls, -A               preserve ACLs (implies --perms)
+ --xattrs, -X             preserve extended attributes
+ --hard-links, -H         preserve hard links
+ --sparse, -S             turn sequences of nulls into sparse blocks
+ --atimes, -U             preserve access (use) times
+
+Additionally, use {{ic|-x}} if you have other filesystems mounted under the tree that you want to exclude from the copy.
+
+{{Note|
+* If you are using rsync to migrate your Arch installation to a new drive, remember to include a trailing slash at the end of {{ic|SOURCE_DIR}}, for the reason mentioned in [[#Trailing slash caveat]].
+* Create/birth time ({{ic|crtime}}) will not be preserved. There is a {{ic|-N}}/{{ic|--crtimes}} flag for that, but it is not supported on Linux.
+}}
+
+{{Tip|If you use [[btrfs]] consider using [[Btrfs#Send/receive|send/receive]].}}
+
+The produced copy can be simply reread and checked (for example after a data recovery attempt) at the file system level with {{ic|diff}}'s recursive option:
+
+ diff -r SOURCE_DIR DESTINATION_DIR
+
+It is possible to do a successful file system migration by using rsync as described in this article and updating the [[fstab]] and [[boot loader]] as described in [[Migrate installation to new hardware]]. This essentially provides a way to convert any root file system to another one.
+
+== As a daemon ==
+
+''rsync'' can be run as [[daemon]] on a server listening on TCP port {{ic|873}}.
+
+Edit the template {{ic|/etc/rsyncd.conf}}, configure a share and [[start]] the {{ic|rsyncd.service}}.
+
+{{Note|As of {{Pkg|rsync}} 3.2.0-1 the package adopted the upstream systemd unit files {{ic|rsyncd.service}} and {{ic|rsyncd@.service}}. The change for {{ic|1=ProtectHome}} has been commented, the security feature {{ic|1=ProtectSystem=full}} under the {{ic|[Service]}} section is still active. This makes the {{ic|/boot/}}, {{ic|/etc/}} and {{ic|/usr/}} directories read-only. If you need rsyncd write system directories you can [[edit]] the unit and set {{ic|1=ProtectSystem=off}} in the {{ic|[Service]}} section of the overriding snippet.}}
+
+Usage from client, e.g. list server content:
+
+ $ rsync rsync://''server/share''
+
+transfer file from client to server: 
+
+ $ rsync ''local-file'' rsync://''server/share/''
+
+Consider opening TCP port {{ic|873}} in the [[firewall]], and using user authentication.
+
+{{Note|All transferred data including user authentication are not encrypted.}}
+
+=== Example configuration ===
+
+==== Sharing from a list of files ====
+
+{{hc|1=/etc/rsyncd.conf|2=
+...
+
+# Needed when crossing filesystem boundaries.
+#use chroot  = no
+read only = yes
+
+...
+
+[sync]
+    path         = /
+# List of files to copy.
+    include from = /backup.list
+# Exclude the rest.
+    exclude      = *
+}}
+
+Inside the file list, all the ''intermediary paths'' are necessary, except when the {{ic|***}} wildcard is used:
+
+{{hc|/backup.list|
+/etc/
+/etc/conf.d/
+/etc/conf.d/hwclock
+/etc/fonts/***
+}}
+
+== See also ==
+
+* More usage examples can be searched in the [https://bbs.archlinux.org/viewforum.php?id=27 Community Contributions] and [https://bbs.archlinux.org/viewforum.php?id=33 General Programming] forums
+* [https://www.pointsoftware.ch/2012/09/12/howto-local-and-remote-snapshot-backup-using-rsync-with-hard-links/ Howto – local and remote snapshot backup using rsync with hard links] Includes file deduplication with hard-links, MD5 integrity signature, 'chattr' protection, filter rules, disk quota, retention policy with exponential distribution (backups rotation while saving more recent backups than older)
+* [https://stackoverflow.com/questions/5527068/how-do-you-use-an-identity-file-with-rsync Using SSH keys/identity files with rsync]
+* {{man|1|rrsync}} is a script to setup restricted rsync users via [[SSH]] logins. It is included in the {{Pkg|rsync}} package. See more details and an example in [[OpenSSH#Restrict]].

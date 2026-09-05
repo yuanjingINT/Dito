@@ -1,0 +1,782 @@
+[[Category:Wayland compositors]]
+[[es:Sway]]
+[[ja:Sway]]
+[[pt:Sway]]
+[[zh-hans:Sway]]
+{{Related articles start}}
+{{Related|Window manager}}
+{{Related articles end}}
+Sway (contracted from '''S'''irCmpwn's '''Way'''land compositor [https://github.com/swaywm/sway/blob/f0ddf6d74c98ba6c502783b8f41be859c56712c9/README.md]) is a compositor for [[Wayland]] designed to be fully compatible with [[i3]]. According to [https://swaywm.org the official website]:
+:Sway is a tiling Wayland compositor and a drop-in replacement for the i3 window manager for X11. It works with your existing i3 configuration and supports most of i3's features, plus a few extras.
+
+If you are interested in eye-candy, {{AUR|swayfx}} exists as a fork of sway with popular eye-candy effects.
+
+{{AUR|sway-scroll-git}} is another fork of sway with a scrolling layout like PaperWM or [[niri]]. It also supports animations, window content scaling and several overview modes.
+
+== Installation ==
+
+Sway can be [[install]]ed with the {{Pkg|sway}} package. Always update ''wlroots'' when you update ''sway'', due to tight dependencies.
+
+{{Note|All proprietary graphics drivers are [https://github.com/swaywm/sway/wiki#nvidia-users not supported], including [[NVIDIA]]. After NVIDIA driver version 495, sway works if you enable [[NVIDIA#DRM kernel mode setting|kernel mode setting]] and run sway with {{ic|1=--unsupported-gpu}}.}}
+
+You may also install {{Pkg|swaylock}}, {{Pkg|swayidle}}, and {{Pkg|swaybg}} to lock your screen, set up an idle manager, and set wallpapers, respectively.
+
+The default application launcher is {{Pkg|wmenu}} and the default [[terminal emulator]] is [[foot]]. Before starting ''sway'' it is advisable to either install them or set a new launcher and terminal in the configuration. For other Wayland-compatible versions of some useful i3 packages you can look at the [https://github.com/swaywm/sway/wiki/i3-Migration-Guide migration guide] on the Sway wiki.
+
+== Starting ==
+
+Before Sway can be started, it needs access to your hardware devices such as your keyboard, mouse, and graphics card. The collection of these hardware devices is called a seat, as mentioned in {{man|3|sd-login|DEFINITION OF TERMS}}。
+
+On Arch Linux, Sway can get access to your seat using either
+
+* {{man|8|systemd-logind}} and {{Pkg|polkit}}, or
+* {{Pkg|seatd}}, which will be installed alongside Sway as a dependency of {{Pkg|wlroots0.19}}
+
+If {{ic|polkit}} is already installed on your system, Sway should automatically get access to your seat. 
+
+Alternatively, if {{ic|polkit}} is not installed on your system and you want to use {{ic|seatd}} instead, add yourself to the {{ic|seat}} [[user group]] and [[enable/start]] {{ic|seatd.service}}, then re-log.
+
+You can pick one of the following methods to start Sway.
+
+=== Manually ===
+
+To start Sway, simply type {{ic|sway}} in the Linux console.
+
+=== Automatically on TTY login ===
+
+Similarly to X, Sway can be started by adding the following to your shell initialization file (see [[Command-line shell#Login shell]]):
+
+{{bc|1=
+if [ -z "$WAYLAND_DISPLAY" ] && [ -n "$XDG_VTNR" ] && [ "$XDG_VTNR" -eq 1 ] ; then
+    exec sway
+fi
+}}
+
+For more details, see [[Xinit#Autostart X at login]]
+
+=== From a display manager ===
+
+The sway session is located at {{ic|/usr/share/wayland-sessions/sway.desktop}}. It is automatically recognized by modern display managers like [[GDM]] and [[SDDM]].
+
+It is also possible to start sway as a [https://github.com/swaywm/sway/wiki/Systemd-integration#running-sway-itself-as-a---user-service systemd user service] through the display manager.
+
+Also you can use text-based session manager, see [[Display manager#Console]].
+
+== Configuration ==
+
+If you already use i3, you may copy your i3 configuration to {{ic|~/.config/sway/config}} and it should work out of the box. Otherwise, copy the sample configuration file located at {{ic|/etc/sway/config}} to {{ic|~/.config/sway/config}}. See {{man|5|sway}} for information on the configuration.
+
+{{Note|The user configuration is expected to contain {{ic|include /etc/sway/config.d/*}} in order to apply configuration snippets from drop-in files. The {{Pkg|sway}} package provides the {{ic|50-systemd-user.conf}} drop-in file, which imports several environment variables into the systemd user session and dbus. This is required for several applications such as {{Pkg|xdg-desktop-portal-wlr}}.}}
+
+=== Keymap ===
+
+By default, sway starts with the US QWERTY keymap. To configure per-input:
+
+{{hc|~/.config/sway/config|
+input * {
+    xkb_layout "us,de,ru"
+    xkb_variant "colemak,,typewriter"
+    xkb_options "grp:win_space_toggle,caps:none"
+}
+
+input <identifier> xkb_model "pc101"
+}}
+
+More details are available in {{man|7|xkeyboard-config}} and {{man|5|sway-input}}.
+
+The keymap can also be configured using environment variables ({{ic|XKB_DEFAULT_LAYOUT}}, {{ic|XKB_DEFAULT_VARIANT}}, etc.) when starting {{ic|sway}}. The configuration options take precedence over environment variables.
+
+=== Typematic delay and rate ===
+
+To change typematic delay and rate, you can add the following lines to your {{ic|input}} section:
+
+{{hc|~/.config/sway/config|
+input <identifier> repeat_delay 300
+input <identifier> repeat_rate 30
+}}
+
+=== Statusbar ===
+
+Sway ships with a default status bar in the form of ''swaybar'' which runs in a pure [[Wayland]] environment. ''swaybar'' can call a shell script or other program to show information in the status bar. See {{man|5|sway-bar}} and {{man|7|swaybar-protocol}} for details.
+
+{{Tip|''swaybar'' does not fully support [https://github.com/swaywm/sway/issues/3799 tray icons]. Consider an alternative like [[waybar]] which can be enabled by setting {{ic|swaybar_command waybar}} in the {{ic|bar}} section.}}
+
+Installing [[i3#i3status|i3status]] is an option to obtain a practical, default status bar under Wayland. All you have to do is add the following snippet at the end of your sway config:
+
+{{hc|~/.config/sway/config|
+bar {
+    status_command i3status
+}
+}}
+
+If you want to enable colored output for i3status, you need to adjust the following part in the i3status configuration:
+
+{{hc|~/.config/i3status/config|2=
+general {
+    colors = true
+    interval = 5
+}
+}}
+
+=== Outputs ===
+
+The {{ic|output}} command in {{ic|sway}} allows for the detailed configuration of different display outputs. This includes settings for wallpaper, scale factor, position, and more. You can combine multiple output commands into one line, as needed.
+
+{{hc|~/.config/sway/config|
+output HDMI-A-1 mode 1920x1080 pos 1920 0 bg ~/wallpaper.png stretch
+}}
+
+Outputs can be specifically addressed by employing their designated output names, by universally matching all outputs with {{ic|"*"}}, or through utilizing the distinct names of the displays (a string consisting of the make, model and serial). For example:
+
+{{hc|~/.config/sway/config|
+output "Some Company ABC123 0x00000000" pos 1920 0
+}}
+
+You can get a list of output names and additional information using the command:
+
+ $ swaymsg -t get_outputs
+
+For a deeper dive into configurations and additional options, consult {{man|5|sway-output}}.
+
+
+==== Wallpaper ====
+
+The displaying of a wallpaper in sway is handled by a dedicated program. The simplest example is {{Pkg|swaybg}}, which {{ic|sway}} can manage directly. {{Pkg|swaybg}} must be installed if needed in order to run the {{ic|output ... bg}} command.
+
+The following line, which can be included anywhere in sway's configuration file, sets a background image on all displays:
+
+{{hc|~/.config/sway/config|
+output "*" bg /path/to/image fill
+}}
+
+Of course {{ic|/path/to/image}} should be replaced with the path to an existing image file.
+
+Solid colors may be set as follows:
+
+ output * bg #000000 solid_color
+
+See the [https://github.com/swaywm/sway/wiki/Useful-add-ons-for-sway#wallpaper Sway wiki] for additional tools and utilities for wallpaper management.
+
+==== HiDPI ====
+
+{{Note|Xwayland will also be scaled and lose all resolution bigger then scaled [https://github.com/swaywm/sway/issues/5444]. If you want to run a program under Xwayland with native resolution, you need to disable scaling. You can do this temporarily while using the program, for example with swaymsg: {{ic|swaymsg output "*" scale 1}}. To revert back to automatic set to {{ic|0}}.}}
+
+===== Automatic =====
+
+Sway automatically applies integer scaling by default. If the following conditions hold: [https://github.com/swaywm/sway/blob/1.9/sway/config/output.c#L317-L368]
+
+* The screen provides valid physical dimension information via EDID.
+* Both dimensions have a ratio of {{ic|(resolution dimension in pixels) / (physical dimension in inches)}} (DPI) of at least 192.
+* The screen resolution has a height of at least 1200px.
+
+then Sway will use 2x scaling. Some devices, such as the [[Framework Laptop 16]], have a DPI that is close to (but not quite) 192. In these cases, you may want to manually configure fractional scaling.
+
+===== Manual =====
+
+Set your displays scale factor with the {{ic|output}} command in your configuration file. The scale factor can be fractional, but it is usually 2 for HiDPI screens.
+
+{{hc|~/.config/sway/config|
+output <name> scale <factor>
+}}
+
+You can find your display name with the following command:
+
+ $ swaymsg -t get_outputs
+
+==== Tearing ====
+
+By default, sway will synchronize frame updates (vsync) to make frame-perfect output without tearing, at the cost of latency. But in some cases it is useful to disable vsync to make output more smooth (e.g. video games):
+
+{{hc|~/.config/sway/config|
+output <name> allow_tearing yes
+output * max_render_time off
+}}
+
+=== Input devices ===
+
+It is possible to tweak specific input device configurations. For example, to enable tap-to-click and natural scrolling for all touchpads:
+
+{{hc|~/.config/sway/config|
+input type:touchpad {
+    tap enabled
+    natural_scroll enabled
+}
+}}
+
+To set the configuration for a particular touchpad, use {{ic|swaymsg -t get_inputs}} to obtain a device identifier and use it instead of {{ic|type:touchpad}}.
+
+{{Note|The output from the {{ic|swaymsg -t get_inputs}} command may contain "\" to escape symbols like "/" (e.g. {{ic|"2:14:ETPS\/2_Elantech_Touchpad"}}). These need to be removed.}}
+
+More documentation and options like acceleration profiles or disabling input entirely can be found in {{man|5|sway-input}}.
+
+If you use a graphics tablet, see [[Graphics tablet#Sway]].
+
+
+==== Touch display mapping ====
+
+Touch input targets for touch displays used in a multi-display environment can be mapped to only that touch display.
+
+{{hc|~/.config/sway/config|
+set $display1       "Dell Inc. DELL P2414H VHVTW542165L"
+set $display2       "Dell Inc. DELL P2418HT MYDM775F152L"
+set $display2-touch "8146:24835:Melfas_LGD_AIT_Touch_Controller"
+
+input $display2-touch map_to_output $display2
+}}
+
+=== Custom keybindings ===
+
+[[Keyboard input|Special keys]] on your keyboard can be used to execute commands, for example to control volume, monitor brightness or media players:
+
+{{hc|~/.config/sway/config|
+# Special keys to adjust volume via PulseAudio
+bindsym --locked XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5%
+bindsym --locked XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5%
+bindsym --locked XF86AudioMute exec pactl set-sink-mute @DEFAULT_SINK@ toggle
+bindsym --locked XF86AudioMicMute exec pactl set-source-mute @DEFAULT_SOURCE@ toggle
+
+# Special keys to control media via playerctl                                              
+bindsym --locked XF86AudioPlay exec playerctl play-pause
+bindsym --locked XF86AudioPause exec playerctl play-pause
+bindsym --locked XF86AudioPrev exec playerctl previous
+bindsym --locked XF86AudioNext exec playerctl next
+bindsym --locked XF86AudioStop exec playerctl stop
+
+# Special keys to adjust brightness via brightnessctl                                      
+bindsym --locked XF86MonBrightnessDown exec brightnessctl set 5%-
+bindsym --locked XF86MonBrightnessUp exec brightnessctl set 5%+
+
+# Special key to take a screenshot with grim                                               
+bindsym Print exec grim
+
+# Special key to start an application with wmenu-run                                       
+bindsym XF86Search exec wmenu-run
+}}
+
+{{Note|The {{ic|--locked}} at bindsym allows a keybinding to be executed while the lockscreen is active.}}
+
+For details and alternative utilities, see: 
+
+* [[PulseAudio#Keyboard volume control]], 
+* [[WirePlumber#Keyboard volume control]], 
+* [[ALSA#Keyboard volume control]], 
+* [[Backlight#Backlight utilities]], 
+* [[MPRIS]]. 
+
+{{Tip|{{Pkg|wev}} is a tool which provides functionality similar to that of {{Pkg|xorg-xev}}, but on Wayland.}}
+
+{{note|Systemd handles some special keys like the power key and lid open as well as close events. These may interfere with the ones configured in sway. See {{man|1|loginctl}} and {{man|5|logind.conf}} for details on how to configure them in [[systemd]].}}
+
+==== Graphical indicator bars ====
+
+It is often desirable to have the current level of some percentage-valued setting, such as brightness or volume, be indicated by a graphical bar when it is adjusted. A good option for providing this facility in Sway is {{Pkg|wob}} (alternatively {{AUR|wob-git}}), which provides a subset of the functionality of the popular X tool {{AUR|xob}} but as a native Wayland utility implementing the layer-shell protocol. See the [https://github.com/francma/wob project website] for usage examples.
+
+==== Overview of workspaces ====
+
+If you are using a lot of workspaces with a lot of windows and cannot follow what is where any more, then {{AUR|sov}} can come in handy. It is an overlay that shows schemas for all workspaces to make navigation in sway easier. It shows program names, window titles, supports multi-output setup. See the [https://github.com/milgra/sov project page] for more information.
+
+=== Idle ===
+
+Sway has a dedicated idle management daemon named {{pkg|swayidle}} to handle idling sessions. There are different ways to start and parameterize the daemon. The simplest is to use the configuration of sway itself. {{ic|swayidle}} accepts a multitude of arguments to configure events like {{ic|timeout}} (a.k.a. idling), {{ic|resume}} (not idle anymore, after a timeout), {{ic|before-sleep}} etc. See {{man|1|swayidle}} for more details and further explanations of the events. Each event can then be assigned an action. To assign multiple actions to an event simply repeat the trigger.
+
+The following instructs {{ic|swayidle}} to lock the screen after 30 minutes and turn it off five seconds after:
+
+{{hc|~/.config/sway/config|
+exec swayidle -w \
+	timeout 1800 'swaylock -f' \
+	timeout 1805 'swaymsg "output * power off"' \
+		resume 'swaymsg "output * power on"'
+}}
+
+To turn off a locked screen much sooner e.g. after 10 seconds, grep the process list for your locking manager and execute {{ic|swaymsg "output * power off"}} accordingly like so:
+
+ timeout 10 'if pgrep -x swaylock; then swaymsg "output * power off"; fi' resume 'if pgrep -x swaylock; then swaymsg "output * power on"; fi'
+
+In order to lock the screen before suspending and pause any playing media, append the following instruction to the swayidle command:
+
+ before-sleep 'playerctl pause; swaylock -f'
+
+{{note|Systemd too handles some idle events which may conflict with the ones configured in sway. See {{man|1|loginctl}} and {{man|5|logind.conf}} for details on how to configure them.}}
+
+
+If you do not want swaylock to trigger while videos are playing in Firefox, Chrome or VLC, you can use {{Aur|idlehack-git}} to listen for dbus screensaver inhibit requests and invoke swayidle-inhibit. Programs like Firefox, Chrome and VLC emit these events to prevent the system from going idle.
+
+==== Screen content shown briefly upon resume ====
+
+Using {{ic|before-sleep swaylock}}, might cause screen content to be briefly shown upon resume.  To mitigate this, you can let logind to ignore lid events and use sway to handle lid and power button events.
+
+{{hc|/etc/systemd/logind.conf|2=
+[Login]
+HandlePowerKey=ignore
+HandlePowerKeyLongPress=ignore
+HandleSuspendKey=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+}}
+
+{{hc|~/.config/sway/config|
+bindswitch --locked lid:toggle exec swaylock --daemonize && systemctl sleep
+
+exec swayidle -w \
+          timeout 60  'if pgrep swaylock; then systemctl sleep; fi' \
+          timeout 150 'swaylock --daemonize' \
+          timeout 155 'systemctl sleep'
+}}
+
+We use {{ic|--locked}} option for suspending the system when the lid is toggled during lock screen. If you are using clamshell mode, you can unset the lid binding with {{ic|unbindswitch lid:toggle}}. {{ic|pgrep swaylock}} is for suspending the computer again during accidental wake-ups.
+
+logind integration is considered [https://github.com/swaywm/swayidle/pull/133 buggy] and is [https://github.com/swaywm/swayidle/issues/117 hard to maintain]. See also [https://whynothugo.nl/journal/2022/10/26/systemd-locking-and-sleeping/].
+
+=== Floating windows ===
+
+To enable floating windows or window assignments, open the application and then use the {{ic|app_id}}, the {{ic|class}}, the {{ic|instance}} and the {{ic|title}} attributes to enable floating windows/window assignments. The following command will list the properties of all the open windows.
+
+ $ swaymsg -t get_tree
+
+To get only the {{ic|app_id}}'s of all open windows use:
+
+ $ swaymsg -t get_tree | grep "app_id"
+
+To get the {{ic|app_id}} of the focused window use:
+ 
+ $ swaymsg -t get_tree | jq -r '..|try select(.focused == true)'
+
+X11 windows do not have an {{ic|app_id}} property. However, you can use attributes like {{ic|class}}, {{ic|window_type}}, {{ic|window_role}} and/or the {{ic|instance}} to match them. You can search the output of {{ic|swaymsg -t get_tree}} and create fine grained rules for your windows.
+
+{{hc|~/.config/sway/config|2=
+for_window [app_id="galculator"] floating enable
+for_window [window_type="dialog"] floating enable
+for_window [window_role="dialog"] floating enable
+assign [app_id="firefox"] 3
+assign [class="^Urxvt$" instance="^htop$"] 9
+}}
+
+This is similar to using {{Pkg|xorg-xprop}} to find the {{ic|class}} or {{ic|wm_name}} attributes in [[X11]].
+
+When using multiple monitors, the floating scratchpad window can get too large, covering more than one monitor. This command centers and resizes the floating window to 80% of the current monitor's size:
+
+ $ swaymsg move position center; swaymsg resize set 80ppt 80ppt
+
+=== Clipboard ===
+
+See [[Clipboard]].
+
+=== Xresources ===
+
+Copy {{ic|~/.Xresources}} to {{ic|~/.Xdefaults}} to use them in Sway.
+
+=== Xwayland ===
+
+See [[Wayland#Xwayland]] for details and an overview of available packages.
+
+The use of Xwayland is enabled by default.
+
+If you would like to disable Xwayland entirely and run a "pure" Wayland session, set the following to deactivate the use of Xwayland:
+
+{{hc|~/.config/sway/config|
+xwayland disable
+}}
+
+If you would like to be able to tell at a glance which windows are using Xwayland, set the following:
+
+{{hc|~/.config/sway/config|
+for_window [shell{{=}}"xwayland"] title_format "[XWayland] %title"
+}}
+
+{{Note|Some programs need [[Wayland#GUI libraries|special environment variables or configuration options]] to run natively under Wayland, and other programs (including most proprietary applications) do not support Wayland at all. Currently it is recommended to keep Xwayland on so that legacy applications can be used.}}
+
+=== Use another wlroots renderer ===
+
+To use another renderer such as Vulkan, see [[Wayland#Use another renderer for wlroots based compositor]].
+
+=== Autostart ===
+
+See [[i3#Autostart]], adjusting the configuration file name for sway.
+
+== Tips and tricks ==
+
+=== Activating numlock on startup ===
+
+By default, sway initially disables the {{ic|NumLock}} key on startup. To enable it on startup, set the {{ic|xkb_numlock}} input configurations to {{ic|enable}} for your keyboards. For example, to do so on all keyboards, add the following line to your sway configuration:
+
+{{hc|~/.config/sway/config|
+input type:keyboard xkb_numlock enabled
+}}
+
+In either case, the {{ic|NumLock}} keys may be toggled by pressing the relevant keys on a keyboard.
+
+{{Tip|The same can be done for {{ic|CapsLock}} with {{ic|xkb_capslock}} if desired.}}
+
+{{Note|1=Enabling these using the wildcard identifier may cause Firefox to crash upon reloading your sway configuration file: [https://bugzilla.mozilla.org/show_bug.cgi?id=1652820 Bugzilla 1652820]. Try [https://bugzilla.mozilla.org/show_bug.cgi?id=1652820#c31 specifying the keyboard] instead.}}
+
+=== Current keyboard layout ===
+
+The current keyboard layout can be retrieved (using {{Pkg|jq}}) as follows, where {{ic|''kbd_identifier''}} needs to be replaced with your keyboard's identifier:
+
+ $ swaymsg -t get_inputs {{!}} jq -r '.[] {{!}} select(.identifier == "''kbd_identifier''") {{!}} .xkb_active_layout_name'
+
+=== Compose key ===
+
+To set up {{ic|PrintScreen}} as the [[compose key]]:
+
+ $ swaymsg 'input * xkb_options compose:prsc'
+
+The available key combinations can be looked up as shown in [[Xorg/Keyboard configuration#Configuring compose key]]. The combinations for the compose key can also be configured in the [[Xorg/Keyboard configuration#Key combinations|XCompose file]]. Applications need to be restarted for this change to take effect.
+
+=== Backlight toggle ===
+
+To turn off (and on) your displays with a key (e.g. {{ic|Pause}}) bind the following script in your Sway {{ic|config}}:
+
+{{bc|
+#!/bin/sh
+read lcd < /tmp/lcd
+    if [ "$lcd" -eq "0" ]; then
+        swaymsg "output * power on"
+        echo 1 > /tmp/lcd
+    else
+        swaymsg "output * power off"
+        echo 0 > /tmp/lcd
+    fi
+}}
+
+Or you can use the [https://github.com/swaywm/sway/pull/6099 toggle] option directly, but you need to specify an output explicitly if you have multiple monitors:
+
+ $ swaymsg "output ''output_name'' power toggle"
+
+=== Screen capture and screen sharing ===
+
+See [[Screen capture#Wayland]].
+
+=== Color temperature adjustment ===
+
+See [[Backlight#Wayland]].
+
+=== Color profile ===
+
+It is possible to use a color profile by adding the following line to your config file:
+
+{{hc|~/.config/sway/config|2=
+output * color_profile icc /path/to/your/color_profile.icc
+}}
+
+=== Control swaynag with the keyboard ===
+
+Swaynag, the default warning/prompt program shipped with sway, only supports user interaction with the mouse. A helper program such as {{AUR|swaynagmode}} may be used to enable interaction via keyboard shortcuts.
+
+Swaynagmode works by first launching swaynag, then listening for signals which trigger actions such as selecting the next button, dismissing the prompt, or accepting the selected button. These signals are sent by launching another instance of the swaynagmode script itself with a control argument, such as {{ic|swaynagmode --select right}} or {{ic|swaynagmode --confirm}}. 
+
+Swaynagmode by default triggers the sway mode {{ic|nag}} upon initialization, followed by {{ic|default}} on exit. This makes it easy to define keybindings in your sway configuration:
+
+{{hc|~/.config/sway/config|
+set $nag exec swaynagmode
+mode "nag" {
+  bindsym {
+    Ctrl+d    mode "default"
+
+    Ctrl+c    $nag --exit
+    q         $nag --exit
+    Escape    $nag --exit
+
+    Return    $nag --confirm
+
+    Tab       $nag --select prev
+    Shift+Tab $nag --select next
+
+    Left      $nag --select next
+    Right     $nag --select prev
+
+    Up        $nag --select next
+    Down      $nag --select prev
+  }
+}
+}}
+
+Note that, beginning in sway version 1.2, mode names are case-sensitive.
+
+You can configure sway to use swaynagmode with the configuration command {{ic|swaynag_command swaynagmode}}.
+
+=== Change cursor theme and size ===
+
+To set the [[cursor theme]] and size:
+
+{{hc|~/.config/sway/config|
+seat seat0 xcursor_theme ''my_cursor_theme'' ''my_cursor_size''
+}}
+
+Where {{ic|''my_cursor_theme''}} can be set to or replaced by a specific value like {{ic|default}}, {{ic|Adwaita}} or {{ic|Simple-and-Soft}}, and {{ic|''my_cursor_size''}} a value like {{ic|48}}.
+
+You can inspect their values with {{ic|echo $XCURSOR_SIZE}} and {{ic|echo $XCURSOR_THEME}}.
+
+Note that you need to reload the application to see the changes.
+
+{{Note|Wayland uses client-side cursors. It is possible that applications do not evaluate the values of {{ic|$XCURSOR_SIZE}} and {{ic|$XCURSOR_THEME}}.}}
+
+=== Manage Sway-specific daemons with systemd ===
+
+Systemd provides the [[user unit]]s {{ic|graphical-session.target}} and {{ic|graphical-session-pre.target}}.
+Services can be made {{ic|PartOf{{=}}}} either unit to let them run as long as or before, respectively, any graphical session is running ''and'' terminate them cleanly when exiting it, whether [[Xorg]] or [[Wayland]].
+
+If Sway is the only window manager on a machine, then {{ic|graphical-session.target}} may be sufficient even for Sway-specific services (like {{Pkg|swayidle}} or [[kanshi]]); but otherwise, a more specific {{ic|sway-session.target}} file can be used (such as the one provided by {{Pkg|sway-contrib}}).
+
+Additionally, services started by systemd need to be informed of the necessary environment variables; this is taken care of by a file in {{ic|/etc/sway/config.d/}} provided by {{Pkg|sway}}, which should be processed if the note at the top of [[#Configuration]] has been followed. (But those environment variables should also be unset when exiting Sway, otherwise it or other services may fail to start after the first exit.)
+
+All this can be done using {{AUR|sway-systemd-git}} or {{Pkg|uwsm}} (which also take care of [[#Working with systemd-oomd]]), or manually.
+
+{{Note|{{AUR|sway-services-git}} has unit startup order issues. [https://github.com/swaywm/sway/wiki/Systemd-integration#running-sway-itself-as-a---user-service]}}
+
+==== Manual setup ====
+
+Add the following line to Sway's configuration file (for example, append the line to {{ic|~/.config/sway/config}}, or add a new file to {{ic|/etc/sway/config.d/}}):
+
+{{hc|1=~/.config/sway/config|2=
+...
+...
+...
+exec_always systemctl --user start sway-session.target
+}}
+
+This ensures that {{ic|sway-session.target}} is activated whenever Sway starts, and ''after'' it has created the Wayland socket etc. Make sure to place that line after any commands that affect how systemd services would be started, which generally includes the {{ic|include /etc/sway/config.d/*}} directive.
+
+Then, arrange for the target to be stopped before Sway exits. Note that {{ic|systemctl --user stop sway-session.target}} will not work, as the command returns before the services are done shutting down; consider creating a unit that {{ic|Conflicts{{=}}}} with that, and [[start]]ing it instead [https://systemd.io/DESKTOP_ENVIRONMENTS/#startup-and-shutdown-best-practices].
+
+Finally, link the desired services to {{ic|sway-session.target}} or {{ic|graphical-session.target}}:
+
+* If an existing service file exists, you can [[enable]] it, or (such as if that would not link to the right unit) run {{ic|systemctl --user add-wants ''sway-session''.target ''foo''.service}}.
+* You can find an example of creating a brand new service file at [[kanshi#Manage kanshi with systemd]].
+
+=== Working with systemd-oomd ===
+
+{{man|8|systemd-oomd}} tracks resource usage by and kills entire [[Cgroups]] at once, not processes.
+This means that, by default, a single memory-hungry service will cause the entire Sway session to be terminated.[https://bugzilla.redhat.com/show_bug.cgi?id=1933494]
+
+The solution is to start each application in its own cgroup.
+Some of the packages recommended in [[#Manage Sway-specific daemons with systemd]], like {{Pkg|uwsm}} or {{AUR|sway-systemd-git}}, already take care of this. But it can also be accomplished manually by ensuring that applications are started via ''systemd-run'' (see {{man|1|systemd-run}}).
+
+Instead of using a {{ic|swaymsg exec -- ''foo''}} command, create a script:
+
+{{hc|~/.local/share/sway_exec_wrapper|#!/usr/bin/env sh
+exec systemd-run --user --ignore-failure --scope --unit "app-$1-$(uuidgen)" -- "$@"}}
+
+and use {{ic|swaymsg exec ~/.local/share/exec_wrapper -- ''foo''}}.
+
+{{Tip|If [[#Manage Sway-specific daemons with systemd]] has been followed, add {{ic|-p PartOf{{=}}graphical-session.target}} to let the application exit cleanly when exiting Sway.}}
+
+The {{ic|--ignore-failure}} option is used, because a graphical application's unclean exit should not cause the system state to become "degraded"; {{ic|--scope}} so that the initial process can fork without the entire application being closed ''and'' for Sway to assign the first window to the correct workspace. The {{ic|--unit}} parameter is named according to [https://systemd.io/DESKTOP_ENVIRONMENTS/#xdg-standardization-for-applications systemd's recommendations].
+
+=== Change screen resolution and/or layout after start ===
+
+You can use the graphical programs {{Pkg|nwg-displays}}, {{Pkg|wdisplays}}, {{AUR|swayrandr-git}} or the terminal program {{Pkg|wlr-randr}} to change the resolution, rotate and arrange displays or set the scaling factor.
+
+=== Create headless outputs ===
+
+Create outputs not related to a physical video interface, HEADLESS-1, HEADLESS-2, etc.:
+
+ $ swaymsg create_output
+
+Print a description of the new output:
+
+ $ swaymsg -pt get_outputs | grep -A 10 HEADLESS
+
+Configure the new output with the {{ic|output}} command, for example:
+
+{{hc|1=~/.config/sway/config|2=
+output HEADLESS-1 {
+pos 1920,0
+mode 1280x720@75Hz
+}
+}}
+
+=== Change modifier to CapsLock and keep Super ===
+
+To change the modifier key to {{ic|CapsLock}} and keep the Super key functional on a US keyboard layout, create {{ic|~/.config/xkb/symbols/custom}} with contents
+
+{{hc|~/.config/xkb/symbols/custom|2=
+xkb_symbols "basic" {
+    include "us"
+    name[Group1]= "English (US Custom)";
+    key <CAPS> { [ Hyper_L ] };
+    modifier_map Mod4 { Hyper_L };
+    key <LWIN> { [ Super_L ] };
+    modifier_map Mod5 { Super_L };
+};
+}}
+
+For other languages, edit the second and third lines. Then include this keyboard layout in your sway config near the top of the file:
+
+{{hc|~/.config/sway/config|
+input * xkb_layout custom
+set $mod Mod4
+set $super Mod5
+}}
+
+=== Access headless Sway session remotely using VNC ===
+
+The following code can, for example, be run over SSH to start a headless Sway session and access it remotely over VNC.
+
+{{pkg|wayvnc}} is a VNC server for wlroots-based Wayland compositors and can serve a headless Sway session.
+
+Start a headless Sway session by setting {{ic|WLR_BACKENDS}} to {{ic|headless}} and (optionally) {{ic|WLR_LIBINPUT_NO_DEVICES}} to {{ic|1}} (see the [https://github.com/any1/wayvnc/blob/master/FAQ.md FAQ of wayvnc]):
+
+ $ WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway
+
+{{Tip|Append {{ic|&}} to the end of the command to run it in the background.}}
+
+Now, run {{ic|wayvnc}} to serve the VNC server:
+
+ $ WAYLAND_DISPLAY=wayland-1 wayvnc
+
+{{Note|By default, {{pkg|wayvnc}} will listen on localhost port 5900 only. This can be configured (see {{ic|man wayvnc}}). You might want to consider forwarding the port as described in [[OpenSSH#Forwarding other ports]]. By default, {{pkg|wayvnc}} uses '''no encryption''' and '''no authentication'''!}}
+
+=== Output hotplug hook ===
+
+If you want to do something when an output is connected or disconnected, look at [[kanshi]].
+
+== Troubleshooting ==
+
+=== Application launchers ===
+
+{{Tip|Sway's wiki also has a [https://github.com/swaywm/sway/wiki#program-launchers list of known application launchers].}}
+
+The following [[List of applications/Other#Application launchers|application launchers]] are known to work well with Sway:
+
+* {{Pkg|wmenu}} or {{Pkg|bemenu}} are largely drop-in replacements for {{ic|dmenu}}.
+* [[rofi]] now supports Wayland natively, but {{Pkg|wofi}} is still a good alternative.
+* {{Pkg|fuzzel}} is an application launcher similar to rofi's ''drun'' mode.
+* Any {{ic|dmenu}} replacement can be combined with {{Pkg|j4-dmenu-desktop}}'s {{ic|--dmenu}} option to make an equivalent of {{man|1|i3-dmenu-desktop}}.
+* {{man|1|krunner}} (from {{Pkg|plasma-workspace}}) can be used stand-alone.
+* You can also [https://github.com/swaywm/sway/issues/1367 build your own] with a floating terminal and {{Pkg|fzf}}.
+
+{{Pkg|dmenu}} and other non-Wayland launchers also function well in Sway, but run under [[Xwayland]] and suffer from an issue where they can become unresponsive if focus is moved to a native Wayland window.
+
+If [[#Xwayland|Xwayland is enabled]] and {{Pkg|bemenu}} does not run under Wayland by default (thus being subject to the above issues), set the {{ic|BEMENU_BACKEND{{=}}wayland}} [[environment variable]].
+
+=== Virtualization ===
+
+Sway works with both [[VirtualBox]] and [[VMware]] ESXi.
+
+For Sway to work in [[QEMU]], QEMU must be started with {{ic|-vga qxl}}. See also [[QEMU#qxl]].
+
+==== Unable to start Sway from tty ====
+
+For ESXi, you need to enable 3D support under the ''Hardware Configuration > Video card settings''. See also [[VMware#Enable 3D graphics on Intel, Optimus and AMD]].
+
+==== No visible cursor ====
+
+When using certain graphics drivers (e.g. the VMSVGA graphics controller or the proprietary [[NVIDIA]] driver), the cursor is invisible. This can be fixed by using software cursors as discussed in [https://github.com/swaywm/sway/issues/3814]:
+
+ $ export WLR_NO_HARDWARE_CURSORS=1
+
+=== Sway socket not detected ===
+
+Using a {{ic|swaymsg}} argument, such as {{ic|swaymsg -t get_outputs}}, will sometimes return the message:
+
+ sway socket not detected.
+ ERROR: Unable to connect to
+
+when run inside a terminal multiplexer (such as [[GNU Screen]] or [[tmux]]). This means {{ic|swaymsg}} could not connect to the socket provided in your {{ic|SWAYSOCK}}.
+
+To view what the current value of {{ic|SWAYSOCK}} is, type:
+
+{{hc|$ env {{!}} grep -F "SWAYSOCK"|2=
+SWAYSOCK=/run/user/1000/sway-ipc.1000.4981.sock
+}}
+
+To work around this problem, you may try attaching to a socket based on the running sway process:
+
+ $ export SWAYSOCK=/run/user/$(id -u)/sway-ipc.$(id -u).$(pgrep -x sway).sock
+
+To avoid this error, run the command outside of a multiplexer.
+
+=== Failed to connect to a Wayland server ===
+
+Tmux creates local environment variables for each session (to see them type: {{ic|tmux show-environment}}). Therefore, if you re-attach to a previous tmux session with [https://github.com/tmux-plugins/tmux-resurrect tmux-resurrect] or [https://github.com/tmux-plugins/tmux-continuum tmux-continuum], or your tmux server runs before sway starts, the environment variables are outdated.
+
+You can use {{ic|update-environment}} to instruct tmux to update them whenever you attach to the session by adding the following to your {{ic|.tmux.conf}}:
+
+ set-option -g update-environment "DISPLAY WAYLAND_DISPLAY SWAYSOCK SSH_AUTH_SOCK"
+
+=== Unable to retrieve socket path ===
+
+Requesting messages from {{ic|swaymsg -t}} on a tty may return the following message:
+
+ Unable to retrieve socket path
+
+{{ic|SWAYSOCK}} environment variable is set after launching Sway, therefore a workaround to this error is to request {{ic|swaymsg -t [message]}} in a terminal inside Sway.
+
+=== Keybindings and keyboard layouts ===
+
+By default, if you are using more than one keyboard layout, e.g. {{ic|input * xkb_layout "us,ru"}}, bindings may become broken when you switch on some secondary layout.
+
+Thanks to https://github.com/swaywm/sway/pull/3058, all you need is to add {{ic|--to-code}} key to sensitive {{ic|bindsym}} lines like this:
+
+{{bc|
+bindsym --to-code {
+  $mod+$left focus left
+  $mod+$down focus down
+  $mod+$up focus up
+  $mod+$right focus right
+}
+}}
+
+Alternatively you can create a variable {{ic|set $mybind bindsym --to-code}} and then replace all instances of {{ic|bindsym}} with {{ic|$mybind}} like so: {{ic|$mybind $mod+w thing}}
+
+=== Java applications ===
+
+Some Java-based applications will display blank screen when opened, for example any JetBrains editor such as IntelliJ, CLion, or PyCharm. To mitigate this, the application can be started with the {{ic|_JAVA_AWT_WM_NONREPARENTING}} environment variable set to 1.
+
+If you start the application from a launcher like {{Pkg|rofi}} or {{Pkg|dmenu}}, you might want to modify the application desktop entry as shown in [[Desktop entries#Modify environment variables]].
+
+Some issues with Java applications have been fixed in OpenJDK 11 and Sway 1.5. However, certain applications require additional configuration to use newer versions of OpenJDK, in the case of Android Studio you must set {{ic|1=STUDIO_JDK=/usr/lib/jvm/java-11-openjdk/}}. [https://github.com/swaywm/sway/issues/5414]
+
+The JRE has a hardcoded list of known window managers in which Sway is not present. If you experience grey panels, mislocated menus, or improperly resized windows, see [[Java#Impersonate another window manager]].
+
+=== Scroll on border ===
+
+If using the mouse scroll wheel on an application's border crashes sway, you could use {{ic|border none}} for the {{ic|app_id}} (e.g. Firefox).
+
+=== Program cannot open display ===
+
+If a program crashes on start with the error message "cannot open display", it is likely that the program you are using is an X11 program. You can use the Xwayland compatibility layer to run X11 programs under Wayland, see [[#Xwayland]] for details.
+
+=== Mouse not working in WINE applications ===
+
+When running programs, WINE expects a primary monitor to be set, which can cause issues (such as clicks not registering) as Wayland has no concept of a primary monitor. Instead, you can specify a primary monitor for Xwayland to use via [[xrandr]] by adding this line to your Sway configuration:
+
+{{hc|~/.config/sway/config|2=
+...
+exec_always xrandr --output XWAYLAND0 --primary
+...
+}}
+
+For this to work your display position offset needs to be 0,0 because of a bug [https://github.com/swaywm/sway/issues/6651] in sway.
+
+Note that XWAYLAND0 (or any XWAYLAND display name) may not represent your monitor, and may be susceptible to change in different sessions. Instead, you can specify the first XWAYLAND display using this line instead:
+
+ exec_always xrandr --output $(xrandr | grep -m 1 XWAYLAND | awk '{print $1;}') --primary
+
+You may need to adjust these lines to suit your needs. You can find out which displays are mapped to what names by using the {{ic|xrandr}} command with no arguments.
+
+{{Note|Xwayland will recognize any newly connected monitors (including those that were turned off and on again) as entirely new displays. If this happens to your "primary monitor", it will no longer be considered primary.}}
+
+=== Flickering in games with NVIDIA GPUs ===
+
+Although proprietary graphics drivers like NVIDIA are [https://github.com/swaywm/sway/wiki#nvidia-users officially not supported], it is possible to use them, even for gaming. If you choose to do so, you may encounter flickering on the upper half of the screen, which can be worked around by replacing {{Pkg|wlroots0.19}} with {{AUR|wlroots-nvidia}}, or manually compiling your own version with the patch.
+
+=== System freezes when toggling output power on hybrid NVIDIA setups ===
+
+On hybrid-GPU laptops with an external monitor connected to the NVIDIA GPU, using {{ic|swaymsg "output * power off"}} (e.g. via {{Pkg|swayidle}}) can deadlock {{ic|nvidia-modeset}}, freezing the whole desktop. Confirm with {{ic|journalctl -b -1 -g "blocked for more than"}}: a {{ic|task sway state:D ... blocked on a semaphore likely last held by task nvidia-modeset}} line means this is the cause. Workaround: avoid powering off NVIDIA-attached outputs, e.g. target only the integrated GPU's output or suspend the system instead. See [https://github.com/swaywm/wlroots/issues/2474 wlroots#2474].
+
+=== Screencast / WebRTC not working ===
+
+Make sure to have this in you config:
+ include /etc/sway/config.d/*
+However, some git packages from the aur don't provide /etc/sway/config.d at all. In that case, add to your config:
+ exec dbus-update-activation-environment DISPLAY I3SOCK SWAYSOCK WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
+
+== See also ==
+
+* [https://github.com/swaywm/sway GitHub project]
+* [https://github.com/swaywm/sway/wiki Sway user-maintained wiki]
+* [https://swaywm.org Website]
+* [https://drewdevault.com/2019/03/11/Sway-1.0-released.html Announcing the release of sway 1.0]

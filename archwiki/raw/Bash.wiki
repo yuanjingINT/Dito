@@ -1,0 +1,401 @@
+[[Category:Command-line shells]]
+[[Category:GNU]]
+[[de:Bash]]
+[[es:Bash]]
+[[fr:Bash]]
+[[hu:Bash]]
+[[ja:Bash]]
+[[ru:Bash]]
+[[uk:Bash]]
+[[zh-hans:Bash]]
+{{Related articles start}}
+{{Related|/Functions}}
+{{Related|/Prompt customization}}
+{{Related|Command-line shell}}
+{{Related|Environment variables}}
+{{Related|Fortune}}
+{{Related|Pkgfile}}
+{{Related|Readline}}
+{{Related articles end}}
+
+[[Wikipedia:Bash (Unix shell)|Bash]] ('''B'''ourne-'''A'''gain '''SH'''ell) is a [[command-line shell]]/programming language by the [[GNU Project]]. Its name alludes to its predecessor, the long-deprecated [[Wikipedia:Bourne shell|Bourne shell]]. Bash can be run on most [[Wikipedia:Unix-like|Unix-like]] operating systems, including [[Wikipedia:GNU/Linux naming controversy|GNU/Linux]].
+
+[https://www.gnu.org/software/bash/ Bash] is the default command-line shell on [[Arch Linux]].
+
+== Invocation ==
+
+Bash behaviour can be altered depending on how it is invoked. Some descriptions of different modes follow.
+
+If Bash is spawned by {{ic|login}} in a TTY, by an [[SSH]] daemon, or similar means, it is considered a '''login shell'''. This mode can also be engaged using the {{ic|-l}}/{{ic|--login}} command line option.
+
+Bash is considered an '''interactive shell''' when its standard input, output and error are connected to a terminal (for example, when run in a terminal emulator), and it is not started with the {{ic|-c}} option or  [https://unix.stackexchange.com/a/96805 non-option] arguments (for example, {{ic|bash '''script'''}}). All interactive shells source {{ic|/etc/bash.bashrc}} and {{ic|~/.bashrc}}, while interactive ''login'' shells also source {{ic|/etc/profile}} and {{ic|~/.bash_profile}}.
+
+{{Note|In Arch {{ic|/bin/sh}} (which used to be the Bourne shell executable) is symlinked to {{ic|bash}}. If Bash is invoked with the name {{ic|sh}}, it tries to mimic the startup behavior of historical versions of {{ic|sh}}, including POSIX compatibility.}}
+
+=== Configuration files ===
+
+Bash will attempt to execute a set of startup files depending on how it was invoked. See the [https://www.gnu.org/software/bash/manual/bash.html#Bash-Startup-Files Bash Startup Files] section of the GNU Bash manual for a complete description.
+
+{| class="wikitable"
+! File
+! Description
+! Login shells <sup>(see note)</sup>
+! Interactive, ''non-login'' shells
+|-
+| {{ic|/etc/profile}}
+| [[Source]]s application settings in {{ic|/etc/profile.d/*.sh}} and {{ic|/etc/bash.bashrc}}.
+| {{Yes}}
+| {{No}}
+|-
+| {{ic|~/.bash_profile}}
+| Per-user, after {{ic|/etc/profile}}. If this file does not exist, {{ic|~/.bash_login}} and {{ic|~/.profile}} are checked in that order. The skeleton file {{ic|/etc/skel/.bash_profile}} also sources {{ic|~/.bashrc}}.
+| {{Yes}}
+| {{No}}
+|-
+| {{ic|~/.bash_logout}}
+| Per-user, after exit of a login shell.
+| {{Yes}}
+| {{No}}
+|-
+| {{ic|/etc/bash.bash_logout}}
+| Depends on the {{ic|1=-DSYS_BASH_LOGOUT="/etc/bash.bash_logout"}} compilation flag. After exit of a login shell.
+| {{Yes}}
+| {{No}}
+|-
+| {{ic|/etc/bash.bashrc}}
+| Depends on the {{ic|1=-DSYS_BASHRC="/etc/bash.bashrc"}} compilation flag. Sources {{ic|/usr/share/bash-completion/bash_completion}}.
+| {{No}}
+| {{Yes}}
+|-
+| {{ic|~/.bashrc}}
+| Per-user, after {{ic|/etc/bash.bashrc}}.
+| {{No}}
+| {{Yes}}
+|}
+
+{{Note|
+* Login shells can be non-interactive when called with the {{ic|--login}} argument.
+* While interactive, ''non-login'' shells do '''not''' source {{ic|~/.bash_profile}}, they still inherit the environment from their parent process (which may be a login shell). See [[GregsWiki:ProcessManagement#On processes, environments and inheritance]] for details.
+}}
+
+=== Shell and environment variables ===
+
+The behavior of Bash and programs run by it can be influenced by a number of environment variables. [[Environment variables]] are used to store useful values such as command search directories, or which browser to use. When a new shell or script is launched it inherits its parent's variables, thus starting with an internal set of shell variables[http://www.kingcomputerservices.com/unix_101/understanding_unix_shells_and_environment_variables.htm ].
+
+These shell variables in Bash can be exported in order to become environment variables:
+
+ VARIABLE=content
+ export VARIABLE
+
+or with a shortcut
+
+ export VARIABLE=content
+
+Environment variables are conventionally placed in {{ic|~/.profile}} or {{ic|/etc/profile}} so that other Bourne-compatible shells can use them.
+
+See [[Environment variables]] for more general information.
+
+== Command line ==
+
+Bash command line is managed by the separate library called [[Readline]]. Readline provides [[emacs]] and [[vi]] styles of shortcuts for interacting with the command line, i.e. moving back and forth on the word basis, deleting words etc. It is also Readline's responsibility to manage [[Readline#History|history]] of input commands. Last, but not least, it allows you to create [[Readline#Macros|macros]].
+
+=== Tab completion ===
+
+[[Wikipedia:Command-line_completion|Tab completion]] is the option to auto-complete typed commands by pressing {{ic|Tab}} (enabled by default).
+
+==== Single-tab ====
+
+It may require up to three tab-presses to show all possible completions for a command. To reduce the needed number of tab-presses, see [[Readline#Faster completion]].
+
+==== Common programs and options ====
+
+By default, Bash only tab-completes commands, filenames, and variables.  The package {{Pkg|bash-completion}} extends this by adding more specialized tab completions for common commands and their options, which can be enabled by sourcing {{ic|/usr/share/bash-completion/bash_completion}} (which has been already sourced in Arch's {{ic|/etc/bash.bashrc}}). With {{Pkg|bash-completion}}, normal completions (such as {{ic|ls file.*}} {{ic|Tab}} {{ic|Tab}}) will behave differently; however, they can be re-enabled with {{ic|compopt -o bashdefault ''program''}} (see [https://bbs.archlinux.org/viewtopic.php?id=128471] and [https://www.gnu.org/software/bash/manual/html_node/Programmable-Completion-Builtins.html] for more detail).
+
+==== Customize per-command ====
+
+{{Note|Using the {{ic|complete}} builtin may cause conflicts with {{Pkg|bash-completion}}.}}
+
+By default, Bash only tab-completes file names following a command. You can change it to complete command names using {{ic|complete -c}}:
+
+{{hc|~/.bashrc|
+complete -c man which
+}}
+
+or complete command names and file names with {{ic|-cf}}:
+
+ complete -cf sudo
+
+See {{man|1|bash|Programmable Completion}} for more completion options.
+
+=== History ===
+
+==== History completion ====
+
+You can bind the up and down arrow keys to search through Bash's history (see: [[Readline#History]] and [https://www.gnu.org/software/bash/manual/html_node/Readline-Init-File-Syntax.html Readline Init File Syntax]):
+
+{{hc|~/.bashrc|
+bind '"\e[A": history-search-backward'
+bind '"\e[B": history-search-forward'
+}}
+
+or to affect all readline programs:
+
+{{hc|~/.inputrc|
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+}}
+
+==== History customization ====
+
+The {{ic|HISTCONTROL}} variable can prevent certain commands from being logged to the history.
+
+To stop logging of consecutive identical commands:
+
+{{hc|~/.bashrc|2=
+export HISTCONTROL=ignoredups
+}}
+
+To remove all but the last identical command:
+
+{{hc|~/.bashrc|2=
+export HISTCONTROL=erasedups
+}}
+
+To avoid saving commands that start with a space:
+
+{{hc|~/.bashrc|2=
+export HISTCONTROL=ignorespace
+}}
+
+To avoid saving consecutive identical commands, and commands that start with a space:
+
+{{hc|~/.bashrc|2=
+export HISTCONTROL=ignoreboth
+}}
+
+To remove all but the last identical command, and commands that start with a space:
+
+{{hc|~/.bashrc|2=
+export HISTCONTROL="erasedups:ignorespace"
+}}
+
+See {{man|1|bash|HISTCONTROL}} for details.
+
+==== Disable history ====
+
+To disable the bash history only temporarily:
+
+ $ set +o history
+
+The commands entered now are not logged to the {{ic|$HISTFILE}}.
+
+For example, now you can hash passwords with {{ic|printf secret {{!}} sha256sum}}, or hide GPG usage like {{ic|gpg -eaF secret-pubkey.asc}}
+and your secret is not written to disk.
+
+To enable history:
+
+ $ set -o history
+
+To disable all bash history:
+
+{{hc|~/.bashrc or /etc/profile|2=
+export HISTSIZE=0
+}}
+
+... and just to make sure, destroy your old histfile forever:
+
+ $ wipe -i -l2 -x4 -p4 "$HISTFILE"
+ $ ln -sv /dev/null "$HISTFILE"
+
+=== Mimic Zsh run-help ability ===
+
+[[Zsh]] can invoke the manual for the command preceding the cursor by pressing {{ic|Alt+h}}.
+A similar behaviour is obtained in Bash using this [[Readline]] bind:
+
+{{hc|~/.bashrc|<nowiki>
+run-help() { help "$READLINE_LINE" 2>/dev/null || man "$READLINE_LINE"; }
+bind -m vi-insert -x '"\eh": run-help'
+bind -m emacs -x     '"\eh": run-help'
+</nowiki>}}
+
+This assumes are you using the (default) Emacs [[Readline#Editing mode|editing mode]].
+
+=== Share bash history across machines ===
+
+{{Pkg|atuin}} replaces your existing shell history with an SQLite database, and records additional context for your commands. Additionally, it provides optional and fully encrypted synchronization of your history between machines, via an Atuin server.
+
+Enable bash history timestamps ({{ic|export HISTTIMEFORMAT{{=}}"%F %T "}}) before syncing. [https://github.com/atuinsh/atuin Atuin] works well with tools like {{AUR|blesh-git}} and [https://github.com/YiNNx/cmd-wrapped cmd-wrapped] to provide an enhanced terminal experience across machines.
+
+== Aliases ==
+
+[[Wikipedia:Alias_(command)|alias]] is a command, which enables a replacement of a word with another string. It is often used for abbreviating a system command, or for adding default arguments to a regularly used command.
+
+Personal aliases can be stored in {{ic|~/.bashrc}} or any separate file [[source]]d from {{ic|~/.bashrc}}. System-wide aliases (which affect all users) belong in {{ic|/etc/bash.bashrc}}. See [https://gist.github.com/anonymous/a9055e30f97bd19645c2] for example aliases.
+
+For functions, see [[Bash/Functions]].
+
+== Tips and tricks ==
+
+=== Prompt customization ===
+
+See [[Bash/Prompt customization]].
+
+=== Syntax highlighting and autosuggestions ===
+
+[https://github.com/akinomyoga/ble.sh ble.sh] (Bash Line Editor), packed as {{AUR|blesh-git}}, is a command line editor written in pure Bash, which is an alternative to GNU Readline. It has many enhanced features like syntax highlighting, autosuggestions, menu-completion, abbreviations, [[Vim]] editing mode, and hook functions. Other interesting features include status line, history share, right prompt, transient prompt, and xterm title.
+
+After installing it, [[source]] it in an interactive session.
+
+{{hc|~/.bashrc|
+source /usr/share/blesh/ble.sh
+}}
+
+Configurations are explained in depth in the [https://github.com/akinomyoga/ble.sh#14-user-settings-blerc ~/.blerc] file and at the [https://github.com/akinomyoga/ble.sh/wiki wiki]. The stable {{AUR|blesh}} package is also available.
+
+=== Command not found ===
+
+[[pkgfile]] includes a "command not found" hook that will automatically search the official repositories, when entering an unrecognized command.
+
+You need to [[source]] the hook to enable it, for example:
+
+{{hc|~/.bashrc|
+source /usr/share/doc/pkgfile/command-not-found.bash
+}}
+
+Then attempting to run an unavailable command will show the following info:
+
+{{hc|$ abiword|
+abiword may be found in the following packages:
+  extra/abiword 3.0.1-2	/usr/bin/abiword
+}}
+
+{{Note|The pkgfile database may need to be updated before this will work.  See [[pkgfile#Installation]] for details.}}
+
+=== Disable Ctrl+z in terminal ===
+
+You can disable the {{ic|Ctrl+z}} feature (pauses/closes your application) by wrapping your command like this:
+
+ #!/bin/bash
+ trap "" 20
+ ''adom''
+
+Now, when you accidentally press {{ic|Ctrl+z}} in {{AUR|adom}} instead of {{ic|Shift+z}}, nothing will happen because {{ic|Ctrl+z}} will be ignored.
+
+=== Clear the screen after logging out ===
+
+To clear the screen after logging out on a virtual terminal:
+
+{{hc|~/.bash_logout|
+clear
+reset
+}}
+
+=== Auto "cd" when entering just a path ===
+
+Bash can automatically prepend {{ic|cd }} when entering just a path in the shell. For example:
+
+{{hc|$ /etc|
+bash: /etc: Is a directory
+}}
+
+But after adding one line into {{ic|.bashrc}} file:
+
+{{hc|~/.bashrc|
+...
+shopt -s autocd
+...
+}}
+
+You get:
+ [user@host ~]$ /etc
+ cd /etc
+ [user@host etc]$
+
+=== Autojump ===
+
+{{AUR|autojump-git}} is a python script which allows navigating the file system by searching for strings in a database with the user's most-visited paths.
+
+{{Pkg|zoxide}} is an alternative which has additional features and performance improvements compared to the original {{ic|autojump}} and can serve as a drop-in replacement for autojump.
+
+=== Prevent overwrite of files ===
+
+For the current session, to disallow existing regular files to be overwritten by redirection of shell output:
+
+ $ set -o noclobber
+
+This is identical to {{ic|set -C}}.
+
+To make the changes persistent for your user:
+
+{{hc|~/.bashrc|output=
+...
+set -o noclobber
+}}
+
+To manually overwrite a file while {{ic|noclobber}} is set:
+
+ $ echo "output" >| file.txt
+
+=== Use directory stack to navigate ===
+
+{{ic|pushd}} and {{ic|popd}} can be used to push or pop directories to a stack while switching to them. This can be useful for "replaying" your navigation history.
+
+ [user@host ~] pushd /tmp/dir1
+ [user@host /tmp/dir1] pushd /var/lib
+ [user@host /var/lib] popd
+ [user@host /tmp/dir1] popd
+ [user@host ~]
+
+See {{man|1|bash|DIRSTACK}}.
+
+=== Shell environment detection ===
+See [[Environment variables#Shell environment detection]].
+
+== Troubleshooting ==
+
+=== Line wrap on window resize ===
+
+When resizing a [[terminal emulator]], Bash may not receive the resize signal. This will cause typed text to not wrap correctly and overlap the prompt. The {{ic|checkwinsize}} shell option checks the window size after each command and, if necessary, updates the values of {{ic|LINES}} and {{ic|COLUMNS}}.
+
+{{hc|~/.bashrc|
+shopt -s checkwinsize
+}}
+
+=== Shell exits even if ignoreeof set ===
+
+If you have set the {{ic|ignoreeof}} option and you find that repeatedly hitting {{ic|ctrl-d}} causes the shell to exit, it is because this option only allows 10 consecutive invocations of this keybinding (or 10 consecutive EOF characters, to be precise), before exiting the shell.
+
+To allow higher values, you have to use the IGNOREEOF variable.
+
+For example:
+
+ export IGNOREEOF=100
+
+=== Checking errors by analyzing scripts ===
+
+The package {{Pkg|shellcheck}} analyzes bash (and other shell) scripts, prints possible errors, and suggests better coding.
+
+There is also the web site [https://www.shellcheck.net shellcheck.net] of the same purpose, based on this program.
+
+== See also ==
+
+* [https://www.gnu.org/software/bash/manual/bashref.html Bash Reference Manual], or {{ic|/usr/share/doc/bash/bashref.html}}
+* [https://www.gnu.org/software/bash/manual/html_node/Readline-Init-File-Syntax.html Readline Init File Syntax]
+* [https://www.aosabook.org/en/bash.html The Bourne-Again Shell] - The third chapter of ''The Architecture of Open Source Applications''
+* [https://bash-prompt-generator.org/ PS1 generator] - generate your .bashrc/PS1 bash prompt using an intuitive UI
+* [https://serverfault.com/questions/3743/what-useful-things-can-one-add-to-ones-bashrc Even more useful .bashrc commands]
+
+=== Tutorials ===
+
+* [[GregsWiki:|Greg's Wiki]]
+* [[GregsWiki:BashGuide]]
+* [[GregsWiki:BashFAQ]]
+* [https://www.grymoire.com/Unix/Quote.html Quote Tutorial]
+
+=== Community ===
+
+* [ircs://irc.libera.chat/bash An active and friendly IRC channel for Bash]
+
+=== Examples ===
+
+* [https://tldp.org/HOWTO/Xterm-Title-4.html How to change the title of an xterm]

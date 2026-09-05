@@ -1,0 +1,284 @@
+[[Category:File systems]]
+[[ja:XFS]]
+[[pt:XFS]]
+[[ru:XFS]]
+[[zh-hans:XFS]]
+{{Related articles start}}
+{{Related|File systems}}
+{{Related articles end}}
+
+[https://xfs.wiki.kernel.org/#documentation XFS] is a high-performance journaling file system created by Silicon Graphics, Inc. XFS is particularly proficient at parallel IO due to its allocation group based design. This enables extreme scalability of IO threads, filesystem bandwidth, file and filesystem size when spanning multiple storage devices.
+
+== Preparation ==
+
+For XFS userspace utilities [[install]] the {{Pkg|xfsprogs}} package. It contains the tools necessary to manage an XFS file system.
+
+== Creation ==
+
+To create a new filesystem on ''device'' use:
+
+ # mkfs.xfs ''device''
+
+In general, the default options are optimal for common use.[https://web.archive.org/web/20240113230117/https://xfs.org/index.php/XFS_FAQ#Q:_I_want_to_tune_my_XFS_filesystems_for_.3Csomething.3E][https://access.redhat.com/documentation/en_us/red_hat_enterprise_linux/7/html/storage_administration_guide/ch-xfs#xfscreating]
+
+Sample output:
+
+{{bc|1=
+meta-data=/dev/device            isize=256    agcount=4, agsize=3277258 blks
+         =                       sectsz=512   attr=2
+data     =                       bsize=4096   blocks=13109032, imaxpct=25
+         =                       sunit=0      swidth=0 blks
+naming   =version 2              bsize=4096   ascii-ci=0
+log      =internal log           bsize=4096   blocks=6400, version=2
+         =                       sectsz=512   sunit=0 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+}}
+
+{{Tip|
+* Optionally assign a label to the filesystem by using the {{ic|-L ''label''}} option.
+* When using ''mkfs.xfs'' on a block device containing an existing file system, add the {{ic|-f}} option to overwrite that file system.[https://access.redhat.com/documentation/en_us/red_hat_enterprise_linux/7/html/storage_administration_guide/ch-xfs#xfscreating]. '''''This operation will destroy all data contained in the previous filesystem'''''.
+}}
+
+{{Note|"After an XFS file system is created, its size cannot be reduced. However, it can still be enlarged using the xfs_growfs command."[https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/storage_administration_guide/ch-xfs#xfscreating] See [[#Resize]].}}
+
+=== Checksumming ===
+
+{{Pkg|xfsprogs}} 3.2.0 introduced a new on-disk format (v5) that includes a metadata checksum scheme called [https://docs.kernel.org/filesystems/xfs/xfs-self-describing-metadata.html Self-Describing Metadata]. 
+Based on CRC32, it provides additional protection against metadata corruption (e.g. on unexpected power losses). Checksums are enabled by default when using {{Pkg|xfsprogs}} 3.2.3 or later, but can be disabled (necessary for read-write mounts on older kernels) using the {{ic|1=-m crc=0}} switch when calling {{man|8|mkfs.xfs}}:
+
+ # mkfs.xfs -m crc=0 /dev/''target_partition''
+
+{{Note|Disabling metadata CRCs will also have the effect of disabling support for the [[#Free inode btree]], [[#Reverse mapping btree]] and [[#Big timestamps]] features below, as well as "reference count btrees" (see {{man|8|mkfs.xfs|OPTIONS}} for details).}}
+
+The XFS v5 on-disk format is considered stable for production workloads starting in Linux Kernel 3.15.
+
+{{Note|Unlike [[Btrfs]] and [[ZFS]], the CRC32 checksum only applies to the metadata and not actual data.}}
+
+=== Free inode btree ===
+
+Starting in Linux 3.16, XFS has added a btree that tracks free inodes. It is equivalent to the existing inode allocation btree with the exception that the free inode btree tracks inode chunks with at least one free inode. The purpose is to improve lookups for free inode clusters for inode allocation. It improves performance on aged filesystems i.e. months or years down the track when you have added and removed millions of files to/from the filesystem. Using this feature does not impact overall filesystem reliability level or recovery capabilities.
+
+This feature relies on the new v5 on-disk format that has been considered stable for production workloads starting Linux Kernel 3.15. It does not change existing on-disk structures, but adds a new one that must remain consistent with the inode allocation btree; for this reason older kernels will only be able to mount read-only filesystems with the free inode btree feature.
+
+The feature is enabled by default when using xfsprogs 3.2.3 or later. If you need a writable filesystem for older kernels, it can be disabled with the {{ic|1=finobt=0}} switch when formatting an XFS partition. You will need {{ic|1=crc=0}} together:
+
+ # mkfs.xfs -m crc=0,finobt=0 /dev/''target_partition''
+
+or shortly (because {{ic|finobt}} depends on {{ic|crc}}):
+
+ # mkfs.xfs -m crc=0 /dev/''target_partition''
+
+=== Reverse mapping btree ===
+
+The reverse mapping btree is [https://blogs.oracle.com/linux/xfs-online-filesystem-checking at its core]: 
+
+:a secondary index of storage space usage that effectively provides a redundant copy of primary space usage metadata. This adds some overhead to filesystem operations, but its inclusion in a filesystem makes cross-referencing very fast. It is an essential feature for repairing filesystems online because we can rebuild damaged primary metadata from the secondary copy.
+:The feature graduated from EXPERIMENTAL status in Linux 4.16 and is production ready. However, online filesystem checking and repair is (so far) the only use case for this feature, so it will remain opt-in at least until online checking graduates to production readiness.
+
+From {{man|8|mkfs.xfs|OPTIONS}}:
+
+:The reverse mapping btree maps filesystem blocks to the owner of the filesystem block. Most of the mappings will be to an inode number and an offset, though there will also be mappings to filesystem metadata. This secondary metadata can be used to validate the primary metadata or to pinpoint exactly which data has been lost when a disk error occurs.
+
+See also [https://kernelnewbies.org/Linux_4.16#XFS_reverse_mapping_and_reflink_features_are_now_stable] and [https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=35a891be96f1f8e1227e6ad3ca827b8a08ce47ea] for more information.
+
+This feature is enabled by default for new filesystems as of xfsprogs 6.5.0.
+
+=== Big timestamps ===
+
+Starting in Linux 5.10, XFS supports using refactored "timestamp and inode encoding functions to handle timestamps as a 64-bit nanosecond counter and bit shifting to increase the effective size. This now allows XFS to run well past the [[Wikipedia:Year 2038 problem|Year 2038 problem]] to now the Year 2486. Making a new XFS file-system with ''bigtime'' enabled allows a timestamp range from December 1901 to July 2486 rather than December 1901 to January 2038." The feature will also allow quota timer expirations from January 1970 to July 2486 rather than January 1970 to February 2106.
+
+Big timestamps are enabled by default for new filesystems as of xfsprogs 5.15.
+
+==== Upgrading ====
+
+{{Expansion|Make this a top-level section and describe which of the new defaults can be enabled on existing file systems.}}
+
+Verify whether an existing filesystem has bigtime enabled with {{man|8|xfs_info}}:
+
+ # xfs_info / | grep bigtime
+ ... bigtime=0 ...
+
+With {{Pkg|xfsprogs}} 5.11 and newer you can upgrade an existing (unmounted) filesystem with {{man|8|xfs_admin}}:
+
+ # xfs_admin -O bigtime=1 ''device''
+
+Or with {{man|8|xfs_repair}}:
+
+ # xfs_repair -c bigtime=1 ''device''
+
+While there, you may want to enable {{ic|inobtcount}} as well (another new default).
+
+== Performance ==
+
+From [https://web.archive.org/web/20240113230117/https://xfs.org/index.php/XFS_FAQ#Q:_I_want_to_tune_my_XFS_filesystems_for_.3Csomething.3E XFS FAQ]:
+
+: The default values already used are optimised for best performance in the first place. mkfs.xfs will detect the difference between single disk and MD/DM RAID setups and change the default values it uses to configure the filesystem appropriately.
+: In most cases, the only thing you need to consider for {{ic|mkfs.xfs}} is specifying the stripe unit and width for hardware RAID devices.
+
+(see [[#Stripe size and width]])
+
+{{Tip|When using the XFS filesystem on [[RAID]] devices, performance improvements may be possible by using {{ic|largeio}}, {{ic|swalloc}}, increased {{ic|logbsize}} and {{ic|allocsize}} values, etc. The following articles may provide additional details about those flags:
+
+* https://www.beegfs.io/wiki/StorageServerTuning
+* https://help.marklogic.com/Knowledgebase/Article/View/505/0/recommended-xfs-settings-for-marklogic-server
+}}
+
+: For mount options, the only thing that will change metadata performance considerably is the {{ic|logbsize}} mount option. Increasing {{ic|logbsize}} reduces the number of journal IOs for a given workload. The trade off for this increase in metadata performance is that more operations may be "missing" after recovery if the system crashes while actively making modifications.
+
+{{Tip|See {{man|5|xfs}} for details on all available mount options.}}
+
+: As of kernel 3.2.12, the default i/o scheduler, CFQ, will defeat much of the parallelization in XFS.
+
+{{Note|Arch is configured to use no I/O scheduler when a SATA or [[NVMe]] [[SSD]] is detected; this can confirmed by reading the content of {{ic|/sys/block/nvme*n*/queue/scheduler}}.}}
+
+Therefore for optimal performance, in most cases you can just follow [[#Creation]].
+
+=== Stripe size and width ===
+
+If this filesystem will be on a striped RAID you can gain significant speed improvements by specifying the stripe size to the {{man|8|mkfs.xfs}} command.
+
+XFS can sometimes detect the geometry under software RAID, but in case you reshape it or you are using hardware RAID see [https://web.archive.org/web/20240113230117/https://xfs.org/index.php/XFS_FAQ#Q:_How_to_calculate_the_correct_sunit.2Cswidth_values_for_optimal_performance how to calculate the correct sunit,swidth values for optimal performance].
+
+=== Access time ===
+
+On some filesystems you can increase performance by adding the {{ic|noatime}} mount option to the {{ic|/etc/fstab}} file. For XFS filesystems "the default atime behaviour is {{ic|relatime}}, which has almost no overhead compared to noatime but still maintains sane atime values. All Linux filesystems use this as the default now (since around 2.6.30), but XFS has used relatime-like behaviour since 2006, so no-one should really need to ever use noatime on XFS for performance reasons."[https://web.archive.org/web/20240113230117/https://xfs.org/index.php/XFS_FAQ#Q:_Is_using_noatime_or.2Fand_nodiratime_at_mount_time_giving_any_performance_benefits_in_xfs_.28or_not_using_them_performance_decrease.29.3F]
+
+See [[Fstab#atime options]] for more on this topic.
+
+=== Discard ===
+
+Despite XFS supporting async discard[https://lwn.net/Articles/787272/] since kernel 4.7[https://www.phoronix.com/scan.php?page=news_item&px=Async-Discard-Linux-4.7][https://events.static.linuxfound.org/sites/events/files/slides/discard_0.pdf], {{man|5|xfs}} still recommends "that you use the [[fstrim]] application to discard unused blocks rather than the discard mount option because the performance impact of this option is quite severe."
+
+See [[Solid state drive#Periodic TRIM]].
+
+=== Defragmentation ===
+
+Although the extent-based nature of XFS and the delayed allocation strategy it uses significantly improves the file system's resistance to fragmentation problems, XFS provides a filesystem defragmentation utility (''xfs_fsr'', short for XFS filesystem reorganizer) that can defragment the files on a mounted and active XFS filesystem. It can be useful to view XFS fragmentation periodically.
+
+{{man|8|xfs_fsr}} improves the organization of mounted filesystems. The reorganization algorithm operates on one file at a time, compacting or otherwise improving the layout of the file extents (contiguous blocks of file data).
+
+==== Inspect fragmentation levels ====
+
+To see how much fragmentation your file system currently has:
+
+ # xfs_db -c frag -r /dev/''partition''
+
+==== Perform defragmentation ====
+
+To begin defragmentation, use the {{man|8|xfs_fsr}} command:
+
+ # xfs_fsr /dev/''partition''
+
+=== Deduplication ===
+
+The ''reflink'' feature, available since kernel version 4.9 and enabled by default since {{ic|mkfs.xfs}} version 5.1.0, allows creating fast reflink'ed copies of files as well as deduplication after the fact, in the same way as [[btrfs]]:
+
+==== Reflink copies ====
+
+Reflink copies initially use no additional space:
+
+ $ cp --reflink bigfile1 bigfile2
+
+Until either file is edited, and a copy-on-write takes place. This can be very useful to create snapshots of (large) files.
+
+==== Deduplication ====
+
+Existing filesystems can be deduped using tools like {{Pkg|duperemove}} or {{man|1|hardlink}} from {{Pkg|util-linux}}.
+
+=== External XFS Journal ===
+
+Using an external log (metadata journal) on for instance an [[SSD]] may be useful to improve performance [https://docs.oracle.com/en/operating-systems/oracle-linux/10/xfs/xfs-CreatinganXFSFileSystem.html#notable_xfs_feature_options]. See {{man|8|mkfs.xfs}} for details about the {{ic|logdev}} parameter.
+
+{{Note|Using flash-memory may wear-out the drive. See [[Improving performance#Reduce disk reads/writes]] for SSD wear-out details.}}
+
+To reserve an external journal with a specified size when you create an XFS file system, specify the {{ic|1=-l logdev=''device'',size=''size''}} option to the {{ic|mkfs.xfs}} command. If you omit the {{ic|size}} parameter, a journal size based on the size of the file system is used. To mount the XFS file system so that it uses the external journal, specify the {{ic|1=-o logdev=''device''}} option to the [[mount]] command.
+
+=== Sync interval ===
+
+XFS has a dedicated [[sysctl]] variable for setting the [[Improving performance#Writeback interval and buffer size|writeback interval]] with a default value of 3000.
+
+{{Warning|While larger values may increase performance, they also increase the severity of data loss caused by a power outage.}}
+
+{{hc|/etc/sysctl.d/20-xfs-sync-interval.conf|2=
+fs.xfs.xfssyncd_centisecs = 10000
+}}
+
+== Administration ==
+
+=== Resize ===
+
+XFS can be resized online using {{man|8|xfs_growfs}}:
+
+ # xfs_growfs -D ''size'' ''/path/to/mnt/point''
+
+If {{ic|-D size}} is omitted, the filesystem is automatically grown to the largest size possible, i.e. the size of the partition.
+
+{{Note|xfs only has limited support for shrinking, as documented in {{man|8|xfs_growfs}}:
+"A filesystem with only 1 AG cannot be shrunk further, and a filesystem cannot be shrunk to the point where it would only have 1 AG.", where ''AG'' stands for ''Allocation Group''.}}
+
+=== Online metadata checking (scrub) ===
+
+{{Warning|This program is '''experimental''', which means that its behavior and interface could change at any time. See {{man|8|xfs_scrub}}.}}
+
+{{ic|xfs_scrub}} asks the kernel to scrub all metadata objects in the XFS filesystem. Metadata records are scanned for obviously bad values and then cross-referenced against other metadata. The goal is to establish a reasonable confidence about the consistency of the overall filesystem by examining the consistency of individual metadata records against the other metadata in the filesystem. Damaged metadata can be rebuilt from other metadata if there exists redundant data structures which are intact.
+
+[[Enable]]/[[start]] {{ic|xfs_scrub_all.timer}} to periodic check online metadata for all XFS filesystems.
+
+{{Note|One may want to [[edit]] {{ic|xfs_scrub_all.timer}}: the timer runs every Sunday at 3:10am and will be [[Systemd/Timers#Realtime timer|triggered immediately]] if it missed the last start time, i.e. due to the system being powered off.}}
+
+=== Repair ===
+
+{{Note|{{man|8|xfs_repair}} does not get run at boot time by default. To repair an XFS filesystem at boot time, set the {{ic|fsck.mode{{=}}force}} [[kernel parameter]] which instructs {{man|8|fsck.xfs}} to run ''xfs_repair''.}}
+
+See [https://docs.oracle.com/en/operating-systems/oracle-linux/10/xfs/xfs-CheckingandRepairinganXFSFileSystem.html Checking and Repairing an XFS File System], [https://web.archive.org/web/20240113230117/https://xfs.org/index.php/XFS_FAQ#Q:_Which_factors_influence_the_memory_usage_of_xfs_repair.3F Which factors influence the memory usage of xfs_repair?] and [https://web.archive.org/web/20260314123640/https://xfs.org/docs/xfsdocs-xml-dev/XFS_User_Guide/tmp/en-US/html/xfs-repair.html XFS Repair].
+
+=== Data rescue ===
+
+Even when being mounted read-only with {{ic|mount -o ro}} an XFS file system's log will be replayed if it has not been unmounted cleanly.
+
+There may be situations where a compromised XFS file system on a damaged storage device should be mounted read-only, so that files may be copied off it hopefully without causing further damage, yet it cannot be mounted because it has not been unmounted cleanly and is damaged to such an extent that the log cannot be replayed.
+Also, consider that replaying the log means writing to the compromised file system, which might be a bad idea in itself.
+
+To mount an XFS file system without writing to it in any way and without replaying the log, use {{ic|mount -o ro,norecovery}}.
+
+=== Undelete ===
+
+{{AUR|xfs_undelete-git}} can recover (under certain conditions) deleted files on an unmounted or read-only mounted XFS filesystem.  See https://github.com/ianka/xfs_undelete for more information.
+
+== Troubleshooting ==
+
+=== Root file system quota ===
+
+XFS quota mount options ({{ic|uquota}}, {{ic|gquota}}, {{ic|prjquota}}, etc.) fail during re-mount of the file system. To enable quota for root file system, the mount option must be passed to initramfs as a [[kernel parameter]] {{ic|1=rootflags=}}. Subsequently, it should not be listed among mount options in {{ic|/etc/fstab}} for the root ({{ic|/}}) filesystem.
+
+{{Note|There are some differences of XFS Quota compared to standard Linux [[Disk quota]], this article https://inai.de/linux/adm_quota may be worth reading.}}
+
+=== xfs_scrub_all fails if user "nobody" can not access the mountpoint ===
+
+When running {{ic|xfs_scrub_all}}, it will launch {{ic|xfs_scrub@.service}} for each mounted XFS file system. The service is run as user {{ic|nobody}}, so if {{ic|nobody}} can not navigate to the directory, it will fail with the error:
+
+ xfs_scrub@''mountpoint''.service: Changing to the requested working directory failed: Permission denied
+ xfs_scrub@''mountpoint''.service: Failed at step CHDIR spawning /usr/bin/xfs_scrub: Permission denied
+ xfs_scrub@''mountpoint''.service: Main process exited, code=exited, status=200/CHDIR
+
+To allow the service to run, change the [[permissions]] of the mountpoint so that user {{ic|nobody}} has execute permissions.
+
+=== fsck.xfs fails in systemd-based initramfs ===
+
+When using a [[mkinitcpio]]-generated systemd based initramfs without the {{ic|base}} hook, you will see the following messages in the [[journal]]:
+
+ systemd-fsck[288]: fsck: /usr/bin/fsck.xfs: execute failed: No such file or directory
+ systemd-fsck[286]: fsck failed with exit status 8.
+ systemd-fsck[286]: Ignoring error.
+
+This is because {{man|8|fsck.xfs}} is a shell script and requires {{ic|/bin/sh}} to execute. {{ic|/usr/bin/sh}} is provided by the {{ic|base}} hook, so the solution is to prepend it to the HOOKS array in {{ic|/etc/mkinitcpio.conf}}. E.g.:
+
+ HOOKS=('''base''' systemd ... )
+
+== See also ==
+
+* [https://web.archive.org/web/20240113230117/https://xfs.wiki.kernel.org/ XFS wiki (archive]
+* [https://web.archive.org/web/20240113230117/https://xfs.org/index.php/XFS_FAQ XFS FAQ]
+* [https://web.archive.org/web/20240113230117/https://xfs.org/index.php/Improving_Metadata_Performance_By_Reducing_Journal_Overhead Improving Metadata Performance By Reducing Journal Overhead]
+* [[wikipedia:XFS|XFS Wikipedia Entry]]
+* [https://web.archive.org/web/20210224161003/https://xfs.org/index.php/XFS_Papers_and_Documentation XFS User Guide] XFS User Guide no longer exists but has a link to the git repository

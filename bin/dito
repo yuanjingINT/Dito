@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Dito 终端对话启动器。
+# 用法：dito [消息] / dito send|msg|message|-m <消息>  （无参数进入 REPL，带参数单次问答）
+set -euo pipefail
+
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+if [ ! -x "$DIR/node_modules/.bin/tsx" ]; then
+  echo "[dito] 第一次跑得先装依赖：cd '$DIR' && npm install" >&2
+  exit 1
+fi
+
+# node:sqlite：Node 22.5 引入但需 flag，23.4+ / 24+ 默认启用。
+# Fedora 目前全系 nodejs 22，这里按版本自动补 --experimental-sqlite。
+NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+NODE_MINOR="$(node -p 'Number(process.versions.node.split(".")[1])')"
+if [ "$NODE_MAJOR" -lt 24 ] && { [ "$NODE_MAJOR" -lt 23 ] || [ "$NODE_MINOR" -lt 4 ]; }; then
+  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--experimental-sqlite"
+fi
+
+exec "$DIR/node_modules/.bin/tsx" "$DIR/bin/dito.ts" "$@"
