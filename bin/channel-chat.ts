@@ -111,9 +111,15 @@ export function makeChannelChat(
     const e = event as {
       type: string;
       assistantMessageEvent?: { type: string; delta?: string };
+      message?: { role?: string; stopReason?: string; errorMessage?: string };
     };
     if (e.type === "message_update" && e.assistantMessageEvent?.type === "text_delta") {
       buf += e.assistantMessageEvent.delta ?? "";
+      return;
+    }
+    // 模型报错必须可见：否则错误轮无文本产出，频道表现为"静默不回话"
+    if (e.type === "message_end" && e.message?.role === "assistant" && e.message.stopReason === "error") {
+      console.error(`[${label}] 模型错误：${e.message.errorMessage ?? "(无信息)"}`);
       return;
     }
     if (e.type === "agent_end") {

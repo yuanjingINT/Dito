@@ -81,10 +81,17 @@ export async function runMatrixChannel(): Promise<void> {
           console.log(`[dito matrix] 新房间会话：${roomId}（模型 ${created.modelName}）`);
         }
         const senderName = event.sender && event.sender.startsWith("@") ? event.sender.split(":")[0].slice(1) : event.sender;
-        await runWithTaskSlot(() =>
-          chat.session.prompt(`[Matrix 房间 来自 ${senderName}] ${body}`, {
-            streamingBehavior: "followUp",
-          }));
+        const timer = setTimeout(() => {
+          void chat.session.abort().catch(() => {});
+        }, 180_000);
+        try {
+          await runWithTaskSlot(() =>
+            chat.session.prompt(`[Matrix 房间 来自 ${senderName}] ${body}`, {
+              streamingBehavior: "followUp",
+            }));
+        } finally {
+          clearTimeout(timer);
+        }
       } catch (err) {
         console.error("[dito matrix] 处理消息失败：", (err as Error).message);
       }

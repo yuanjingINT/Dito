@@ -454,6 +454,20 @@ const CHAT_SESSIONS_DIR = join(
   "dito",
 );
 
+/** 任务看门狗：单轮处理超过 3 分钟强制 abort（防流式挂死占住任务槽，后续全部静默排队） */
+const TASK_TIMEOUT_MS = 180_000;
+function promptWithWatchdog(chat: ChannelChat, text: string, label: string): Promise<unknown> {
+  return runWithTaskSlot(() => {
+    const timer = setTimeout(() => {
+      console.error(`[${label}] 任务超时（${TASK_TIMEOUT_MS / 1000}s），强制中断：${text.slice(0, 40)}`);
+      void chat.session.abort().catch(() => {});
+    }, TASK_TIMEOUT_MS);
+    return chat.session
+      .prompt(text, { streamingBehavior: "followUp" })
+      .finally(() => clearTimeout(timer));
+  });
+}
+
 /** 偷表情包：把消息里的图片下载 → 视觉识别 → 表情包才入库（照片/截图不收） */
 function stealMemes(segments: unknown[], source: string, memes: MemeStore): void {
   void (async () => {
@@ -587,7 +601,7 @@ export async function runQqChannel(): Promise<void> {
     const content = extractPlainText(event.raw_message);
     if (!content) return;
     const chat = await sessionFor(key);
-    await runWithTaskSlot(() => chat.session.prompt(`[QQ私聊 来自 ${name}] ${content}`, { streamingBehavior: "followUp" }));
+    await promptWithWatchdog(chat, `[QQ私聊 来自 ${name}] ${content}`, "dito qq");
   };
 
   // 群聊（仅 allowlist 内的群；含唤醒词或 @机器人 才响应）
@@ -648,10 +662,7 @@ export async function runQqChannel(): Promise<void> {
 
     const key = `qq-group-${event.group_id}`;
     const chat = await sessionFor(key);
-    await runWithTaskSlot(() =>
-      chat.session.prompt(`[QQ群 ${event.group_id} 来自 ${name}｜好感度 ${score}/100] ${content}`, {
-        streamingBehavior: "followUp",
-      }));
+    await promptWithWatchdog(chat, `[QQ群 ${event.group_id} 来自 ${name}｜好感度 ${score}/100] ${content}`, "dito qq");
   };
 
   // 戳一戳：被戳就戳回去
