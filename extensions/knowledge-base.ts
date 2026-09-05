@@ -20,8 +20,19 @@ interface KbEntry {
   source: string;
 }
 
+/**
+ * 知识库 scope：频道会话为每个聊天设置独立 scope（kb-<scope>.db，含各自导入的默认文章），
+ * 终端不设 scope 用全局 kb.db——不同聊天之间的写入互相隔离，谁也看不到谁上传的内容。
+ */
+let kbScope: string | undefined;
+export function setKbScope(scope?: string): void {
+  kbScope = scope ? scope.replace(/[^a-zA-Z0-9_-]/g, "_") : undefined;
+}
+
 function kbDbPath(): string {
-  return join(ditoDataDir(), "kb.db");
+  return kbScope
+    ? join(ditoDataDir(), `kb-${kbScope}.db`)
+    : join(ditoDataDir(), "kb.db");
 }
 
 export class KnowledgeBase {
