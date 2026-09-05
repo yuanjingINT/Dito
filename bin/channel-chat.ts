@@ -55,6 +55,7 @@ const NON_OWNER_BLOCKED_TOOLS = new Set([
   "bash", "write", "edit", "read",
   "get_system_info",
   "remove_knowledge_base",
+  "upload_to_knowledge_base",
   "qq_qzone_post",
 ]);
 

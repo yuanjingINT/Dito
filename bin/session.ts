@@ -19,6 +19,7 @@ import {
 
 import { buildDitoSystemPrompt } from "../extensions/persona.js";
 import { setMemoryScope } from "../extensions/memory.js";
+import { setKbScope } from "../extensions/knowledge-base.js";
 import { bootDitoPlugins } from "../extensions/plugin-kernel.js";
 import { DITO_PLUGINS } from "../extensions/plugins/index.js";
 import { getBuiltinModels, type BuiltinProvider } from "@earendil-works/pi-ai/providers/all";
@@ -237,6 +238,7 @@ export interface CreateSessionOptions {
   /** 独立会话目录（频道用，避免与终端会话互相污染） */
   sessionsDir?: string;
   /** 每聊天的记忆库 scope（频道用，记忆按会话隔离） */
+  /** 每聊天的记忆/知识库 scope（频道用，记忆与上传按会话隔离） */
   memoryScope?: string;
 }
 
@@ -258,10 +260,12 @@ export async function createSession(options: CreateSessionOptions = {}): Promise
 
 async function runCreate(options: CreateSessionOptions): Promise<SessionBundle> {
   setMemoryScope(options.memoryScope);
+  setKbScope(options.memoryScope);
   try {
     return await createSessionInner(options);
   } finally {
     setMemoryScope(undefined);
+    setKbScope(undefined);
   }
 }
 
