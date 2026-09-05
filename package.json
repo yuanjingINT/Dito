@@ -1,7 +1,7 @@
 {
   "name": "dito",
   "version": "0.1.0",
-  "description": "Dito（蒂特）—— 基于 pi agent 的 AI 助手：语音对话、知识库、记忆、提示词设定、联网搜索，默认模型为 opencode 免费公共模型（免Key开箱即用），内置智谱 GLM-4-Flash 等国内直连免费模型可选",
+  "description": "Dito（蒂特）—— 基于 pi agent 的 QQ/终端 AI 助手：语音对话、知识库、记忆、SnowLuma QQ 频道、Matrix 频道、联网搜索、权限门，默认模型为 opencode 免费公共模型",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -34,47 +34,7 @@
     "tsx": "^4.23.12",
     "typebox": "^1.3.13"
   },
-  "scripts": {
-    "desktop": "node scripts/launch-desktop.cjs",
-    "desktop:encrypt-prompts": "node --import tsx --input-type=module -e \"import { buildPromptBundle } from './extensions/prompt-crypto.ts'; const n=buildPromptBundle(); console.log('已加密 '+n+' 份提示词 -> desktop/prompts/dito-prompts.bin');\"",
-    "desktop:pack": "npm run desktop:encrypt-prompts && electron-builder --dir --linux"
-  },
-  "main": "desktop/main.cjs",
-  "devDependencies": {
-    "electron": "^43.4.0",
-    "electron-builder": "^26.15.3"
-  },
-  "build": {
-    "appId": "dev.dito.desktop",
-    "productName": "Dito",
-    "asar": false,
-    "directories": {
-      "output": "dist"
-    },
-    "electronDist": "/usr/lib/electron43",
-    "files": [
-      "desktop/**/*",
-      "bin/**/*",
-      "extensions/**/*",
-      "web-ui/**/*",
-      "kb/**/*",
-      "skills/**/*",
-      "config/**/*",
-      ".pi/**/*",
-      "package.json",
-      "node_modules/**/*",
-      "!node_modules/electron/**",
-      "!node_modules/electron-builder/**",
-      "!node_modules/@electron/**"
-    ],
-    "linux": {
-      "target": [
-        "dir"
-      ],
-      "category": "Utility",
-      "executableName": "dito",
-      "icon": "desktop/icon.png"
-    }
-  },
+  "scripts": {},
+  "devDependencies": {},
   "author": "yuanjingINT"
 }

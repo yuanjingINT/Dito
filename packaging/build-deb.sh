@@ -16,11 +16,10 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$OUT" "$SRC"
 
 # ── 1. 生成加密提示词包（源码包不携带明文提示词）──
-(cd "$ROOT" && npm run desktop:encrypt-prompts)
 
 # ── 2. 组装源码树（排除明文 personas / identities / system-prompts）──
 cp -a \
-  bin extensions desktop web-ui scripts kb config skills .pi \
+  bin extensions kb config skills .pi \
   package.json package-lock.json README.md \
   "$SRC"/
 
@@ -34,13 +33,12 @@ cp -a "$SRC/." "$DEBROOT/"
 cp -a "$ROOT/README.md" "$PKGROOT/usr/share/doc/$NAME/"
 
 # 规范化自有文件权限（目录 755、文件 644、可执行脚本保持可执行）
-for d in bin extensions desktop web-ui scripts kb config skills .pi; do
+for d in bin extensions kb config skills .pi; do
   chmod -R u=rwX,go=rX "$DEBROOT/$d"
 done
-chmod 0755 "$DEBROOT/bin/dito" "$DEBROOT/bin/dito-desktop"
+chmod 0755 "$DEBROOT/bin/dito"
 
 ln -s "../lib/$NAME/bin/dito" "$PKGROOT/usr/bin/dito"
-ln -s "../lib/$NAME/bin/dito-desktop" "$PKGROOT/usr/bin/dito-desktop"
 
 # ── 5. 生成 control（含 Installed-Size）──
 SIZE_KB="$(du -sk --exclude=DEBIAN "$PKGROOT" | cut -f1)"

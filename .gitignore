@@ -11,7 +11,6 @@ dist/
 *.gguf
 *.safetensors
 *.bin
-!desktop/icon.png
 
 # 训练数据构建产物（脚本可重建）
 training/data/*.jsonl
@@ -22,3 +21,11 @@ unsloth_compiled_cache/
 # 日志与临时文件
 *.log
 .DS_Store
+
+# Qwen 训练相关：本地保留，不入仓库
+training/
+dataset/
+archwiki/
+memes/
+REPORT-27B.md
+CONTEXT-compressed.md

@@ -40,14 +40,11 @@ Dito（蒂特）—— 基于 pi agent 的个人 AI 助手。
 # TypeScript 无独立编译步骤，运行时由 tsx 直接加载；
 # 这里只安装运行时依赖，node_modules 会被一并打包进 RPM。
 npm ci --omit=dev --no-audit --no-fund
-# 提示词加密包 desktop/prompts/dito-prompts.bin 已由 packaging/build.sh 在源码包中生成；
-# RPM 内不携带 personas/identities/system-prompts 明文提示词目录。
 
 %install
 # 应用整体安装到 %{_libexecdir}/dito（私有可执行目录），
-# 运行时扩展通过相对自身路径解析 desktop/prompts 加密包与 kb 等资源。
 install -d %{buildroot}%{_libexecdir}/%{name}
-cp -a bin extensions desktop web-ui scripts kb config skills .pi \
+cp -a bin extensions kb config skills .pi \
       package.json package-lock.json \
       %{buildroot}%{_libexecdir}/%{name}/
 cp -a node_modules %{buildroot}%{_libexecdir}/%{name}/
@@ -55,11 +52,9 @@ cp -a node_modules %{buildroot}%{_libexecdir}/%{name}/
 # 启动器软链到 PATH
 install -d %{buildroot}%{_bindir}
 ln -s ../libexec/%{name}/bin/dito %{buildroot}%{_bindir}/dito
-ln -s ../libexec/%{name}/bin/dito-desktop %{buildroot}%{_bindir}/dito-desktop
 
 %files
 %{_bindir}/dito
-%{_bindir}/dito-desktop
 %{_libexecdir}/%{name}
 %doc README.md
 
