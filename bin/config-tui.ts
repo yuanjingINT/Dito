@@ -1024,7 +1024,7 @@ async function voiceScreen(cfg: DitoConfig): Promise<void> {
       { label: "最大录音秒数", value: String(v.maxRecordSeconds), kind: "number", hint: "超时自动收声" },
       { label: "问句自动听回答", value: String(v.autoListenAfterQuestion), kind: "bool", hint: "回复以问句结尾时自动继续录音" },
       { label: "连续对话", value: String(v.continuous), kind: "bool", hint: "回答完自动继续监听" },
-      { label: "语音唤醒词", value: v.wakeWord, kind: "text", hint: "逗号分隔（如 hey,你好）：待机时本地 whisper 轮询短音频，听到即唤醒（零 API 成本）；空格键仍可手动唤醒；留空 = 仅空格键" },
+      { label: "语音唤醒词", value: v.wakeWord, kind: "text", hint: "逗号分隔（如 hey,你好）：待机时用 MiMo ASR 轮询短音频，听到即唤醒；空格键仍可手动唤醒；留空 = 仅空格键" },
     ],
   });
   if (!result) return;
