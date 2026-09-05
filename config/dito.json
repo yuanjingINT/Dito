@@ -558,7 +558,7 @@
       "continuous": false,
       "customSttCommand": "",
       "customTtsCommand": "",
-      "xiaomiTtsVoiceDesign": "年轻女性，声音清脆甜美，语调活泼俏皮，说话像十八岁的元气少女，偶尔带点小得意"
+      "xiaomiTtsVoiceDesign": ""
     },
     "permission": {
       "enabled": true,
@@ -567,6 +567,9 @@
       "sudoCommand": "sudo"
     },
     "ask": {
+      "enabled": true
+    },
+    "snowluma": {
       "enabled": true
     }
   }

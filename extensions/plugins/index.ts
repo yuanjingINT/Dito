@@ -13,6 +13,7 @@ import { webSearchPlugin } from "./web-search.js";
 import { permissionPlugin } from "./permission.js";
 import { askPlugin } from "./ask.js";
 import { voicePlugin } from "./voice.js";
+import { snowlumaPlugin } from "./snowluma.js";
 
 export const DITO_PLUGINS: DitoPlugin[] = [
   providerPlugin,
@@ -25,4 +26,5 @@ export const DITO_PLUGINS: DitoPlugin[] = [
   permissionPlugin,
   askPlugin,
   voicePlugin,
+  snowlumaPlugin,
 ];
