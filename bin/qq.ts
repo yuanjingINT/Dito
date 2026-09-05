@@ -613,7 +613,11 @@ export async function runQqChannel(): Promise<void> {
     if (hit) return hit;
     const created = await openChannelSession(join(CHAT_SESSIONS_DIR, "qq-chats.json"), key, [
       qqToolsExtension(bot, affinity),
-    ], { systemPrompt: buildQqSystemPrompt(), skipPluginIds: ["mode"] });
+    ], {
+      systemPrompt: buildQqSystemPrompt(),
+      skipPluginIds: ["mode"],
+      sessionsDir: join(CHAT_SESSIONS_DIR, "qq-sessions"),
+    });
     // 权限分级：主人私聊全量工具；其余会话（含所有群聊）屏蔽电脑控制
     const ownerMatch = /^qq-private-(\d+)$/.exec(key);
     const isOwner = !!ownerMatch && ch.owners.includes(Number(ownerMatch[1]));

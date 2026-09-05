@@ -1,6 +1,6 @@
 {
   "name": "dito",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Dito（蒂特）—— 基于 pi agent 的 QQ/终端 AI 助手：语音对话、知识库、记忆、SnowLuma QQ 频道、Matrix 频道、联网搜索、权限门，默认模型为 opencode 免费公共模型",
   "license": "MIT",
   "type": "module",
