@@ -182,15 +182,22 @@ async function ttsPiper(text: string, cfg: VoiceConfig): Promise<void> {
 
 async function ttsXiaomi(text: string, cfg: VoiceConfig): Promise<void> {
   if (!cfg.xiaomiApiKey.trim()) return;
-  // MiMo TTS 走 chat/completions：要说的话放 assistant 消息，音频从 message.audio.data（base64 WAV）取回
+  // MiMo TTS 走 chat/completions：要说的话放 assistant 消息，音频从 message.audio.data（base64 WAV）取回。
+  // 配了 xiaomiTtsVoiceDesign（音色描述）时走 voicedesign 模型：user 消息 = 音色描述
+  const design = cfg.xiaomiTtsVoiceDesign?.trim();
   const resp = await fetch(`${cfg.xiaomiBaseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.xiaomiApiKey.trim()}` },
     body: JSON.stringify({
-      model: cfg.xiaomiTtsModel || "mimo-v2.5-tts",
+      model: design ? "mimo-v2.5-tts-voicedesign" : cfg.xiaomiTtsModel || "mimo-v2.5-tts",
       modalities: ["text", "audio"],
-      audio: { voice: cfg.xiaomiTtsVoice || "冰糖", format: "wav" },
-      messages: [{ role: "assistant", content: text }],
+      audio: design ? { format: "wav" } : { voice: cfg.xiaomiTtsVoice || "冰糖", format: "wav" },
+      messages: design
+        ? [
+            { role: "user", content: design },
+            { role: "assistant", content: text },
+          ]
+        : [{ role: "assistant", content: text }],
     }),
     signal: AbortSignal.timeout(120_000),
   });

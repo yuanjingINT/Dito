@@ -1019,7 +1019,8 @@ async function voiceScreen(cfg: DitoConfig): Promise<void> {
       { label: "espeak 音色", value: v.espeakVoice, kind: "text", hint: "如 zh" },
       { label: "piper 模型", value: v.piperModel, kind: "text", hint: ".onnx 模型文件路径" },
       { label: "小米 API Key", value: v.xiaomiApiKey, kind: "sensitive", hint: "进入编辑即清空，直接输入新值" },
-      { label: "小米 TTS 音色", value: v.xiaomiTtsVoice, kind: "text", hint: "如 冰糖" },
+      { label: "小米 TTS 音色", value: v.xiaomiTtsVoice, kind: "text", hint: "preset 音色名，如 冰糖；配了下方声音设计则不生效" },
+      { label: "小米 TTS 声音设计", value: v.xiaomiTtsVoiceDesign ?? "", kind: "text", hint: "音色描述（如：年轻女性，清脆甜美，活泼俏皮）→ 用 voicedesign 模型定制音色；留空用 preset" },
       { label: "最大录音秒数", value: String(v.maxRecordSeconds), kind: "number", hint: "超时自动收声" },
       { label: "问句自动听回答", value: String(v.autoListenAfterQuestion), kind: "bool", hint: "回复以问句结尾时自动继续录音" },
       { label: "连续对话", value: String(v.continuous), kind: "bool", hint: "回答完自动继续监听" },
@@ -1035,9 +1036,10 @@ async function voiceScreen(cfg: DitoConfig): Promise<void> {
   v.piperModel = result[6].value.trim();
   v.xiaomiApiKey = result[7].value.trim();
   v.xiaomiTtsVoice = result[8].value.trim();
-  v.maxRecordSeconds = parseNum(result[9].value, 8);
-  v.autoListenAfterQuestion = parseBool(result[10].value);
-  v.continuous = parseBool(result[11].value);
+  v.xiaomiTtsVoiceDesign = result[9].value.trim();
+  v.maxRecordSeconds = parseNum(result[10].value, 8);
+  v.autoListenAfterQuestion = parseBool(result[11].value);
+  v.continuous = parseBool(result[12].value);
   persist(cfg);
 }
 

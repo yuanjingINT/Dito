@@ -133,6 +133,8 @@ export interface DitoConfig {
       xiaomiAsrModel: string;
       xiaomiTtsModel: string;
       xiaomiTtsVoice: string;
+      /** MiMo 声音设计：填音色描述（如「年轻女性，清脆甜美」）即用 voicedesign 模型；留空用 preset 音色 */
+      xiaomiTtsVoiceDesign: string;
       maxRecordSeconds: number;
       autoListenAfterQuestion: boolean;
       continuous: boolean;
@@ -359,6 +361,7 @@ export function defaultConfig(): DitoConfig {
         xiaomiAsrModel: "mimo-v2.5-asr",
         xiaomiTtsModel: "mimo-v2.5-tts",
         xiaomiTtsVoice: "冰糖",
+        xiaomiTtsVoiceDesign: "",
         maxRecordSeconds: 8,
         autoListenAfterQuestion: true,
         continuous: false,
