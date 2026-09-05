@@ -77,7 +77,9 @@ function detectRecorder(): string {
 }
 
 function recorderArgs(recorder: string, out: string): string[] {
-  if (recorder === "pw-record") return ["--rate", "16000", "--channels", "1", "--format", "s16le", out];
+  // pw-record：PipeWire 版用 "s16"（"s16le" 会报 unknown format），
+  // 且默认容器不是 wav——加 --container wav 让 whisper-cli 能直接读
+  if (recorder === "pw-record") return ["--rate", "16000", "--channels", "1", "--format", "s16", "--container", "wav", out];
   if (recorder === "parec") return ["--rate=16000", "--channels=1", "--format=s16le", "--file-format=wav", out];
   return ["-f", "S16_LE", "-r", "16000", "-c", "1", out];
 }
@@ -108,18 +110,28 @@ async function sttWhisper(wav: string, cfg: VoiceConfig): Promise<string> {
 
 async function sttXiaomi(wav: string, cfg: VoiceConfig): Promise<string> {
   if (!cfg.xiaomiApiKey.trim()) return "";
-  const data = readFileSync(wav);
-  const form = new FormData();
-  form.append("file", new Blob([data], { type: "audio/wav" }), "rec.wav");
-  form.append("model", cfg.xiaomiAsrModel || "mimo-v2.5-asr");
-  const resp = await fetch(`${cfg.xiaomiBaseUrl.replace(/\/+$/, "")}/audio/transcriptions`, {
+  // MiMo ASR 走 chat/completions + input_audio（/audio/transcriptions 端点不存在）
+  const b64 = readFileSync(wav).toString("base64");
+  const resp = await fetch(`${cfg.xiaomiBaseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${cfg.xiaomiApiKey.trim()}` },
-    body: form,
+    headers: { Authorization: `Bearer ${cfg.xiaomiApiKey.trim()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: cfg.xiaomiAsrModel || "mimo-v2.5-asr",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "input_audio", input_audio: { data: b64, format: "wav" } }],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(60_000),
   });
-  if (!resp.ok) return "";
-  const json = (await resp.json()) as { text?: string };
-  return json.text?.trim() ?? "";
+  if (!resp.ok) {
+    console.error("[dito voice] MiMo ASR 失败：HTTP", resp.status);
+    return "";
+  }
+  const json = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+  return json.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
 async function speechToText(wav: string, cfg: VoiceConfig): Promise<string> {
@@ -170,15 +182,29 @@ async function ttsPiper(text: string, cfg: VoiceConfig): Promise<void> {
 
 async function ttsXiaomi(text: string, cfg: VoiceConfig): Promise<void> {
   if (!cfg.xiaomiApiKey.trim()) return;
-  const resp = await fetch(`${cfg.xiaomiBaseUrl.replace(/\/+$/, "")}/audio/speech`, {
+  // MiMo TTS 走 chat/completions：要说的话放 assistant 消息，音频从 message.audio.data（base64 WAV）取回
+  const resp = await fetch(`${cfg.xiaomiBaseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.xiaomiApiKey.trim()}` },
-    body: JSON.stringify({ model: cfg.xiaomiTtsModel || "mimo-v2.5-tts", input: text, voice: cfg.xiaomiTtsVoice || "冰糖" }),
+    body: JSON.stringify({
+      model: cfg.xiaomiTtsModel || "mimo-v2.5-tts",
+      modalities: ["text", "audio"],
+      audio: { voice: cfg.xiaomiTtsVoice || "冰糖", format: "wav" },
+      messages: [{ role: "assistant", content: text }],
+    }),
+    signal: AbortSignal.timeout(120_000),
   });
-  if (!resp.ok) return;
-  const buf = Buffer.from(await resp.arrayBuffer());
-  const out = tmpWav().replace("rec.wav", "tts.mp3");
-  writeFileSync(out, buf);
+  if (!resp.ok) {
+    console.error("[dito voice] MiMo TTS 失败：HTTP", resp.status);
+    return;
+  }
+  const json = (await resp.json()) as {
+    choices?: { message?: { audio?: { data?: string; format?: string } } }[];
+  };
+  const audio = json.choices?.[0]?.message?.audio;
+  if (!audio?.data) return;
+  const out = tmpWav().replace("rec.wav", `tts.${audio.format || "wav"}`);
+  writeFileSync(out, Buffer.from(audio.data, "base64"));
   await playWav(out);
   try {
     unlinkSync(out);
