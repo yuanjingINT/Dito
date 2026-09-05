@@ -1,0 +1,572 @@
+{
+  "version": 1,
+  "model": {
+    "provider": "opencode-free",
+    "chat": "big-pickle",
+    "vision": "mimo-v2.5-free"
+  },
+  "providers": [
+    {
+      "id": "opencode-free",
+      "name": "OpenCode 免费 (Zen)",
+      "baseUrl": "https://opencode.ai/zen/v1",
+      "apiKey": " ",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "big-pickle",
+          "name": "Big Pickle（免费）",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 272000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "mimo-v2.5-free",
+          "name": "MiMo v2.5（免费·视觉）",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 272000,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    {
+      "id": "opencode-go",
+      "name": "OpenCode Go",
+      "baseUrl": "https://opencode.ai/zen/go/v1",
+      "apiKey": "$OPENCODE_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 384000
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 384000
+        },
+        {
+          "id": "kimi-k3",
+          "name": "Kimi K3",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1048576,
+          "maxTokens": 131072
+        },
+        {
+          "id": "kimi-k2.7-code",
+          "name": "Kimi K2.7 Code",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 262144
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 131072
+        },
+        {
+          "id": "mimo-v2.5",
+          "name": "MiMo V2.5",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "qwen3.8-max",
+          "name": "Qwen3.8 Max",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "api": "anthropic-messages",
+          "baseUrl": "https://opencode.ai/zen/go"
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "name": "GPT-5.6 Luna",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "api": "openai-responses"
+        }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek（官方·国内直连）",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "$DEEPSEEK_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 384000
+        },
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 384000
+        }
+      ]
+    },
+    {
+      "id": "zhipu",
+      "name": "智谱 GLM（BigModel）",
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "apiKey": "$ZHIPUAI_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM-5.3-Flash（闪存·快）",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "glm-4-flash",
+          "name": "GLM-4-Flash（免费）",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "glm-4v-flash",
+          "name": "GLM-4V-Flash（免费·视觉）",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2（旗舰）",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    {
+      "id": "dashscope",
+      "name": "阿里云百炼 Qwen",
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "apiKey": "$DASHSCOPE_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen-turbo",
+          "name": "Qwen Turbo",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 8192
+        },
+        {
+          "id": "qwen-plus",
+          "name": "Qwen Plus",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 8192
+        },
+        {
+          "id": "qwen-max",
+          "name": "Qwen Max",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "maxTokens": 8192
+        },
+        {
+          "id": "qwen-vl-plus",
+          "name": "Qwen VL Plus（视觉）",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 32768,
+          "maxTokens": 4096
+        }
+      ]
+    },
+    {
+      "id": "moonshot",
+      "name": "月之暗面 Kimi",
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiKey": "$MOONSHOT_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "kimi-latest",
+          "name": "Kimi Latest",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 16384
+        },
+        {
+          "id": "moonshot-v1-128k",
+          "name": "Moonshot V1 128K",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 8192
+        },
+        {
+          "id": "kimi-k2-0711-preview",
+          "name": "Kimi K2（推理）",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 65536
+        }
+      ]
+    },
+    {
+      "id": "siliconflow",
+      "name": "硅基流动 SiliconFlow",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "$SILICONFLOW_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-ai/DeepSeek-V3",
+          "name": "DeepSeek-V3",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 65536,
+          "maxTokens": 8192
+        },
+        {
+          "id": "Qwen/Qwen2.5-7B-Instruct",
+          "name": "Qwen2.5-7B（免费）",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "maxTokens": 8192
+        },
+        {
+          "id": "THUDM/glm-4-9b-chat",
+          "name": "GLM-4-9B（免费）",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "maxTokens": 8192
+        },
+        {
+          "id": "Qwen/Qwen3-235B-A22B-Instruct",
+          "name": "Qwen3-235B（推理）",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    {
+      "id": "volcengine",
+      "name": "火山方舟 豆包",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "apiKey": "$ARK_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "doubao-seed-1-6-250615",
+          "name": "Doubao Seed 1.6",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 16384
+        },
+        {
+          "id": "doubao-1-5-pro-32k-250115",
+          "name": "Doubao 1.5 Pro 32K",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "maxTokens": 4096
+        },
+        {
+          "id": "doubao-1-5-vision-pro-32k-250115",
+          "name": "Doubao 1.5 Vision Pro（视觉）",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 32768,
+          "maxTokens": 4096
+        }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic Claude",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKey": "$ANTHROPIC_API_KEY",
+      "api": "anthropic-messages",
+      "models": [
+        {
+          "id": "claude-sonnet-4-5-20250929",
+          "name": "Claude Sonnet 4.5",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 200000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "claude-haiku-4-5-20251001",
+          "name": "Claude Haiku 4.5",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 200000,
+          "maxTokens": 8192
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "$OPENAI_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "gpt-4o",
+          "name": "GPT-4o",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "gpt-4o-mini",
+          "name": "GPT-4o mini",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama (本地)",
+      "baseUrl": "http://localhost:11434/v1",
+      "apiKey": "ollama",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen2.5:7b",
+          "name": "Qwen2.5 7B",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 128000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  ],
+  "persona": {
+    "active": "dito",
+    "identity": "默认"
+  },
+  "channels": {
+    "qq": {
+      "enabled": false,
+      "url": "ws://127.0.0.1:3001",
+      "accessToken": "",
+      "groups": [
+        1003627509,
+        994368752,
+        1105817342
+      ],
+      "friends": true,
+      "pokeBack": true,
+      "autoApprove": false,
+      "command": "",
+      "autoStart": true,
+      "owners": [
+        1471048379
+      ],
+      "wakeKeywords": [],
+      "autoReact": true,
+      "memeChance": 0.3,
+      "groupReplyChance": 0.2
+    },
+    "matrix": {
+      "enabled": false,
+      "homeserver": "https://matrix.org",
+      "accessToken": "",
+      "rooms": []
+    }
+  },
+  "plugins": {
+    "provider": {
+      "enabled": true
+    },
+    "persona": {
+      "enabled": true
+    },
+    "system": {
+      "enabled": true
+    },
+    "mode": {
+      "enabled": true
+    },
+    "knowledge_base": {
+      "enabled": true,
+      "dataDir": ""
+    },
+    "memory": {
+      "enabled": true,
+      "autoDiary": true
+    },
+    "web_search": {
+      "enabled": true,
+      "tavilyKeys": [],
+      "firecrawlKeys": [],
+      "anysearchKeys": [],
+      "exaKeys": [],
+      "perplexityKey": "",
+      "searxngUrl": ""
+    },
+    "voice": {
+      "enabled": true,
+      "wakeWord": "",
+      "stt": "whisper",
+      "tts": "espeak",
+      "whisperModel": "~/.local/share/whisper/models/ggml-small-q5_1.bin",
+      "whisperLanguage": "zh",
+      "espeakVoice": "zh",
+      "piperModel": "",
+      "piperConfig": "",
+      "xiaomiApiKey": "",
+      "xiaomiBaseUrl": "https://api.xiaomimimo.com/v1",
+      "xiaomiAsrModel": "mimo-v2.5-asr",
+      "xiaomiTtsModel": "mimo-v2.5-tts",
+      "xiaomiTtsVoice": "冰糖",
+      "maxRecordSeconds": 8,
+      "autoListenAfterQuestion": true,
+      "continuous": false,
+      "customSttCommand": "",
+      "customTtsCommand": ""
+    },
+    "permission": {
+      "enabled": true,
+      "sudoMode": false,
+      "autoSudo": true,
+      "sudoCommand": "sudo"
+    },
+    "ask": {
+      "enabled": true
+    }
+  }
+}

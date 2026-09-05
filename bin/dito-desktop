@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Dito 桌面版启动器：定位安装目录并调用 scripts/launch-desktop.cjs。
+# 桌面版依赖 Electron（可通过发行版包或 npm install -g electron 安装）。
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec node "$DIR/scripts/launch-desktop.cjs" "$@"

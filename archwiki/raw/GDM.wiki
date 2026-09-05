@@ -1,0 +1,616 @@
+[[Category:Display managers]]
+[[Category:GNOME]]
+[[de:Login-Manager#GDM]]
+[[fr:GDM]]
+[[ja:GDM]]
+[[pt:GDM]]
+[[zh-hans:GDM]]
+{{Related articles start}}
+{{Related|GNOME}}
+{{Related|Display manager}}
+{{Related articles end}}
+
+From [https://wiki.gnome.org/Projects/GDM GDM - GNOME Display Manager]: "The GNOME Display Manager (GDM) is a program that manages graphical display servers and handles graphical user logins."
+
+[[Display manager]]s provide [[X Window System]] and [[Wayland]] users with a graphical login prompt.
+
+== Installation ==
+
+GDM can be [[install]]ed with the {{Pkg|gdm}} package, and is installed as part of the {{Grp|gnome}} group.
+
+Follow [[Display manager#Loading the display manager]] to start GDM at boot.
+
+== Configuration ==
+
+{{Tip|Most of the configuration options listed below can be easily set using the {{AUR|gdm-settings}} GUI application.}}
+
+=== Login screen background image ===
+
+{{Accuracy|Configuration is not persistent and changes will be undone after an update of GNOME Shell. 20250224: Updating for Gnome 47.}}
+
+{{Note|
+* Since GNOME 3.16, GNOME Shell themes are now stored as binary files (gresource).
+* This change will be overwritten on subsequent updates of {{Pkg|gnome-shell}}.
+}}
+
+Firstly, you need to extract the existing GNOME Shell theme to a directory in your home directory. You can do this using the following script:
+
+{{hc|extractgst.sh|2=
+#!/bin/sh
+gst=/usr/share/gnome-shell/gnome-shell-theme.gresource
+workdir=${HOME}/shell-theme
+
+for r in `gresource list $gst`; do
+	r=${r#\/org\/gnome\/shell/}
+	if [ ! -d $workdir/${r%/*} ]; then
+	  mkdir -p $workdir/${r%/*}
+	fi
+done
+
+for r in `gresource list $gst`; do
+        gresource extract $gst $r >$workdir/${r#\/org\/gnome\/shell/}
+done
+}}
+
+Navigate to the created directory. You should find that the theme files have been extracted to it (under a '''theme''' subfolder). Now copy your preferred background image to this directory.
+
+Next, you need to create a file under the '''theme''' directory with the following content (the list below is for Gnome 47, just in case verify that the contents of the theme subfolder match the list here, including the background image):
+
+{{hc|1=gnome-shell-theme.gresource.xml|2=
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/shell/theme">
+    <file>calendar-today.svg</file>
+    <file>calendar-today-light.svg</file>
+    <file>gnome-shell-dark.css</file>
+    <file>gnome-shell-light.css</file>
+    <file>gnome-shell-high-contrast.css</file>
+    <file>gnome-shell-start.svg</file>
+    <file>pad-osd.css</file>
+    <file>process-working-dark.svg</file>
+    <file>process-working-light.svg</file>
+    <file>workspace-placeholder.svg</file>
+    <file>'''filename'''</file>
+  </gresource>
+</gresources>
+}}
+
+Replace '''filename''' with the filename of your background image or remove the line to use a hex color value instead.
+
+Now, open the {{ic|gnome-shell-light.css}} and {{ic|gnome-shell-dark.css}} files and change the {{ic|#lockDialogGroup}} definition as follows:
+
+ #lockDialogGroup {
+   background: url('''"filename"''');
+   background-size: '''width'''px '''height'''px;
+   background-repeat: no-repeat;
+ }
+
+Set {{ic|background-size}} to the resolution that GDM uses; this might not necessarily be the resolution of the image. For a list of display resolutions, see [[Wikipedia:Display resolution#Computer monitors|Display resolution]]. 
+
+Again, set '''filename''' to be the name of the background image, '''filename''' should be within quotes in the CSS. '''background-size''' can also be set to '''auto''' if you want the image scaled to fill.
+
+If using multiple monitors, the image ends up spanning across the monitors, so it might be better to use an SVG file for the background.
+
+If you only want to change the background color, adjust the {{ic|#lockDialogGroup}} definition as follows:
+
+ #lockDialogGroup {
+   background-color: #'''color''';
+ }
+
+where '''color''' is the new hex-encoded background color.
+
+Next, compile the theme using the following command:
+
+ $ glib-compile-resources gnome-shell-theme.gresource.xml
+
+Then, copy the resulting {{ic|gnome-shell-theme.gresource}} file to the {{ic|/usr/share/gnome-shell}} directory (keep a backup of the original).
+
+ # cp /usr/share/gnome-shell/gnome-shell-theme.gresource /usr/share/gnome-shell/gnome-shell-theme-original.gresource
+ # cp ./gnome-shell-theme.gresource /usr/share/gnome-shell
+
+Finally, logout and you should find that gdm is using your preferred background image (you might need to restart gdm if the changes are not applied immediately).
+
+If a subsequent update resets the '''gnome-shell-theme.gresource''' file, simply repeat the above steps, verifying that the contents of the XML match the extracted file list.
+
+For more information, please see the following [https://bbs.archlinux.org/viewtopic.php?id=197036 forum thread]. A shell script to automate the above steps is available on [https://github.com/DimaZirix/fedora-gdm-wallpaper DimaZirix's github repository].
+
+=== dconf configuration ===
+
+Some GDM settings are stored in a [[dconf]] database. They can be configured either by adding ''keyfiles'' to the {{ic|/etc/dconf/db/gdm.d}} directory and then recompiling the GDM database by running {{ic|dconf update}} as root or by logging into the GDM user on the system and changing the setting directly using the ''gsettings'' command line tool. Note that for the former approach, a GDM profile file is required—this must be created manually as it is no longer shipped upstream, see below:
+
+{{hc|/etc/dconf/profile/gdm|
+user-db:user
+system-db:gdm
+file-db:/usr/share/gdm/greeter-dconf-defaults
+}}
+
+For the latter approach, you can log into the GDM user with the command below:
+
+ # machinectl shell gdm@ /bin/bash
+
+==== Login screen logo ====
+
+Create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/02-logo|2=
+[org/gnome/login-screen]
+logo='<nowiki/>''/path/to/logo.png''<nowiki/>'
+}}
+
+Then recompile the GDM database. 
+
+Alternatively, execute the following as the GDM user to change the logo:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.login-screen logo '<nowiki/>''/path/to/logo.png''<nowiki/>'
+
+To disable the logo, you can set the value to an empty string:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.login-screen logo '<nowiki/>'
+
+==== Changing the cursor theme ====
+
+GDM disregards [[GNOME]] cursor theme settings and it also ignores the cursor theme set according to the [[Cursor themes#The default cursor theme|XDG specification]]. To change the cursor theme used in GDM, create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/10-cursor-settings|2=
+[org/gnome/desktop/interface]
+cursor-theme='<nowiki/>''theme-name''<nowiki/>'
+}}
+
+Then recompile the GDM database. Alternatively, execute the following as the GDM user temporarily and change the cursor theme:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.desktop.interface cursor-theme '<nowiki/>''theme-name''<nowiki/>'
+
+==== Changing the icon theme ====
+
+The same methods can be used to change the icon theme. Create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/11-icon-settings|2=
+[org/gnome/desktop/interface]
+icon-theme='<nowiki/>''theme-name''<nowiki/>'
+}}
+
+Then, recompile the GDM database. Alternatively, execute the following as the GDM user temporarily and change the icon theme:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.desktop.interface icon-theme '<nowiki/>''theme-name''<nowiki/>'
+
+==== Larger font for log-in screen ====
+
+Click on the accessibility icon at the top right of the screen (a white circle with the silhouette of a person in the centre) and check the ''Large Text'' option.
+
+To set a specific scaling factor, create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/03-scaling|2=
+[org/gnome/desktop/interface]
+text-scaling-factor=<nowiki/>''1.25''<nowiki/>
+}}
+
+Then recompile the GDM database. Alternatively, execute the following as the GDM user temporarily and change the font:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.desktop.interface text-scaling-factor <nowiki/>''1.25''<nowiki/>
+
+==== Turning off the sound ====
+
+This tweak disables the audible feedback heard when the system volume is adjusted (via keyboard) on the login screen.
+
+Create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/04-sound|2=
+[org/gnome/desktop/sound]
+event-sounds=false
+}}
+
+Then recompile the GDM database. Alternatively execute the following as the GDM user temporarily and turn off the sound:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.desktop.sound event-sounds 'false'
+
+==== Configure power button behavior ====
+
+{{Note|1=<nowiki/>
+* The [[Power management#ACPI events|logind settings]] for the power button are overriden by GNOME Settings Daemon. [https://bugzilla.gnome.org/show_bug.cgi?id=755953#c4]
+* As of GDM 3.18, the power button cannot be set to ''interactive''. [https://bugzilla.gnome.org/show_bug.cgi?id=753713#c6]
+* In some cases, this setting will be ignored and hardcoded defaults will be used. [https://bugzilla.gnome.org/show_bug.cgi?id=755953#c17]
+}}
+
+{{Warning|Please note that the [[acpid]] daemon also handles the "power button" and "hibernate button" events. Running both systems at the same time may lead to unexpected behaviour.}}
+
+Create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/05-power|2=
+[org/gnome/settings-daemon/plugins/power]
+power-button-action='<nowiki/>''action''<nowiki/>'
+}}
+
+Then recompile the GDM database. Alternatively, execute the following as the GDM user temporarily and configure the behavior:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.settings-daemon.plugins.power power-button-action '<nowiki/>''action''<nowiki/>'
+
+where ''action'' can be one of {{ic|nothing}}, {{ic|suspend}} or {{ic|hibernate}}.
+
+==== Enabling tap-to-click ====
+
+Tap-to-click is disabled in GDM (and GNOME) by default, but you can easily enable it with a dconf setting.
+
+{{Note|If you want to do this under X, you have to first set up correct X server access permissions—see [[#Configure X server access permission]].}}
+
+To enable tap-to-click, create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/06-tap-to-click|2=
+[org/gnome/desktop/peripherals/touchpad]
+tap-to-click=true
+}}
+
+Then recompile the GDM database. Alternatively, execute the following as the GDM user temporarily and enable the action:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.desktop.peripherals.touchpad tap-to-click 'true'
+
+==== Disable/Enable Accessibility Menu ====
+
+{{Out of date|As of GDM 43, the configuration key below does not work. You may try {{ic|org.gnome.desktop.a11y.applications screen-keyboard-enabled true}} instead.}}
+
+To disable or enable the Accessibility Menu, create the following keyfile:
+
+{{hc|/etc/dconf/db/gdm.d/07-accessibility|2=
+[org/gnome/desktop/interface]
+toolkit-accessibility='<nowiki/>''boolean''<nowiki/>'
+}}
+
+Then recompile the GDM database. Alternatively, execute the following as the GDM user temporarily and change the status:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.desktop.interface toolkit-accessibility '<nowiki/>''boolean''<nowiki/>'
+
+The menu is disabled when the key is {{ic|false}}, enabled when it is {{ic|true}}.
+
+==== Enable Night Light on GDM ====
+
+To enable [[GNOME#Night Light|Night Light]] on GDM, run
+
+{{bc|[gdm]$ dbus-launch gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true}}
+
+=== Keyboard layout ===
+
+GDM requires the {{ic|XKBLAYOUT}} parameter to be set in {{ic|/etc/vconsole.conf}}; without it it defaults to a standard {{ic|us}} (qwerty) layout, ''i.e'' it will not honor the value set in {{ic|KEYMAP}}.
+
+One generally applicable way to do so is to use {{ic|localectl --no-convert set-x11-keymap [keymap]}}: see [[Keyboard configuration in Xorg#Setting keyboard layout]] for details.
+
+{{Warning|Using {{ic|localectl set-x11-keymap}} without {{ic|--no-convert}} will also change the value of {{ic|1=KEYMAP=}}, which may result in an unbootable system if [[dm-crypt/Encrypting an entire system|encrypting an entire system]] with a passphrase containing accented characters. See [https://github.com/systemd/systemd/issues/34967 systemd issue #34967].}}
+
+=== Change the language ===
+
+The system language will be applied to GDM. If a system has multiple users, it is possible to set a language for GDM different to the system language. In this case, firstly ensure that {{Pkg|gnome-control-center}} is installed. Then, start ''gnome-control-center'' and choose ''Region & Language''. In the header bar, check the ''Login Screen'' toggle button. Finally, click on ''Language'' and choose your language from the list. You will be prompted for your root password. Note that the ''Login Screen'' button will not be visible in the header bar unless multiple users are present on the system [https://bugzilla.gnome.org/show_bug.cgi?id=741500].
+
+{{Tip|By adding 2 different input languages, logging out then selecting your default language GDM will remember your choice once the second option is removed.}}
+
+=== Users and login ===
+
+==== Automatic login ====
+
+{{Warning|Do not attempt to do this for users managed by [[systemd-homed]]. This is currently [https://github.com/systemd/systemd/issues/20844 not implemented] and will crash GDM.}}
+
+To enable automatic login with GDM, add the following to {{ic|/etc/gdm/custom.conf}} (replace {{ic|''username''}} with your own):
+
+{{hc|1=/etc/gdm/custom.conf|
+2=# Enable automatic login for user
+[daemon]
+AutomaticLogin=''username''
+AutomaticLoginEnable=True
+}}
+
+{{Tip|If GDM fails after adding these lines, comment them out from a TTY.}}
+
+or for an automatic login with a delay:
+
+{{hc|1=/etc/gdm/custom.conf|
+2=[daemon]
+TimedLoginEnable=true
+TimedLogin=''username''
+TimedLoginDelay=1
+}}
+
+You can set the session used for automatic login (replace {{ic|gnome-xorg}} with desired session):
+
+{{hc|1=/var/lib/AccountsService/users/''username''|
+2=[User]
+XSession=gnome-xorg
+}}
+
+==== Passwordless login ====
+
+If you want to bypass the password prompt in GDM then simply add the following line on the first line of {{ic|/etc/pam.d/gdm-password}}:
+
+ auth sufficient pam_succeed_if.so user ingroup nopasswdlogin
+
+Then, add the group {{ic|nopasswdlogin}} to your system. See [[User group]] for group descriptions and group management commands.
+
+Now, add your user to the {{ic|nopasswdlogin}} group and you will only have to click on your username to login.
+
+{{Warning|
+* Do '''not''' do this for a '''root''' account.
+* You will not be able to change your session type at login with GDM anymore. If you want to change your default session type, you will first need to remove your user from the {{ic|nopasswdlogin}} group.
+}}
+
+==== Disable fingerprint login ====
+
+When using a [[Fprint|fingerprint]] to login, it will not unlock the keychain, so you will still be prompted for the keychain password. You might want to disallow login and keep the fingerprint to unlock your session. To do this, just disable fingerprint for the GDM user. 
+
+Execute the following as the GDM user temporarily and change this setting:
+ [gdm]$ dbus-launch gsettings set org.gnome.login-screen enable-fingerprint-authentication false
+
+==== Passwordless shutdown for multiple sessions ====
+
+GDM uses polkit and logind to gain permissions for shutdown. You can shutdown the system when multiple users are logged in by setting:
+
+{{hc|1=/etc/polkit-1/localauthority.conf.d/org.freedesktop.logind.policy|2=<nowiki>
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/software/polkit/policyconfig-1.dtd">
+
+<!--
+Policy definitions for logind
+ -->
+
+<policyconfig>
+
+  <action id="org.freedesktop.login1.power-off-multiple-sessions">
+    <description>Shutdown the system when multiple users are logged in</description>
+    <message>System policy prevents shutting down the system when other users are logged in</message>
+    <defaults>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>
+</nowiki>}}
+
+You can find all available logind options (e.g. reboot-multiple-sessions) in {{man|5|org.freedesktop.login1}}.
+
+==== Enable root login in GDM ====
+
+It is not advised to login as root, but if necessary you can edit {{ic|/etc/pam.d/gdm-password}} and add the following line before the line {{ic|auth required pam_deny.so}}:
+
+{{hc|/etc/pam.d/gdm-password|
+auth            sufficient      pam_succeed_if.so uid eq 0 quiet
+}}
+
+The file should look something like this:
+
+{{hc|/etc/pam.d/gdm-password|2=
+...
+auth            sufficient      pam_succeed_if.so uid eq 0 quiet
+auth            sufficient      pam_succeed_if.so uid >= 1000 quiet
+auth            required        pam_deny.so
+...
+}}
+
+You should be able to login as root after restarting GDM.
+
+==== Hide user from login list ====
+
+The users for the gdm user list are gathered by [https://www.freedesktop.org/wiki/Software/AccountsService/ AccountsService]. It will automatically hide system users (UID < 1000). To hide ordinary users from the login list create or edit a file named after the user to hide in {{ic|/var/lib/AccountsService/users/}} to contain at least:
+
+{{hc|/var/lib/AccountsService/users/''username''|2=
+[User]
+SystemAccount=true
+}}
+
+==== Remote login via RDP ====
+
+{{Note|Currently, only headless sessions can be created remotely.}}
+{{Note|Only one graphical session can exist at a time. Attempting to create a new session will prompt to kill the other one, if it exists.}}
+
+===== Via Graphical Interface =====
+
+Remote login can be configured via graphical interface by navigating to ''System > Remote Desktop > Remote Login'' in Gnome Settings app.
+
+===== Via CLI =====
+
+{{Note|To function, Gnome Remote Desktop requires both TLS certificates and credentials. Unless they were set before, both will be missing and need to be set manually.}}
+
+To display current status and credentials, the following command can be used:
+
+ # grdctl --system status --show-credentials
+
+To set credentials:
+
+ # grdctl --system rdp set-credentials ''rdp_login'' ''rdp_password''
+
+To generate new TLS key and certificate:
+
+ # winpr-makecert3 -rdp -path /etc/gnome-remote-desktop -n rdp-tls
+
+If {{ic|-n rdp-tls}} part is omitted, ''hostname'' will be used as the name instead.
+
+To set TLS key and certificate:
+
+ # grdctl --system rdp set-tls-key /etc/gnome-remote-desktop/rdp-tls.key
+ # grdctl --system rdp set-tls-cert /etc/gnome-remote-desktop/rdp-tls.crt
+
+Finally, to enable Remote Login:
+
+ # grdctl --system rdp enable
+
+=== Setup default monitor settings ===
+
+Some [[desktop environments]] store display settings in {{ic|~/.config/monitors.xml}}, based on which [[xrandr]] commands are generated. GDM has a file serving a similar purpose located at {{ic|/etc/xdg/monitors.xml}} (This is the global mutter configuration and will impact new GNOME session too).
+
+{{Note| {{ic|/var/lib/gdm/.config/monitors.xml}} − legacy.}}
+
+If you have your monitors setup as you like (resolution, refresh rate, orientation, scaling, primary and so on) in {{ic|~/.config/monitors.xml}} and want GDM to honor those settings:
+
+ # cp /home/''user''/.config/monitors.xml /etc/xdg/monitors.xml
+
+To automatically re-configure the monitor setup on each boot, use a [[drop-in file]] for {{ic|gdm.service}}:
+
+{{hc|/etc/systemd/system/gdm.service.d/override.conf|2=
+[Service]
+ExecStartPre=/bin/cp /home/''user''/.config/monitors.xml /etc/xdg/monitors.xml
+}}
+
+The relevant parts of {{ic|monitors.xml}} for screen rotation and scaling are:
+
+ <monitors version="2">
+   <configuration>
+     <logicalmonitor>
+       ...
+       <scale>2</scale>
+       ...
+       <transform>
+         <rotation>right</rotation>
+         <flipped>no</flipped>
+       </transform>
+       ...
+     </logicalmonitor>
+   </configuration>
+ </monitors>
+
+Changes will take effect on logout. This is necessary because GDM does not respect {{ic|xorg.conf}}.
+
+{{Note|
+If you have modified Mutter's experimental-features setting (usual done for fractional scaling or Variable), make sure the dconf setup is done globally not just to you user, see [[HiDPI#Wayland|fractional scaling]]. This due to these setting can make the monitors.xml incompatible, see [https://gitlab.gnome.org/GNOME/gdm/issues/1028 GDM bug 1028]. i
+}}
+
+=== Configure X server access permission ===
+
+You can use the {{ic|xhost}} command to configure X server access permissions.
+
+For instance, to grant GDM the right to access the X server, use the following command:
+
+{{bc|# xhost +SI:localuser:gdm}}
+
+== Troubleshooting ==
+
+=== GDM greeter does not show user list after upgrade to GNOME 50 ===
+
+{{Accuracy|This might rather be caused by an incompatible libgdm, eg. from the AUR}}
+
+{{Note|1=<nowiki/>
+* First see [https://bbs.archlinux.org/viewtopic.php?pid=2295456#p2295456 this forum thread] and make sure this is not caused by a stale lightdm variant from the AUR
+* GDM 50 fails when a custom {{ic|XDG_CONFIG_HOME}} is set in {{ic|pam_env.conf}} [https://gitlab.gnome.org/GNOME/gdm/-/work_items/1072]
+}}
+
+After upgrading to GDM 50, the greeter may fail to show the user selection list entirely, launching only as the {{ic|gdm-greeter}} user with no option to select or switch to any regular user account. This can happen when {{ic|/etc/dconf/profile/gdm}} is empty or missing the required entries.
+
+The file is not owned by any package ({{ic|pacman -Qo /etc/dconf/profile/gdm}} returns {{ic|"No package owns ..."}}), so it will not be created or repaired automatically during updates.
+
+Verify the file contains the following:
+ user-db:user
+ system-db:gdm
+ file-db:/usr/share/gdm/greeter-dconf-defaults
+
+If the file is empty or missing these entries, populate it and run:
+ # dconf update
+
+Then restart GDM. Without this profile, gnome-shell does not launch in greeter mode and fails to display the user list.
+
+=== Wayland and the proprietary NVIDIA driver ===
+
+To use Wayland in GDM with the [[NVIDIA]] driver, you must fulfill the three following conditions:
+
+* enable [[NVIDIA#DRM kernel mode setting|DRM KMS]],
+* [[Wayland#Requirements|configure Wayland]],
+* follow [[NVIDIA/Tips and tricks#Preserve video memory after suspend]].
+
+If, instead of GDM, a black screen appears, try disabling integrated graphics in your computer's BIOS settings.
+
+In some cases, GNOME fails to start and transfers control back to GDM, which in turn causes the login screen to reappear. You may try setting the following environment variable as suggested in [https://bbs.archlinux.org/viewtopic.php?pid=2126478 BBS#2126478]:
+
+{{hc|/etc/environment|2=
+MUTTER_DEBUG_KMS_THREAD_TYPE=user
+}}
+
+=== Failure on logout ===
+
+If GDM starts up properly on boot, but fails after repeated attempts on logout, try adding this line to the daemon section of {{ic|/etc/gdm/custom.conf}}:
+
+ GdmXserverTimeout=60
+
+=== Rootless Xorg ===
+
+See [[Xorg#Rootless Xorg]].
+
+=== Use Xorg backend ===
+
+The [[Wayland]] backend is used by default, and the [[Xorg]] backend is used only if the Wayland backend cannot be started. You may wish to use the Xorg backend instead if, for example:
+
+* GDM [https://bbs.archlinux.org/viewtopic.php?pid=1869534#p1869534 crashes]
+
+To use the Xorg backend by default, uncomment the following line in {{ic|/etc/gdm/custom.conf}}:
+
+ #WaylandEnable=false
+
+=== Incomplete removal of gdm ===
+
+After removing {{Pkg|gdm}}, [[systemd]] may report the following:
+
+ user 'gdm': directory '/var/lib/gdm' does not exist
+
+To remove this warning, login as root and [[Users and groups#Other examples of user management|delete the primary user]] {{ic|gdm}} and then [[Users and groups#Group management|delete the group]] {{ic|gdm}}:
+
+Verify that {{ic|gdm}} is successfully removed via {{ic|pwck}} and {{ic|grpck}} with root privileges. To round it off, you may want to double-check no [[Pacman/Tips and tricks#Identify files not owned by any package|unowned files]] for ''gdm'' remain.
+
+=== GDM auto-suspend (GNOME 3.28) ===
+
+GDM uses a separate dconf database to control power management. To apply your user's power settings, copy them to GDM's dconf database:
+
+ $ IFS=$'\n'; for x in $(sudo -u ''username'' gsettings list-recursively org.gnome.settings-daemon.plugins.power); do eval "sudo -u gdm dbus-launch gsettings set $x"; done; unset IFS
+
+where {{ic|''username''}} is your username.
+
+To only disable auto-suspend on AC, run:
+
+ [gdm]$ dbus-launch gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
+
+(To also disable auto-suspend on battery, run the command with {{ic|battery}} instead of {{ic|ac}}.)
+
+Restart GDM to activate your changes.
+
+For newer versions of GNOME (Tested on 49.1):
+ # Create following files and any directories if they do not exist.
+ $ cat /etc/dconf/profile/gdm 
+ user-db:user
+ system-db:gdm
+ file-db:/usr/share/gdm/greeter-dconf-defaults
+ 
+ $ cat /etc/dconf/db/gdm.d/00-disable-suspend 
+ [org/gnome/settings-daemon/plugins/power]
+ sleep-inactive-ac-type='nothing'
+ sleep-inactive-ac-timeout=0
+ 
+ $ sudo dconf update
+ $ sudo reboot
+
+Supplementary forum links:
+# https://bbs.archlinux.org/viewtopic.php?id=309828
+# https://unix.stackexchange.com/a/746767
+
+=== GDM ignores Wayland and uses X.Org by default ===
+
+Wayland requires Kernel Mode Setting (KMS) running in order to work, and on some machines the GDM process start earlier than KMS, resulting in GDM unable to see Wayland and working only with X.Org. This might result in messages like the following showing up in your log:
+
+ gnome-shell[569]: Failed to open gpu '/dev/dri/card0': GDBus.Error:org.freedesktop.DBus.Error.AccessDenied: Operation not permitted
+ gnome-shell[569]: Failed to create backend: No GPUs found
+ systemd[505]: org.gnome.Shell@wayland.service: Failed with result 'protocol'.
+ systemd[505]: Failed to start GNOME Shell on Wayland.
+
+Alternatively, the same issue may lead to GDM not appearing or monitor only displaying the TTY output.
+
+You can solve this problem by [[Kernel mode setting#Early KMS start|starting KMS earlier]]. You may also wish to just verify that Wayland is enabled in the GDM config ([[#Use Xorg backend|see above]]).
+
+=== Black screen on AMD or Intel GPUs when an NVIDIA (e)GPU is present ===
+
+At first, without an NVIDIA device, GDM starts and works normally on Wayland, but stops working once an NVIDIA eGPU is plugged in (or the {{ic|nvidia}} module is loaded for other reasons). A typical symptom of the problem is a black screen with a blinking cursor upon logouts and GDM restarts and the following message in GDM's logs (accessed by running {{ic|journalctl -u gdm -b}} as root):
+
+ Gdm: Child process -<some PID> was already dead.
+
+The solution is the same as [[#GDM ignores Wayland and uses X.Org by default]]: Prevent {{ic|/usr/lib/gdm-disable-wayland}} from running upon {{ic|nvidia}} module loading.
+
+Notice that GDM on Wayland will no longer work once {{ic|/usr/lib/gdm-disable-wayland}} has run. This is because {{ic|1=WaylandEnable=false}} has been written into {{ic|/run/gdm/custom.conf}}, which overrides {{ic|/etc/gdm/custom.conf}}. To fix the situation without a reboot, remove {{ic|/run/gdm/custom.conf}} and then restart GDM.
+
+=== GDM cannot be enabled ===
+
+See [[systemd/FAQ#Failure to enable unit due to preexisting symlink]].
+
+== See also ==
+
+* [https://help.gnome.org/admin/gdm/stable/index.html.en GDM Reference Manual]

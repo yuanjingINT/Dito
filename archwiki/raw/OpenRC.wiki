@@ -1,0 +1,237 @@
+[[Category:Init]]
+[[ja:OpenRC]]
+[[pt:OpenRC]]
+[[ru:OpenRC]]
+[[tr:OpenRC]]
+[[zh-hans:OpenRC]]
+{{Related articles start}}
+{{Related|init}}
+{{Related articles end}}
+{{Warning|Arch Linux only has official support for [[systemd]]. [https://archlinux.org/news/end-of-initscripts-support/] When using OpenRC, please mention so in support requests.}}
+
+[[Gentoo:OpenRC|OpenRC]] is a service manager maintained by the Gentoo developers. OpenRC is dependency based and works with the system provided init program, normally [[Wikipedia:SysVinit|SysVinit]].
+
+== Installation ==
+
+For details on init components, see [[Init]].
+
+[[Install]] the {{AUR|openrc}} package. 
+
+From version 0.25 onward, OpenRC provides its own init at {{ic|/usr/bin/openrc-init}}.
+Optionally, you can use other inits from, e.g., {{Pkg|busybox}}. Note that when {{ic|openrc-init}} is used, it must be paired with {{ic|openrc-shutdown}}, and ''not'' the {{ic|shutdown}} or {{ic|reboot}} commands from other packages, otherwise you will encounter errors.
+
+A basic set of service files are available from the {{AUR|openrc-arch-services-git}} package.
+Other packages may have service files provided outside this package; a search on the AUR is recommended.
+
+To maintain compatibility with historical init scripts, configuration files are installed to {{ic|/etc/openrc/}}.
+
+=== Booting ===
+
+For booting with OpenRC, set the {{ic|init}} option in the [[kernel parameters]].
+
+To use OpenRC's built-in init, set {{ic|1=init=/usr/bin/openrc-init}}.
+
+Note that when using {{ic|openrc-init}}, the {{ic|/etc/inittab}} file is not used.
+
+== Configuration ==
+
+The {{Ic|1=/etc/openrc/conf.d}} directory, and the {{Ic|1=/etc/openrc/rc.d}} file is used for configuration.
+
+For general information on configuring OpenRC, see:
+
+* [https://www.calculate-linux.org/main/en/openrc_manuals OpenRC manuals]
+* [[Gentoo:OpenRC]].
+
+For instructions when migrating from [[systemd]], see [[Init#Configuration]].
+
+=== Services ===
+
+OpenRC services are enabled by issuing {{ic|rc-update add ''service_name'' ''runlevel''}} as root. It is recommended to at least enable the following services:
+{| class="wikitable"
+! Service name
+! [[Gentoo:OpenRC#Named runlevels|Runlevel]]
+! Description
+|-
+| udev
+| sysinit
+| Device hot-plugging
+|-
+| alsa
+| default
+| [[ALSA]] state
+|-
+| acpid
+| default
+| ACPI events
+|-
+| dbus
+| default
+| Messaging bus
+|-
+| dcron
+| default
+| Scheduling
+|-
+| syslog-ng
+| default
+| System logs
+|}
+
+{{Warning|If using {{ic|1=init=/usr/bin/openrc-init}} in your kernel parameters, you will need to manually enable [[getty]] services, otherwise you will be left with no interactive TTYs as stated in [https://github.com/OpenRC/openrc/blob/master/agetty-guide.md the documentation].}}
+If necessary, create services for each wanted [[getty]] by creating symbolic links to {{ic|/etc/openrc/init.d/getty}}. E.g. for {{ic|/dev/tty1}}:
+
+ # ln -s /etc/openrc/init.d/agetty{,.tty1}
+ # rc-update add agetty.tty1 default
+
+{{Move|Init#Configuration|Not only applicable to OpenRC}}
+
+To prevent PAM from attempting to register with systemd after logging into the tty (which can sometimes [https://bbs.archlinux.org/viewtopic.php?id=285505 cause problems], it is safe to remove or comment out the lines mentioning systemd in {{ic|/etc/pam.d/system-auth}}.
+
+See also [[Gentoo:Systemd#Native services]].
+
+=== Network ===
+
+The network is configured through {{ic|newnet}} [https://github.com/OpenRC/openrc/blob/master/NEWNET.md]. Modify the {{ic|/etc/openrc/conf.d/network}} file; both the {{ic|ip}} ({{Pkg|iproute2}}) and the {{ic|ifconfig}} ({{Pkg|net-tools}}) commands are supported. Below is an example configuration using {{ic|ip}}.
+
+{{bc|1=
+ip_eth0="192.168.1.2/24"
+defaultiproute="via 192.168.1.1"
+ifup_eth0="ip link set \$int mtu 1500"
+}}
+
+The network service is added to the boot runlevel by default, so no further action is required. See [[Network configuration]] for general networking information.
+
+{{Note|You may also use [[NetworkManager]] or [[dhcpcd]] by enabling the respective services.}}
+
+=== Boot logs ===
+
+To enable boot logging, uncomment the {{ic|1=rc_logger="YES"}} line in {{ic|/etc/openrc/rc.conf}}. When enabled, boot logs are stored in {{ic|/var/log/rc.log}}.
+
+=== Hostname ===
+
+OpenRC sets the hostname from {{ic|/etc/openrc/conf.d/hostname}}. The file looks as follows:
+
+{{bc|1=
+# Set to the hostname of this machine
+hostname="myhostname"
+}}
+
+=== Kernel modules ===
+
+OpenRC uses {{ic|/etc/openrc/conf.d/modules}} instead of {{ic|/etc/modules-load.d}}. For example:
+
+{{hc|/etc/openrc/conf.d/modules|2=
+# You should consult your kernel documentation and configuration
+# for a list of modules and their options.
+
+modules="vboxdrv acpi_cpufreq"
+}}
+
+=== Locale ===
+
+Keyboard layout can be configured via {{ic|/etc/openrc/conf.d/keymaps}} and {{ic|/etc/openrc/conf.d/consolefont}}. You can also configure the settings through the {{ic|/etc/locale.conf}} file, which is sourced via {{ic|/etc/profile.d/locale.sh}}. 
+
+See [[Gentoo:Localization/Guide#Keyboard layout for the console]] and [[Locale]] for details.
+
+== Usage ==
+
+This section draws a parallel between [[systemd]] and other [[init]] systems.
+
+You can omit the {{ic|.service}} and {{ic|.target}} extensions, especially if temporarily editing the [[kernel parameters]].
+
+{| class="wikitable" width="100%"
+! systemd !! SysVinit !! OpenRC !! Description
+|-
+| {{ic|systemctl list-units}} || {{ic|rc.d list}} || {{ic|rc-status}} || List running services status
+|-
+| {{ic|systemctl --failed}} || || {{ic|rc-status --crashed}} || Check failed services
+|-
+| {{ic|systemctl --all}} || || {{ic|rc-update -v show}} || Display all available services.
+|-
+| {{ic|systemctl (start, stop, restart, status) daemon.service}} || {{ic|rc.d (start, stop, restart) daemon}} || {{ic|rc-service daemon (start, stop, restart, status)}} || Change service state.
+|- 
+| {{ic|systemctl (enable, disable) daemon.service}} || {{ic|chkconfig daemon (on, off)}} || {{ic|rc-update (add, del) daemon}} || Turn service on or off.
+|-
+| {{ic|systemctl daemon-reload}} || {{ic|chkconfig daemon --add}} || || Create or modify configuration.
+|}
+
+== Tips and tricks ==
+
+=== Quiet booting ===
+
+To hide boot messages from OpenRC, you can edit {{ic|/etc/inittab}} and add {{ic|--quiet}} to every openrc command. For further information check with {{ic|$ openrc -h}}.
+
+== Troubleshooting ==
+
+=== Error while unmounting /tmp ===
+
+When shutting the system down, you might get an error message such as 
+
+{{bc|* Unmounting /tmp ... 
+* in use but fuser finds nothing [ !! ]}}
+
+This can be fixed by adding
+
+ no_umounts="/tmp"
+
+to {{ic|/etc/openrc/conf.d/localmount}}
+
+{{Note|This problem occurs only if your tmp is mounted as a tmpfs.}}
+
+=== Disabling IPv6 does not work ===
+
+One option is to add:
+
+ # Disable ipv6
+ net.ipv6.conf.all.disable_ipv6 = 1
+
+in a file with a {{ic|.conf}} extension under {{ic|/etc/openrc/sysctl.d}}
+
+=== During shutdown remounting root as read-only fails ===
+
+If the above happens, edit the {{ic|/etc/openrc/init.d/mount-ro}} file and put:
+
+ telinit u
+
+after the following line:
+
+ # Flush all pending disk writes now
+ sync; sync
+
+=== /etc/sysctl.conf not found ===
+
+By default, {{ic|sysctl --system}} is called to load the sysctl configuration. [https://github.com/OpenRC/openrc/blob/master/init.d/sysctl.in#L40] This includes the {{ic|/etc/sysctl.conf}} file, which was removed from Arch. [https://archlinux.org/news/deprecation-of-etcsysctlconf/]
+
+To prevent a missing file error, create the file:
+
+ # touch /etc/sysctl.conf
+
+=== opentmpfiles-setup failed to start ===
+
+On booting openrc, you may see lines like these :
+
+ * Setting up tmpfiles.d entries ...
+ chattr: Operation not supported while setting flags on /var/log/journal
+ chattr: No such file or directory while trying to stat /var/log/journal/%m
+ chattr: Operation not supported while setting flags on /var/log/journal/remote
+ [ !! ]
+ ERROR: opentmpfiles-setup failed to start
+
+This is caused by {{ic|/usr/lib/tmpfiles.d/journal-nocow.conf}} using options that are only valid if journal is on a btrfs filesystem.
+
+See https://github.com/OpenRC/opentmpfiles/issues/2 for details
+
+A workaround is to create an empty {{ic|/etc/tmpfiles.d/journal-nocow.conf}} to override the settings.
+
+== Reverting to systemd ==
+
+Reverting to systemd should be straightforward in most cases. It is essentially the reversal of migrating to OpenRC, with care placed on the following:
+
+* Removal of, or otherwise editing, the {{ic|1=init=}} parameter on the kernel command line
+* Replacement of any OpenRC-tailored or no-systemd packages with their stock equivalents
+
+== See also ==
+
+* [[Wikipedia:OpenRC]]
+* [[Gentoo:OpenRC]]
+* [https://bbs.archlinux.org/viewtopic.php?id=152606 Forum thread about OpenRC in Arch]

@@ -1,0 +1,419 @@
+[[Category:Wayland]]
+[[de:Wayland]]
+[[es:Wayland]]
+[[hu:Wayland]]
+[[ja:Wayland]]
+[[pt:Wayland]]
+[[ru:Wayland]]
+[[zh-hans:Wayland]]
+{{Related articles start}}
+{{Related|Graphics processing unit}}
+{{Related|KMS}}
+{{Related|Xorg}}
+{{Related|Screen capture#Wayland}}
+{{Related articles end}}
+
+[https://wayland.freedesktop.org/ Wayland] is a [[Wikipedia:Windowing system#Display server|display server]] protocol. It has been widely established as the successor of the [[X Window System]] [https://blogs.kde.org/2025/11/26/going-all-in-on-a-wayland-future/] [https://blogs.gnome.org/alatiera/2025/06/08/the-x11-session-removal/] [https://discourse.ubuntu.com/t/ubuntu-25-10-drops-support-for-gnome-on-xorg/62538] [https://pagure.io/fesco/issue/3408]. You can find a [[Wikipedia:Wayland (display server protocol)#Differences between Wayland and X|comparison between Wayland and Xorg on Wikipedia]].
+
+Display servers using the Wayland protocol are called '''compositors''' because they also act as [[Wikipedia:Compositing window manager|compositing window managers]]. Below you can find a [[#Compositors|list of Wayland compositors]].
+
+For compatibility with native X11 applications to run them seamlessly, [[#Xwayland|Xwayland]] can be used, which provides an X Server in Wayland.
+
+== Requirements ==
+
+{{Expansion|GNOME 51 should release around mid-September, this section should be reworked as EGLStreams won't be relevant any more: simply stating that for NVIDIA users if their hardware is not supported they have to pick between Wayland/nouveau or Xorg/nvidia.}}
+
+Wayland is just the protocol, unlike [[Xorg]] it does not have a common "display server" to install. To use it, you only need a compatible display driver (this section) and a compositor (next section) or [[desktop environment]] (e.g. [[GNOME]] or [[Plasma]]) that implements the Wayland protocol. Most Wayland compositors only work on systems using [[Kernel mode setting]]. 
+
+For the [[Graphics processing unit|GPU driver]] and Wayland compositor to be compatible they must support the same buffer API. There are two main APIs: [[Wikipedia:Generic Buffer Management|GBM]] and [https://www.phoronix.com/scan.php?page=news_item&px=XDC2016-Device-Memory-API EGLStreams].
+
+{| class="wikitable"
+! Buffer API !! GPU driver support !! Wayland compositor support
+|-
+| GBM || All except [[NVIDIA]] < 495* || All
+|-
+| EGLStreams || [[NVIDIA]] || [[GNOME]] < 51**
+|}
+
+: * NVIDIA ≥ 495 supports both EGLStreams and GBM.[https://www.phoronix.com/scan.php?page=news_item&px=NVIDIA-495.44-Linux-Driver]
+: ** GNOME 51 drops support for EGLStreams.[https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/5079]
+
+Since NVIDIA introduced GBM support, many compositors (including Mutter and KWin) started using it by default for NVIDIA ≥ 495. GBM is generally considered better with wider support, and EGLStreams only had support because NVIDIA did not provide any alternative way to use their GPUs under Wayland with their proprietary drivers. Furthermore, KWin [https://invent.kde.org/plasma/kwin/-/merge_requests/1638 dropped support for EGLStreams] after GBM was introduced into NVIDIA. 
+
+If you use a popular desktop environment/compositor and a GPU still supported by NVIDIA, you are most likely already using GBM backend. To check, run {{ic|journalctl -b 0 --grep "renderer for"}}. To force GBM as a backend, set the following [[environment variables]]:
+
+ GBM_BACKEND=nvidia-drm
+ __GLX_VENDOR_LIBRARY_NAME=nvidia
+
+== Compositors ==
+
+See [[Window manager#Types]] for the difference between '''Stacking''', '''Tiling''' and '''Dynamic'''.
+
+=== Stacking ===
+
+* {{App|hikari|wlroots-based compositor inspired by [[cwm]] which is actively developed on FreeBSD but also supports Linux.|https://codeberg.org/thomasadam/hikari|{{AUR|hikari}}}}
+* {{App|KDE [[w:KWin|KWin]]|See [[KDE#Starting Plasma]].|https://userbase.kde.org/KWin|{{Pkg|kwin}}}}
+* {{App|[[labwc]]|wlroots-based compositor inspired by Openbox.|https://github.com/labwc/labwc|{{Pkg|labwc}}}}
+* {{App|[[w:Mutter (software)|Mutter]]|See [[GNOME#Starting]].|https://gitlab.gnome.org/GNOME/mutter|{{Pkg|mutter}}}}
+* {{App|waybox |a *box-style (minimalist) Wayland compositor modeled largely on Openbox|https://github.com/wizbright/waybox | {{AUR|waybox}}}}
+* {{App|[[wayfire]]|3D compositor inspired by [[Compiz]] and based on wlroots.|https://wayfire.org/|{{Pkg|wayfire}}}}
+* {{App|[[Weston]]|Wayland compositor designed for correctness, reliability, predictability, and performance.|https://gitlab.freedesktop.org/wayland/weston|{{Pkg|weston}}}}
+* {{App|wio|wlroots-based compositor that aims to replicate the look and feel of Plan 9's Rio desktop.|https://gitlab.com/Rubo/wio|{{AUR|wio-wl}}}}
+* {{App|wlmaker|wlroots-based compositor that's inspired by [[Window Maker]].|https://phkaeser.github.io/wlmaker/|{{AUR|wlmaker}}}}
+* {{App|woodland|a minimal lightweight wlroots-based window-stacking compositor for Wayland, inspired by Wayfire and TinyWl.|https://github.com/DiogenesN/woodland|{{AUR|woodland}}}}
+
+=== Tiling ===
+
+* {{App|[[Cagebreak]]|Based on cage, inspired by [[ratpoison]].|https://github.com/project-repo/cagebreak|{{AUR|cagebreak}}}}
+* {{App|jay|A Wayland compositor, written in Rust. Appearance is based on the default i3 look and feel. Jay can be configured via a declarative TOML file or a shared library that gets injected into the compositor.|https://github.com/mahkoh/jay|{{AUR|jay}}}}
+* {{App|IonWL|Manual tiling compositor. Follows Ion3's design with a comprehensive Python API.|https://codeberg.org/ideasman42/IonWL|{{AUR|ionwl-git}}}}
+* {{App|miracle-wm|A Wayland compositor based on Mir in the style of i3 and sway with the intention to be flashier and more feature-rich than either, like swayfx.|https://github.com/miracle-wm-org/miracle-wm|{{AUR|miracle-wm}}}}
+* {{App|[[niri]]|A scrollable-tiling Wayland compositor.|https://github.com/niri-wm/niri|{{Pkg|niri}}}}
+* {{App|[[Qtile]]|A full-featured, hackable tiling window manager and Wayland compositor written and configured in Python.|https://github.com/qtile/qtile|{{Pkg|qtile}}}}
+* {{App|[[Sway]]|[[i3]]-compatible Wayland compositor based on wlroots.|https://github.com/swaywm/sway|{{Pkg|sway}}}}
+* {{App|SwayFx|[[Sway]], but with eye candy!|https://github.com/WillPower3309/swayfx|{{AUR|swayfx}}}}
+* {{App|Velox|Simple window manager based on swc, inspired by dwm and [[xmonad]].|https://github.com/michaelforney/velox|{{AUR|velox-git}}}}
+
+=== Dynamic ===
+
+* {{App|[[COSMIC]] Compositor|Compositor for the COSMIC desktop environment.|https://github.com/pop-os/cosmic-comp|{{Pkg|cosmic-comp}}}}
+* {{App|[[cwc]]|[[awesome]]-like Wayland compositor based on wlroots.|https://cudiph.github.io/cwc/apidoc/| {{AUR|cwc}}}}
+* {{App|[[MangoWM]]|A [[dwl]]-based compositor with a standard configuration file, an optional scrolling layout and support for eye candy.|https://github.com/mangowm/mango|{{AUR|mangowm}}}}
+* {{App|[[dwl]]|[[dwm]]-like Wayland compositor based on wlroots.|https://codeberg.org/dwl/dwl|{{AUR|dwl}}}}
+* {{App|[[Hyprland]]|A dynamic tiling Wayland compositor that does not sacrifice on its looks.|https://hypr.land|{{Pkg|hyprland}}}}
+* {{App|japokwm|Dynamic Wayland tiling compositor based around creating layouts, based on wlroots.|https://github.com/werererer/japokwm|{{AUR|japokwm-git}}}}
+* {{App|[[river-classic]]|Dynamic tiling Wayland compositor inspired by dwm and [[bspwm]].|https://codeberg.org/river/river-classic|{{Pkg|river-classic}}}}
+* {{App|pinnacle-comp|A Smithay-based Wayland compositor, inspired by AwesomeWM and configured in Lua or Rust |https://github.com/pinnacle-comp/pinnacle|{{AUR|pinnacle-comp}}}}
+
+=== Other ===
+
+* {{App|Cage|Displays a single fullscreen application like a kiosk.|https://www.hjdskes.nl/projects/cage/|{{Pkg|cage}}}}
+* {{App|GNOME Kiosk|Mutter based compositor that provides an environment suitable for fixed purpose, or single application deployments like wall displays and point-of-sale systems.|https://gitlab.gnome.org/GNOME/gnome-kiosk|{{AUR|gnome-kiosk}}}}
+* {{App|phoc|A tiny wlroots-based compositor for mobile devices.|https://gitlab.gnome.org/World/Phosh/phoc|{{Pkg|phoc}}}}
+* {{App|Wayback|X11 compatibility layer which allows for running full X11 desktop environments using Wayland components. It is experimental, in the early stage of development.|https://wayback.freedesktop.org/|{{AUR|wayback-x11}}}}
+* {{App|[[River]]| A non-monolithic Wayland compositor. Unlike other Wayland compositors, it does not combine the compositor and window manager into one program. Instead, users can choose any window manager implementing the river-window-management-v1 protocol.|https://isaacfreund.com/software/river/|{{Pkg|river}}}}
+
+Some of the above may support [[display manager]]s. Check {{ic|/usr/share/wayland-sessions/''compositor''.desktop}} to see how they are started.
+
+== Display managers ==
+
+Display managers listed below support launching Wayland compositors.
+
+{| class="wikitable sortable"
+! Name
+! Runs on
+! Description
+|-
+| {{AUR|atrium}}
+| Wayland
+| Display manager with first-class multiseat support.
+|-
+| {{Pkg|emptty}}
+| tty
+| Simple CLI Display Manager on TTY.
+|-
+| [[GDM]]
+| Wayland
+| [[GNOME]] display manager.
+|-
+| [[greetd]]
+| Wayland/Xorg/tty
+See [[Greetd#Greeters]].
+| Minimal and flexible login daemon.
+|-
+| {{Pkg|lemurs}}
+| tty
+| TUI display manager written in Rust.
+|-
+| {{AUR|lidm}}
+| tty
+| A fully colorful customizable TUI display manager made in C.
+|-
+| [[LightDM]]
+|
+Xorg[https://github.com/canonical/lightdm/issues/267]
+| Cross-desktop display manager.
+|-
+| [[ly]]
+| tty
+| TUI display manager written in Zig
+|-
+| [[Plasma Login Manager]]
+| Wayland
+| [[KDE]] display manager.
+|-
+| [[SDDM]]
+| Wayland/Xorg
+| QML-based display manager.
+|-
+| {{AUR|tbsm}}
+| tty
+| Simple CLI session launcher written in pure bash.
+|-
+| [[uwsm]]
+| tty
+| Session and XDG autostart manager for standalone compositors.
+Provides a TUI menu, but can also be used with other display managers.
+|}
+
+== Xwayland ==
+
+{{man|1|Xwayland}} is an X server that runs under Wayland and provides compatibility for native [[X11]] applications that are yet to provide Wayland support. To use it, [[install]] the {{Pkg|xorg-xwayland}} package.
+
+Xwayland is started via a compositor, so you should check the documentation for your chosen compositor for Xwayland compatibility and instructions on how to start Xwayland.
+
+By default, Xwayland runs its X server in [[Xorg#Rootless_Xorg|rootless]] mode.
+
+{{Note|
+* Security: Xwayland is an X server, so it does not have the security features of Wayland.
+* Performance: Xwayland has a [https://openbenchmarking.org/result/2202053-NE-NVIDIARTX35 nearly identical performance] to that of X11, in most cases.
+* Compatibility: Xwayland is not fully backward compatible with X11. Some applications may not work properly under Xwayland.
+}}
+
+=== Wayback ===
+
+[https://wayback.freedesktop.org/ Wayback] ({{AUR|wayback-x11}}, {{AUR|wayback-x11-git}}), is an X11 compatibility layer which allows for running full X11 desktop environments using Wayland components. It is intended to eventually replace the classic X.Org server, thus reducing maintenance burden of X11 applications.
+
+=== NVIDIA driver ===
+
+{{Note|NVIDIA drivers prior to version 470 (e.g. {{AUR|nvidia-390xx-dkms}}) do not support hardware accelerated Xwayland, causing non-Wayland-native applications to suffer from poor performance in Wayland sessions.}}
+
+Enabling [[NVIDIA#DRM kernel mode setting|DRM KMS]] is required. There may be additional information in the [https://download.nvidia.com/XFree86/Linux-x86_64/515.48.07/README/xwayland.html official documentation] regarding your display manager (e.g. [[GDM#Wayland and the proprietary NVIDIA driver|GDM]]).
+
+=== Detect Xwayland applications ===
+
+To determine whether an application is running via Xwayland, you can use ''xeyes'' from {{pkg|xorg-xeyes}}: the eyes are moving, when moving the mouse pointer over an application window.
+
+Another option is to run ''xwininfo'' (from {{Pkg|xorg-xwininfo}}) in a terminal window: when hovering over an Xwayland window the mouse pointer will turn into a + sign. If you click the window it will display some information and end, but it will not do anything with native Wayland windows.You can use {{ic|Ctrl+C}} to end it.
+
+You can also use ''xlsclients'' (from the {{Pkg|xorg-xlsclients}} package). To list all applications running via Xwayland, run {{ic|xlsclients -l}}.
+
+Alternatively, you can start {{AUR|extramaus}} and move your mouse pointer over the window of an application. If the red mouse moves, the application is running via Xwayland.
+
+{{Tip|For KDE Plasma, you can also inspect windows with [[KDE#KWin debug console]].}}
+
+== GUI libraries ==
+
+=== EFL ===
+
+Enlightenment has [https://www.enlightenment.org/about-wayland Wayland support]. To run an EFL-based application on Wayland, set the environment variable {{ic|1=ELM_DISPLAY=wl}}.
+
+=== Electron ===
+
+Since [[Electron]] 38.2, Wayland is used by default. [https://www.electronjs.org/blog/tech-talk-wayland] For earlier versions, Wayland support can be activated using the {{ic|1=--ozone-platform=auto}} or {{ic|1=--ozone-platform=wayland}} command line flags, or by setting the [[environment variable]] {{ic|ELECTRON_OZONE_PLATFORM_HINT}} to {{ic|auto}} or {{ic|wayland}}.
+
+=== FLTK ===
+
+Wayland is supported since {{Pkg|fltk}} 1.4, and it uses the Wayland backend by default. It is possible to override it to use Xwayland in a Wayland session by modifying an environment variable: {{ic|1=FLTK_BACKEND=x11}}. [https://github.com/fltk/fltk/blob/master/README.Wayland.txt].
+
+=== GLFW ===
+
+The {{Pkg|glfw}} package has support for Wayland, and uses the Wayland backend if the [[environment variable]] {{ic|1=XDG_SESSION_TYPE}} is set to {{ic|1=wayland}} and the application developer has not set a specific desired backend.
+
+See the [https://github.com/glfw/glfw/blob/3.4/src/platform.c#L87-L99 source code] for more information.
+
+=== GTK ===
+
+The {{Pkg|gtk3}} and {{Pkg|gtk4}} packages have the Wayland backend enabled. GTK will default to the Wayland backend, but it is possible to override it to use Xwayland in a Wayland session by modifying an environment variable: {{ic|1=GDK_BACKEND=x11}}.
+
+For theming issues, see [[GTK#Wayland backend]].
+
+=== Java ===
+
+The open source implementation of the [[Java]] platform OpenJDK does not yet have native support for Wayland. The [https://openjdk.java.net/projects/wakefield/ Wakefield] project is working on a component named [https://wiki.openjdk.org/display/wakefield/Pure+Wayland+toolkit+prototype WLToolkit] to add Wayland support to OpenJDK.
+
+It is possible to use Wakefield’s {{ic|jdk25-wayland}} [https://github.com/openjdk/wakefield/tree/jdk25-wayland] work-in-progress branch. Some programs such as the [https://blog.jetbrains.com/platform/2024/07/wayland-support-preview-in-2024-2/ JetBrains IDEs] do just that so they support Wayland out of the box. For other Java programs, you need you bring your own Wakefield build, e.g. {{AUR|jdk-openjdk-wakefield}}. To use it, point {{ic|JAVA_HOME}} to {{ic|/usr/lib/jvm/java-25-openjdk-wakefield}} and run your program with the {{ic|-Dawt.toolkit.name{{=}}WLToolkit}} option.
+
+=== Qt ===
+
+[[Qt]] 6 supports Wayland and uses it by default in a Wayland session.
+
+To enable Wayland support in [[Qt]] 5, install the {{Pkg|qt5-wayland}} package, and use {{ic|1=-platform wayland}} command line parameter or {{ic|1=QT_QPA_PLATFORM=wayland}} [[environment variable]]. [https://wiki.qt.io/QtWayland#How_do_I_use_QtWayland.3F]. {{ic|1=QT_QPA_PLATFORM="wayland;xcb"}} allows Qt to use the xcb (X11) plugin instead if Wayland is not available.
+
+To force the usage of Xwayland in a Wayland session,  use {{ic|1=-platform xcb}} command line parameter or {{ic|1=QT_QPA_PLATFORM=xcb}}.
+
+=== SDL ===
+
+In [[SDL|SDL3]], Wayland is used by default if the compositor supports the [https://wayland.app/protocols/fifo-v1 fifo-v1 protocol]. [https://github.com/libsdl-org/SDL/blob/8c54961de02d8f62ed155925cb334efcaa2d1f95/src/video/wayland/SDL_waylandvideo.c#L536C9-L536C20] Otherwise, X11 and Wayland are tried in order. Either can be forced either using the {{ic|1=SDL_VIDEO_DRIVER=x11}} or {{ic|1=SDL_VIDEO_DRIVER=wayland}} environment variables respectively (or, with a lower precedence, the SDL2 environment variable below). [https://github.com/libsdl-org/SDL/blob/8c54961de02d8f62ed155925cb334efcaa2d1f95/docs/README-migration.md?plain=1#L802]
+
+{{Pkg|sdl2-compat}} follows the SDL3 rules above, barring [https://github.com/libsdl-org/sdl2-compat/blob/8b85f95bbcc3411c78c1f2cbd62b23b7f96093c2/src/sdl2_compat.c#L504-L538 application-specific exceptions]. As for SDL2 proper (e.g. {{AUR|sdl2}}), set {{ic|1=SDL_VIDEODRIVER=wayland}}.
+{{ic|1=SDL_VIDEODRIVER="wayland,x11"}} allows SDL2 to use the x11 video driver instead if Wayland is not available. [https://wiki.libsdl.org/SDL2/FAQUsingSDL]
+
+You may also want to install {{Pkg|libdecor}} to enable client-side window decorations (for example, on GNOME).
+
+Refer to the [https://wiki.libsdl.org/SDL3/README-wayland official documentation] for more details.
+
+=== winit ===
+
+Winit is a window handling library in Rust. It will default to the Wayland backend, but it is possible to override it to use Xwayland by modifying environment variables:
+
+* Prior to version 0.29.2, set {{ic|1=WINIT_UNIX_BACKEND=x11}}
+* For version 0.29.2 and higher, unset {{ic|1=WAYLAND_DISPLAY}}, which forces a fallback to X using the {{ic|1=DISPLAY}} variable. [https://github.com/rust-windowing/winit/blob/baf10de95843f156b0fbad6b10c3137f1ebd4f1e/src/changelog/v0.29.md?plain=1#L134]
+
+== Tips and tricks ==
+
+=== Automation ===
+
+* {{App|{{man|1|ydotool}}|Generic command-line automation tool (not limited to Wayland). [[Enable/start]] the {{ic|ydotool.service}} [[user unit]].|https://github.com/ReimuNotMoe/ydotool|{{Pkg|ydotool}}}}
+* {{App|{{man|1|wtype}}|xdotool type for Wayland.|https://github.com/atx/wtype|{{Pkg|wtype}}}}
+* {{App|keyboard|Python library to hook and simulate keyboard events.|https://github.com/boppreh/keyboard|{{AUR|python-keyboard}}}}
+* {{App|mouse|Python library to hook and simulate mouse events.|https://github.com/boppreh/mouse|{{AUR|python-mouse}}}}
+* {{App|wlrctl|A command line utility for miscellaneous wlroots extensions (supports the foreign-toplevel-management, virtual-keyboard, virtual-pointer).|https://git.sr.ht/~brocellous/wlrctl|{{AUR|wlrctl}}}}
+* {{App|CrossMacro|Cross-platform desktop automation app with macro recording, playback, scheduling, text expansion, CLI tools, and Wayland/X11-aware Linux support.|https://github.com/alper-han/CrossMacro|{{AUR|crossmacro}}}}
+
+=== Remap keyboard or mouse keys ===
+
+See [[Input remap utilities]].
+
+=== Screencast ===
+
+See [[Screen capture#Screencasting]] and [[Screen capture#Screencast Wayland windows with X11 applications]].
+
+=== Persist clipboard after app close ===
+
+{{Merge|Clipboard|This is a standard behavior even on Xorg. There are many other clipboard managers.}}
+
+Due to Wayland's design philosophy, clipboard data is stored in the memory of the source client. When the client closes, the clipboard data is lost. You can solve this using {{Pkg|wl-clip-persist}}, which runs in the background to reads the clipboard data and stores it in its own memory, separate from the source client.
+
+=== Autostart wayland compositor as systemd service ===
+
+{{Note| [[Universal Wayland Session Manager]] automatically generates systemd units for your compositors, moreover it helps you to [[Universal Wayland Session Manager#Applications and autostart|integrate graphical applications with systemd]].}}
+
+If you do not want to use a display manager or a shell, you can autostart your Wayland compositor with a [[systemd]] service. Adjust the {{ic|ExecStart}} line with the compositor you want to use. Here is an example for [[KDE Plasma]]:
+
+{{hc|/etc/systemd/system/wayland-compositor.service|2=
+[Unit]
+After=graphical.target systemd-user-sessions.service modprobe@drm.service
+Conflicts=getty@tty1.service
+
+[Service]
+User=''username''
+WorkingDirectory=~
+
+PAMName=login
+TTYPath=/dev/tty1
+UnsetEnvironment=TERM
+
+StandardOutput=journal
+ExecStart=/usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland
+
+[Install]
+WantedBy=graphical.target
+}}
+
+=== Use another renderer for wlroots based compositor ===
+
+You can use another [https://gitlab.freedesktop.org/wlroots/wlroots/-/tree/master/render wlroots renderer] such as [[Vulkan]] by specifying the {{ic|WLR_RENDERER}} environment variable for wlroots based compositor. The list of available ones is on the [https://gitlab.freedesktop.org/wlroots/wlroots/-/blob/master/docs/env_vars.md wlroots documentation].
+
+=== Specifying the primary graphics cards on wlroot based compositor ===
+
+If your device has [[Hybrid graphics]] , then you can use {{ic|WLR_DRM_DEVICES}} environment variable to specifies primary graphics cards according to the [https://gitlab.freedesktop.org/wlroots/wlroots/-/blob/master/docs/env_vars.md wlroots documentation]
+
+Example: 
+
+ WLR_DRM_DEVICES='/dev/dri/card1:/dev/dri/card2:/dev/dri/card0'
+
+=== Remote display ===
+
+* {{Pkg|wlroots0.18}} and {{Pkg|wlroots0.19}} (used by [[sway]]) offers a VNC backend via {{Pkg|wayvnc}} since version 0.10. RDP backend has been removed [https://github.com/swaywm/wlroots/releases/tag/0.10.0].
+* {{pkg|mutter}} has now remote desktop enabled at compile time, see [https://wiki.gnome.org/Projects/Mutter/RemoteDesktop] and {{Pkg|gnome-remote-desktop}} for details.
+* {{pkg|krfb}} offers a VNC server for {{pkg|kwin}}. {{ic|krfb-virtualmonitor}} can be used to set up another device as an extra monitor.
+* There was a merge of FreeRDP into Weston in 2013, enabled via a compile flag. The {{Pkg|weston}} package has it enabled since version 6.0.0.
+* {{Pkg|waypipe}} is a transparent proxy for Wayland applications, with a wrapper command to run over [[SSH]]
+** Here is an example for launching a remote KDE kcalc under Plasma:
+::{{bc|1=$ waypipe ssh example.local env QT_QPA_PLATFORM=wayland QT_QPA_PLATFORMTHEME=KDE dbus-launch kcalc}}
+
+== Troubleshooting ==
+
+First, make sure that your current session is running under Wayland instead of [[X11]] (many compositors support both).
+This can be done by examining the {{ic|WAYLAND_DISPLAY}} [[environment variable]] (it should begin with {{ic|wayland-}}), and/or checking that {{ic|XDG_SESSION_TYPE}} is {{ic|wayland}}.
+
+For (possibly) application-related issues, consider also checking whether the application [[#Detect XWayland applications|is running under XWayland]].
+
+=== Useful tools  ===
+
+* {{ic|wayland-info}} from {{Pkg|wayland-utils}}: displays information about the current compositor.
+* {{Pkg|wev}}: for debugging Wayland events on a Wayland window, analagous to the X11 tool [[xev]].
+* {{Pkg|wlopm}}: Wayland output power management for compositors that support the [https://wayland.app/protocols/wlr-output-power-management-unstable-v1 wlr output power management protocol].
+* {{Pkg|wlr-randr}}: Manages outputs of Wayland compositors that support the [https://wayland.app/protocols/wlr-output-management-unstable-v1 wlr output management protocol].
+
+=== Color correction ===
+
+See [[Backlight#Color correction]].
+
+=== GNOME: Slow motion, graphical glitches, and crashes ===
+
+Gnome-shell users may experience display issues when they switch to Wayland from X. One of the root cause might be the {{ic|1=CLUTTER_PAINT=disable-clipped-redraws:disable-culling}} set by yourself for Xorg-based gnome-shell. Just try to remove it from {{ic|/etc/environment}} or other rc files to see if everything goes back to normal.
+
+=== Input grabbing in games, remote desktop and virtual machine windows ===
+
+In contrast to Xorg, Wayland does not allow exclusive input device grabbing, also known as active or explicit grab (e.g. [https://tronche.com/gui/x/xlib/input/XGrabKeyboard.html keyboard], [https://tronche.com/gui/x/xlib/input/XGrabPointer.html mouse]), instead, it depends on the Wayland compositor to pass keyboard shortcuts and confine the pointer device to the application window.
+
+This change in input grabbing breaks current applications' behavior, meaning:
+
+* Hotkey combinations and modifiers will be caught by the compositor and will not be sent to remote desktop and virtual machine windows.
+* The mouse pointer will not be restricted to the application's window which might cause a parallax effect where the location of the mouse pointer inside the window of the virtual machine or remote desktop is displaced from the host's mouse pointer.
+
+Wayland solves this by adding protocol extensions for Wayland and Xwayland. Support for these extensions is needed to be added to the Wayland compositors. In the case of native Wayland clients, the used widget toolkits (e.g GTK, Qt) needs to support these extensions or the applications themselves if no widget toolkit is being used. In the case of Xorg applications, no changes in the applications or widget toolkits are needed as the Xwayland support is enough.
+
+These extensions are already included in {{pkg|wayland-protocols}}, and supported by {{pkg|xorg-xwayland}}.
+
+The related extensions are:
+
+* [https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/unstable/xwayland-keyboard-grab/xwayland-keyboard-grab-unstable-v1.xml Xwayland keyboard grabbing protocol]
+* [https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml Compositor shortcuts inhibit protocol]
+* [https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/unstable/relative-pointer/relative-pointer-unstable-v1.xml Relative pointer protocol]
+* [https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml Pointer constraints protocol]
+
+Supporting Wayland compositors:
+
+* Mutter, [[GNOME]]'s compositor [https://bugzilla.gnome.org/show_bug.cgi?id=783342 since release 3.28]
+* wlroots supports relative-pointer and pointer-constraints
+* Kwin
+** [[KDE#X11 shortcuts conflict on Wayland]]
+** [https://invent.kde.org/plasma/kwin/-/blob/master/src/wayland/keyboard_shortcuts_inhibit_v1_interface.cpp Keyboard shortcuts inhibit]
+
+Supporting widget toolkits:
+
+* GTK since release 3.22.18.
+
+=== GTK themes not working ===
+
+See https://github.com/swaywm/sway/wiki/GTK-3-settings-on-Wayland.
+
+=== Avoid loading NVIDIA modules ===
+
+Add {{ic|1=__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json}} as [[environment variable]] before launching a Wayland compositor like [[sway]].
+
+=== Magnifying/surface scaling ===
+
+Screen magnifying is not solved yet, a pull request was merged mid-2022 [https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/145 providing the protocol wp-surface-scale].
+
+=== Wayland lag/stuttering since kernel 6.11.2 (AMD) ===
+
+Until this issue is patched in future kernel releases, a workaround is to add {{ic|1=amdgpu.dcdebugmask=0x400}} to the cmdline.
+
+See: https://community.frame.work/t/wayland-lag-stuttering-since-kernel-6-11-2/59422
+
+=== Games / applications suspended when changing a virtual desktop ===
+
+{{Expansion|Add more information and reference to upstream documentation here if found: the feature is elusive and seems poorly documented.}}
+
+When changing workspace or using {{ic|Alt+Tab}}, games (and possibly other graphical applications) are suspended, put in some weird state, and they (partially) stop. This includes VRR applications and applications with VSync turned on but is not limited to them only. Symptoms include things like audio dropping (partially) out, game not progressing, ping times rising high or network dropping out, but only if the game window is not in focus. This may only affect applications with VSync on.
+
+It is possible some games can work around this issue by changing to a window, but some do not. This is extremely annoying in more complex games which require heavy usage of web browsing, documentation and 3rd party tools or if the gameplay is interrupted for some reason.
+
+Possible workaround include setting environment variables {{ic|1=MESA_VK_WSI_PRESENT_MODE=immediate}} and/or {{ic|1=vk_xwayland_wait_ready=false}}, but setting these will break any VSync or VRR implementations.
+
+== See also ==
+
+* [https://wayland.freedesktop.org/docs/html/ Wayland documentation online]
+* [https://gitlab.freedesktop.org/wayland Official repository]
+* [[Fedora:How to debug Wayland problems]]
+* [https://wearewaylandnow.com/ We are Wayland now!] - An updated version of "Are we Wayland yet?"
+* [https://awesomeopensource.com/projects/wayland Awesome Wayland projects]
+* [[Cursor themes]]
+* [https://bbs.archlinux.org/viewtopic.php?id=107499 Arch Linux forum discussion]
+* [https://github.com/swaywm/sway/wiki/i3-Migration-Guide#common-x11-apps-used-on-i3-with-wayland-alternatives i3 Migration Guide - Common X11 apps used on i3 with Wayland alternatives]
+* [https://wayland.app/protocols/ Wayland Explorer - A better way to read Wayland documentation]
+* [https://askubuntu.com/questions/1393618/how-can-i-tell-if-an-application-is-using-xwayland How can I tell if an application is using XWayland]

@@ -1,0 +1,69 @@
+[[Category:Package management]]
+[[ca:Reflector]]
+[[de:Reflector]]
+[[el:Reflector]]
+[[es:Reflector]]
+[[fr:Reflector]]
+[[hu:Reflector]]
+[[ja:Reflector]]
+[[pt:Reflector]]
+[[ru:Reflector]]
+[[tr:Reflector]]
+[[zh-hans:Reflector]]
+[[zh-hant:Reflector]]
+{{Related articles start}}
+{{Related|Mirrors}}
+{{Related|Pacman}}
+{{Related articles end}}
+[https://xyne.dev/projects/reflector/ Reflector] is a Python script which can retrieve the latest mirror list from the [https://archlinux.org/mirrors/status/ Arch Linux Mirror Status] page, filter the most up-to-date mirrors, sort them by speed and overwrite the file {{ic|/etc/pacman.d/mirrorlist}}.
+
+== Installation ==
+
+[[Install]] the {{Pkg|reflector}} package.
+
+Alternatively, the {{AUR|reflector-rs}} package can be used as a drop-in replacement.
+
+== Usage ==
+
+The manual {{man|1|reflector|EXAMPLES}} may already cover your use-case.
+
+To see all of the available options, run the following command:
+
+ $ reflector --help
+
+{{Tip|If you use ''reflector'' during Arch Linux installation, the following will update the live environment with the fastest five HTTPS mirrors:
+{{bc|# reflector --latest 5 --protocol https --age 12 --sort rate --save /etc/pacman.d/mirrorlist}}}}
+
+{{Note|
+* Examples overwriting {{ic|/etc/pacman.d/mirrorlist}} need to be run as root. Make a backup before proceeding and verify the results afterwards.
+* It is typically not a good idea to filter by country; there are only a finite number of mirrors in a single country. Network throughput is only partly determined by geographical distance.
+}}
+
+== Automation ==
+
+=== systemd service ===
+
+Reflector ships with {{ic|reflector.service}}, which runs Reflector using the options specified in {{ic|/etc/xdg/reflector/reflector.conf}}. The default options in that file provide a good starting point and example.
+
+[[Enable]] {{ic|reflector.service}} to run Reflector on boot. To run it immediately, [[start]] the service.
+
+{{Note|{{ic|reflector.service}} depends on a network wait service to be configured via [[network-online.target]].}}
+
+=== systemd timer ===
+
+Reflector provides a [[systemd timer]] ({{ic|reflector.timer}}) that starts the [[#systemd service]] {{ic|reflector.service}} weekly. The schedule can be changed by [[edit]]ing {{ic|reflector.timer}}.
+
+For changing the default options that {{ic|reflector.service}} gets started with, edit the configuration file as described in [[#systemd service]]. Then, [[start]] and [[enable]] {{ic|reflector.timer}}.
+
+To refresh the mirrorlist ahead of schedule, [[start]] {{ic|reflector.service}}.
+
+{{Note|Having both {{ic|reflector.service}} and {{ic|reflector.timer}} enabled is redundant. With the service enabled, Reflector will run on every boot. To make it only run weekly, as originally designed for the timer, enable only the timer. The service does not to be in the ''enabled'' state for the timer to function.}}
+
+=== pacman hook ===
+
+{{Pkg|pacman-mirrorlist}} is not updated regularly, invoking reflector because a mirror in some part of the globe was added or removed is not relevant; use the [[#systemd timer]] approach instead. If you do not want {{ic|mirrorlist.pacnew}} to be installed at all, add {{ic|etc/pacman.d/mirrorlist}} to [[NoExtract]] in {{ic|/etc/pacman.conf}}.
+
+== See also ==
+
+* [https://bbs.archlinux.org/viewtopic.php?id=115714 Reflector thread on the Arch Linux Forums]
+* [https://xyne.dev/projects/reflector/ Upstream project page including changelog]

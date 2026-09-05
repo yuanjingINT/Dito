@@ -1,0 +1,758 @@
+{{Lowercase title}}
+[[Category:Network managers]]
+[[Category:Virtualization]]
+[[de:Systemd/systemd-networkd]]
+[[es:Systemd-networkd]]
+[[fr:Systemd-networkd]]
+[[hu:Systemd-networkd]]
+[[ja:systemd-networkd]]
+[[ru:Systemd-networkd]]
+[[zh-hans:Systemd-networkd]]
+{{Related articles start}}
+{{Related|systemd}}
+{{Related|systemd-resolved}}
+{{Related|systemd-nspawn}}
+{{Related|Network bridge}}
+{{Related|Network configuration}}
+{{Related|Wireless network configuration}}
+{{Related|:Category:Network configuration}}
+{{Related articles end}}
+
+''systemd-networkd'' is a system daemon that manages network configurations. It detects and configures network devices as they appear; it can also create virtual network devices. This service can be especially useful to set up complex network configurations for a container managed by [[systemd-nspawn]] or for virtual machines. It also works fine on simple connections.
+
+== Installation ==
+
+{{Pkg|systemd}} is part of the default Arch installation and contains all needed files to operate a wired network.  Wireless adapters, covered later in this article, can be set up by services, such as [[wpa_supplicant]] or [[iwd]].
+
+=== Required services and setup ===
+
+To use ''systemd-networkd'', [[start/enable]] {{ic|systemd-networkd.service}}.
+
+{{Note|Each network interface should be managed by only one [[Network configuration#Network managers|DHCP client or network manager]], so it is advised to run only one DHCP client or network manager on the system. Find a list of the currently running services with {{ic|1=systemctl --type=service}} and then [[stop]] or reconfigure those that conflict.}}
+
+It is optional to also configure [[systemd-resolved]], which is a network name resolution service to local applications, considering the following points:
+
+* It is important to understand how [[resolv.conf]] and ''systemd-resolved'' interact to properly configure the DNS that will be used, some explanations are provided in [[systemd-resolved]].
+* ''systemd-resolved'' is required if DNS entries are specified in ''.network'' files.
+* ''systemd-resolved'' is also required to obtain DNS addresses from DHCP servers or IPv6 router advertisements.<br>(by setting ({{ic|1=DHCP=}} and/or {{ic|1=IPv6AcceptRA=}} in the {{ic|[Network]}} section, and {{ic|1=UseDNS=yes}} (the default) in the corresponding section(s) {{ic|[DHCPv4]}}, {{ic|[DHCPv6]}}, {{ic|[IPv6AcceptRA]}}, see {{man|5|systemd.network}}).
+* Note that ''systemd-resolved'' can also be used without ''systemd-networkd''.
+
+=== systemd-networkd-wait-online ===
+
+Enabling {{ic|systemd-networkd.service}} also enables {{ic|systemd-networkd-wait-online.service}}, which is a oneshot system service that waits for the network to be configured. The latter has {{ic|1=WantedBy=network-online.target}}, so it will be started only when {{ic|network-online.target}} itself is enabled or pulled in by some other unit. See also [[systemd#Running services after the network is up]].
+
+By default, {{ic|systemd-networkd-wait-online.service}} waits for all links managed by ''systemd-networkd'' to be fully configured or failed, and for at least one link to be online.
+
+See {{man|8|systemd-networkd-wait-online}} for details.
+
+== Configuration ==
+
+=== systemd example network files ===
+
+A quick way to enable a network interface is to use one of the provided ''.example'' files located in {{ic|/usr/lib/systemd/network/}}. For instance, to enable Wi-Fi and Ethernet, you can create symbolic links to the example files:
+
+ # ln -s /usr/lib/systemd/network/80-wifi-station.network.example /etc/systemd/network/80-wifi-station.network
+ # ln -s /usr/lib/systemd/network/89-ethernet.network.example /etc/systemd/network/89-ethernet.network
+
+You can use ''networkctl'' to add any additional custom configuration. See the [[#networkctl]] section.
+
+=== Multiple interfaces that are not connected all the time ===
+
+For system with multiple network interfaces that are not expected to be connected all the time (e.g. if a dual-port Ethernet card, but only one cable plugged in), starting {{ic|systemd-networkd-wait-online.service}} will fail after the default timeout of 2 minutes. This may cause an unwanted delay in the startup process. To change the behaviour to wait for ''any'' interface rather than ''all'' interfaces to become online, [[edit]] the service and add the {{ic|--any}} parameter to the {{ic|ExecStart}} line:
+
+{{hc|/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf|2=
+[Service]
+ExecStart=
+ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --any
+}}
+
+Alternatively, use {{ic|systemd-networkd-wait-online@.service}} to wait for a specific interface. For example, to wait for {{ic|enp1s0}}, [[disable]] {{ic|systemd-networkd-wait-online.service}} and [[enable]] {{ic|systemd-networkd-wait-online@enp1s0.service}}.
+
+{{Tip|1=If you know which interface might not be up all the time, you can use {{ic|1=RequiredForOnline=no}} in the {{ic|Link}} section of your {{ic|.network}} configuration file instead. See {{man|5|systemd.network|[LINK] SECTION OPTIONS}}.}}
+
+=== Wait until network interfaces have a routable address ===
+
+Per {{man|8|systemd-networkd-wait-online.service}}, "online means that the link's operational state is equal or higher than "degraded"." (see {{man|1|networkctl}} for the definition of "degraded" and other operational statuses).
+
+To prevent {{ic|systemd-networkd-wait-online.service}} from exiting before network interfaces have a routable IP address (and thus having other services that require a working network connection starting too early), add {{ic|RequiredForOnline{{=}}routable}} to the {{ic|[Link]}} section in ''.network'' files:
+
+{{bc|1=
+[Link]
+RequiredForOnline=routable
+}}
+
+=== Wait until DNS servers are reachable ===
+
+{{man|8|systemd-networkd-wait-online.service}} can be delayed until all configured interfaces can connect to their DNS servers. This improves the chances that DNS is operational when [[network-online.target]] is reached and units ordered after it begin to start.
+
+To enable this feature, [[edit]] {{ic|systemd-networkd-wait-online.service}} and add the {{ic|--dns}} option to the {{ic|ExecStart}} line:
+
+{{hc|/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-dns.conf|2=
+[Service]
+ExecStart=
+ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --dns
+}}
+
+== Usage ==
+
+{{Merge|#Configuration|Explaining how configuration files work belongs to the configuration section.}}
+{{Expansion|Add networkctl commands and simplify content merged from former Configuration Files section}}
+
+The global configuration file in {{ic|/etc/systemd/networkd.conf}} may be used to override some defaults only. The main configuration is performed per network device. Configuration files are located in {{ic|/usr/lib/systemd/network/}}, the volatile runtime network directory {{ic|/run/systemd/network/}} and the local administration network directory {{ic|/etc/systemd/network/}}. Files in {{ic|/etc/systemd/network/}} have the highest priority.
+
+There are three types of configuration files. They all use a format similar to [[systemd#Writing unit files|systemd unit files]]. 
+
+; ''.network'' files: They will apply a network configuration for a ''matching'' device. See the {{man|5|systemd.network}} man page.
+; ''.netdev'' files: They will create a ''virtual network device'' for a ''matching'' environment. See the {{man|5|systemd.netdev}} man page.
+; ''.link'' files: When a network device appears, [[udev]] will look for the first ''matching'' ''.link'' file. See the {{man|5|systemd.link}} man page.
+
+They all follow the same rules: 
+
+* If '''all''' conditions in the {{ic|[Match]}} section are matched, the profile will be activated
+* an empty {{ic|[Match]}} section means the profile will apply in any case (can be compared to the {{ic|*}} wildcard)
+* all configuration files are collectively sorted and processed in lexical order, regardless of the directory in which they live
+* files with identical name replace each other
+After making changes to a configuration file, [[restart]] {{ic|systemd-networkd.service}}.
+
+{{Note|
+* The options specified in the configuration files are case sensitive.
+* In the examples below, {{ic|enp1s0}} is the wired adapter and {{ic|wlp2s0}} is the wireless adapter. These names can be different on different systems. See [[Network configuration#Network interfaces]] and [[Network configuration#Change interface name]].
+* It is also possible to use a wildcard, e.g. {{ic|1=Name=en*}} or {{ic|1=Name=wl*}}.
+* Devices can also be matched by their type. E.g. {{ic|1=Type=ether}} for Ethernet, {{ic|1=Type=wlan}} for Wi-Fi and {{ic|1=Type=wwan}} for WWAN.
+* Note that {{ic|1=Type=ether}} will also match virtual Ethernet interfaces. To exclude them, use {{ic|1=Type=ether}} in combination with {{ic|1=Kind=!*}}.
+}}
+
+{{Tip|
+* Files in {{ic|/etc/systemd/network/}} override the corresponding system-supplied file in {{ic|/usr/lib/systemd/network/}}. Optionally use a symlink to {{ic|/dev/null}} to "mask" a system file.
+* systemd accepts the values {{ic|1}}, {{ic|true}}, {{ic|yes}}, {{ic|on}} for a true boolean, and the values {{ic|0}}, {{ic|false}}, {{ic|no}}, {{ic|off}} for a false boolean. See {{man|7|systemd.syntax}}.
+* systemd-networkd will alter routing tables also for other network software. If this is undesired, configure {{ic|1=ManageForeignRoutingPolicyRules=}} in {{man|5|networkd.conf}} accordingly. For example, see [[WireGuard#Connection lost after sleep using systemd-networkd]].
+}}
+
+=== networkctl ===
+
+You can use {{ic|networkctl}} to query or modify the status of network links:
+
+{{hc|$ networkctl|
+IDX LINK        TYPE     OPERATIONAL SETUP    
+  1 lo          loopback carrier     unmanaged
+  2 wlo1        wlan     routable    unmanaged
+  3 tailscale0  none     routable    unmanaged
+  4 enp0s20f0u1 ether    routable    unmanaged
+}}
+
+For example, to enable Multicast DNS for the Wi-Fi interface:
+
+{{hc|# networkctl edit @''wlan0'' --drop-in mdns|2=
+[Network]
+MulticastDNS=true
+}}
+
+Replace {{ic|''wlan0''}} with your stable interface name or specify the full path instead. See {{man|1|networkctl}}.
+
+=== Wired adapter using DHCP ===
+
+{{hc|/etc/systemd/network/20-wired.network|2=
+[Match]
+Name=enp1s0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+}}
+
+=== Wired adapter using a static IP ===
+
+{{hc|/etc/systemd/network/20-wired.network|2=
+[Match]
+Name=enp1s0
+
+[Network]
+Address=10.1.10.9/24
+Address=2001:db8:1234:5678::1/64
+Gateway=10.1.10.1
+Gateway=fe80::1
+DNS=10.1.10.1
+DNS=2001:db8:1122::3344:1
+}}
+
+{{ic|1=Address=}} can be used more than once to configure multiple IPv4 or IPv6 addresses. See {{man|5|systemd.network}} for more options.
+
+=== Wireless adapter ===
+
+In order to connect to a wireless network with ''systemd-networkd'', a wireless adapter configured with another application such as [[wpa_supplicant]] or [[iwd]] is required.
+
+{{hc|/etc/systemd/network/25-wireless.network|2=
+[Match]
+Name=wlp2s0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+IgnoreCarrierLoss=3s
+}}
+
+If the wireless adapter has a static IP address, the configuration is the same (except for the interface name) as in a [[#Wired adapter using a static IP|wired adapter]].
+
+{{Tip|{{ic|1=IgnoreCarrierLoss=3s}} ensures that ''systemd-networkd'' will not re-configure the interface (e.g., release and re-acquire a DHCP lease) for a short period (3 seconds in this example) while the wireless interface roams to another access point within the same wireless network (SSID), which translates to shorter downtime when roaming.}}
+
+To authenticate to the wireless network, use e.g. [[wpa_supplicant]] or [[iwd]].
+
+=== Wired and wireless adapters on the same machine ===
+
+This setup will enable a DHCP IP for both a wired and wireless connection making use of the metric directive to allow the kernel to decide on-the-fly which one to use.  This way, no connection downtime is observed when the wired connection is unplugged.
+
+The kernel's route metric (same as configured with ''ip'') decides which route to use for outgoing packets, in cases when several match. This will be the case when both wireless and wired devices on the system have active connections. To break the tie, the kernel uses the metric. If one of the connections is terminated, the other automatically wins without there being a gap with nothing configured (ongoing transfers may still not deal with this nicely but that is at a different OSI layer).
+
+''systemd-networkd'' [https://github.com/systemd/systemd/issues/17698 does not set per-interface-type default route metrics], so it needs to be configured manually:
+
+{{Note|The {{ic|Metric}} option is for static routes while the {{ic|RouteMetric}} option is for setups not using static routes. See {{man|5|systemd.network}} for more details.}}
+
+{{hc|/etc/systemd/network/20-wired.network|2=
+[Match]
+Name=enp1s0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+
+[DHCPv4]
+RouteMetric=100
+
+[IPv6AcceptRA]
+RouteMetric=100
+}}
+
+{{hc|/etc/systemd/network/25-wireless.network|2=
+[Match]
+Name=wlp2s0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+
+[DHCPv4]
+RouteMetric=600
+
+[IPv6AcceptRA]
+RouteMetric=600
+}}
+
+=== DHCP server ===
+
+This is an example of a DHCP server configuration which works well with [[hostapd]] to create a wireless hotspot. {{ic|IPMasquerade}} adds the firewall rules for [[Internet sharing#Enable NAT|NAT]] and implies {{ic|1=IPv4Forwarding=yes}} to enable [[Internet sharing#Enable packet forwarding|packet forwarding]].
+
+{{Accuracy|{{ic|1=IPMasquerade=ipv4}} does not add the rules for the {{ic|filter}} table, they have to be added manually. See [[systemd-nspawn#Use a virtual Ethernet link]].}}
+
+{{hc|/etc/systemd/network/''wlan0''.network|2=
+[Match]
+Name=wlan0
+
+[Network]
+Address=10.1.1.1/24
+DHCPServer=true
+IPMasquerade=ipv4
+
+[DHCPServer]
+PoolOffset=100
+PoolSize=20
+DNS=9.9.9.9
+}}
+
+See {{man|5|systemd.network|[DHCPSERVER] SECTION OPTIONS}} for all available options.
+
+=== Add a secondary route and gateway ===
+Add on a single interface a second address and a secondary gateway for specific subnet.
+
+{{hc|/etc/systemd/network/''eth0''.network|2=
+[Match]
+Name=eth0
+
+[Network]
+Address=10.1.0.2/24
+Address=10.1.1.2/24
+Gateway=10.1.0.1
+
+[Route]
+Destination=10.10.0.0/16
+Gateway=10.1.0.5
+}}
+
+== Usage with containers ==
+
+''systemd-networkd'' can provide fully automatic configuration of networking for [[systemd-nspawn]] containers using private networking when it is used on the host system as well as inside the container. See [[systemd-nspawn#Networking]] for a comprehensive overview.
+
+{{Tip|[[Starting]] {{ic|systemd-networkd.service}} is '''all that is needed''' on the host to provide the described network auto-configuration for containers which use the default [[systemd-nspawn#Use a virtual Ethernet link|virtual Ethernet link]] setup. The following is only needed for other private networking scenarios.}}
+
+For the examples below,
+
+* we will limit the output of the {{ic|ip a}} command to the concerned interfaces,
+* we assume the ''host'' is the main operating system running on real hardware and the ''container'' is the guest system,
+* all interface names and IP addresses are only examples.
+
+=== Network bridge with DHCP ===
+
+==== Bridge interface ====
+
+First, create a virtual [[bridge]] interface with a ''.netdev'' unit file which tells ''systemd-networkd'' to create a device named {{ic|br0}} that functions as an Ethernet bridge.
+
+{{hc|/etc/systemd/network/25-br0.netdev|2=
+[NetDev]
+Name=br0
+Kind=bridge
+}}
+
+Optionally add {{ic|1=MACAddress=none}} to the {{ic|NetDev}} section for the bridge to inherit MAC address from one of the bridged interfaces. This also requires a creation of ''25-br0.link'' file.
+
+{{Tip|''systemd-networkd'' assigns a MAC address generated based on the interface name and the machine ID to the bridge. This may cause connection issues, for example in case of routing based on MAC filtering. To circumvent such problems, assign a MAC address to your bridge, probably the same as your physical device, adding the line {{ic|1=MACAddress=''xx'':''xx'':''xx'':''xx'':''xx'':''xx''}} in the {{ic|NetDev}} section above.}}
+
+[[Restart]] {{ic|systemd-networkd.service}} to have ''systemd-networkd'' create the bridge.
+
+To see the newly created bridge on the host and on the container, type:
+
+{{hc|$ ip a|
+3: br0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default 
+    link/ether ae:bd:35:ea:0c:c9 brd ff:ff:ff:ff:ff:ff
+}}
+
+Note that the interface {{ic|br0}} is listed but is still DOWN at this stage.
+
+==== Bind Ethernet to bridge ====
+
+The next step is to add a network interface to the newly created bridge. The configuration file of the bridge must be loaded before those of the bridged interfaces, so its configuration file should be alphanumerically prior to those. In the example below, we add any interface that matches the name {{ic|en*}} into the bridge {{ic|br0}}. 
+
+{{hc|/etc/systemd/network/25-br0-en.network|2=
+[Match]
+Name=en*
+
+[Network]
+Bridge=br0
+}}
+
+The Ethernet interface must not have DHCP or an IP address associated, as the bridge requires an interface to bind to with no IP address.
+
+{{Note|Ensure that no other ''.network'' file attempts to match interfaces by {{ic|1=Name=en*}}. Only the first file that matches an interface is applied.}}
+
+==== Bridge network ====
+
+Now that the bridge has been created and has been bound to an existing network interface, the IP configuration of the bridge interface must be specified. This is defined in a third ''.network'' file, the example below uses DHCP.
+
+{{hc|/etc/systemd/network/25-br0.network|2=
+[Match]
+Name=br0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+}}
+
+==== Inherit MAC address (optional) ====
+
+For the bridge to inhering MAC address from one of the bridged interfaces, set {{ic|1=MACAddress=none}} and {{ic|1=MACAddressPolicy=none}}.
+
+{{hc|/etc/systemd/network/25-br0.netdev|2=
+[NetDev]
+Name=br0
+Kind=bridge
+MACAddress=none
+}}
+
+{{hc|/etc/systemd/network/25-br0.link|2=
+[Match]
+OriginalName=br0
+
+[Link]
+MACAddressPolicy=none
+}}
+
+==== Configure the container ====
+
+Use the {{ic|1=--network-bridge=br0}} option when starting the container. See [[systemd-nspawn#Use a network bridge]] for details.
+
+==== Result ====
+
+* on host
+
+{{hc|$ ip a|
+3: br0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default 
+    link/ether 14:da:e9:b5:7a:88 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.87/24 brd 192.168.1.255 scope global br0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::16da:e9ff:feb5:7a88/64 scope link 
+       valid_lft forever preferred_lft forever
+6: vb-''MyContainer'': <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast master br0 state UP group default qlen 1000
+    link/ether d2:7c:97:97:37:25 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::d07c:97ff:fe97:3725/64 scope link 
+       valid_lft forever preferred_lft forever
+}}
+
+* on container
+
+{{hc|$ ip a|
+2: host0: <BROADCAST,MULTICAST,ALLMULTI,AUTOMEDIA,NOTRAILERS,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 5e:96:85:83:a8:5d brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.73/24 brd 192.168.1.255 scope global host0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::5c96:85ff:fe83:a85d/64 scope link 
+       valid_lft forever preferred_lft forever
+}}
+
+==== Notice ====
+
+* we have now one IP address for {{ic|br0}} on the host, and one for {{ic|host0}} in the container
+* two new interfaces have appeared: {{ic|vb-''MyContainer''}} in the host and {{ic|host0}} in the container. This comes as a result of the {{ic|1=--network-bridge=br0}} option as explained in [[systemd-nspawn#Use a network bridge]] for details.
+* the DHCP address on {{ic|host0}} comes from the system {{ic|/usr/lib/systemd/network/80-container-host0.network}} file.
+* on host
+
+{{Out of date|''brctl'' is deprecated, use {{ic|bridge link}}. See [[Network bridge#With iproute2]].}}
+
+{{hc|$ brctl show|
+bridge name	bridge id		STP enabled	interfaces
+br0		8000.14dae9b57a88	no		enp7s0
+							vb-''MyContainer''
+}}
+
+the above command output confirms we have a bridge with two interfaces binded to.
+
+* on host
+
+{{hc|$ ip route|
+default via 192.168.1.254 dev br0 
+192.168.1.0/24 dev br0  proto kernel  scope link  src 192.168.1.87
+}}
+
+* on container
+
+{{hc|$ ip route|
+default via 192.168.1.254 dev host0 
+192.168.1.0/24 dev host0  proto kernel  scope link  src 192.168.1.73
+}}
+
+the above command outputs confirm we have activated {{ic|br0}} and {{ic|host0}} interfaces with an IP address and Gateway 192.168.1.254. The gateway address has been automatically grabbed by ''systemd-networkd''.
+
+=== Network bridge with static IP addresses ===
+
+Setting a static IP address for each device can be helpful in case of deployed web services (e.g. FTP, HTTP, SSH). Each device will keep the same MAC address across reboots if your system {{ic|/usr/lib/systemd/network/99-default.link}} file has the {{ic|1=MACAddressPolicy=persistent}} option (it has by default). This setup routes any service on the gateway to the desired device.
+
+The following configuration needs to be done for this setup:
+
+* on host 
+
+The configuration is very similar to the [[#Network bridge with DHCP]] section. First, a virtual bridge interface needs to be created and the main physical interface needs to be bound to it. This task can be accomplished with the following two files, with contents equal to those available in the DHCP section.
+
+ /etc/systemd/network/''MyBridge''.netdev
+ /etc/systemd/network/''MyEth''.network
+
+Next, you need to configure the IP and DNS of the newly created virtual bridge interface. For example:
+
+{{hc|/etc/systemd/network/''MyBridge''.network|2=
+[Match]
+Name=br0
+
+[Network]
+DNS=192.168.1.254
+Address=192.168.1.87/24
+Gateway=192.168.1.254
+}}
+
+* on container
+
+To get configure a static IP address on the container, we need to override the system {{ic|/usr/lib/systemd/network/80-container-host0.network}} file, which provides a DHCP configuration for the {{ic|host0}} network interface of the container. This can be done by placing the configuration into {{ic|/etc/systemd/network/80-container-host0.network}}. For example:
+
+{{hc|/etc/systemd/network/80-container-host0.network|2=
+[Match]
+Name=host0
+
+[Network]
+DNS=192.168.1.254
+Address=192.168.1.94/24
+Gateway=192.168.1.254
+}}
+
+Make sure that {{ic|systemd-networkd.service}} is [[enabled]] in the container.
+
+=== MACVLAN bridge ===
+
+For the host to be able to reach containers connected via MACVLAN, the host itself also needs to connect via MACVLAN and not directly to the underlying Ethernet network interface.
+
+On the host, attach the underlying Ethernet network interface to MACVLAN and make sure it does not get assigned IP addresses. For example, using {{ic|mv-0}} as the MACVLAN interface name and with {{ic|enp1s0}} as the host's Ethernet interface:
+
+{{hc|/etc/systemd/network/30-enp1s0.network|2=
+[Match]
+Name=enp1s0
+
+[Link]
+RequiredForOnline=carrier
+
+[Network]
+MACVLAN=mv-0
+DHCP=no
+IPv6AcceptRA=false
+LinkLocalAddressing=no
+MulticastDNS=false
+LLMNR=false
+}}
+
+{{Tip|
+* {{ic|RequiredForOnline{{=}}carrier}} prevents [[#systemd-networkd-wait-online|systemd-networkd-wait-online.service]] from waiting (and eventually failing) for the connection to acquire an IP address, which will never happen.
+* The underlying network interface does not necessarily need to be a physical Ethernet interface. For example, a MACVLAN bridge can be attached to a bond.
+}}
+
+Create the MACVLAN bridge {{ic|mv-0}}:
+
+{{hc|/etc/systemd/network/25-mv-0.netdev|2=
+[NetDev]
+Name=mv-0
+Kind=macvlan
+
+[MACVLAN]
+Mode=bridge
+}}
+
+Configure the host's network connection on the MACVLAN bridge ({{ic|mv-0}}). The following example uses DHCP, replace the options as necessary.
+
+{{hc|/etc/systemd/network/35-mv-0.network|2=
+[Match]
+Name=mv-0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+BindCarrier=enp1s0
+DHCP=yes
+}}
+
+For the container, attach a MACVLAN to the '''underlying Ethernet network interface''' ({{ic|enp1s0}} in the examples above). For example, in {{ic|/etc/systemd/nspawn/''container_name''.nspawn}} specify:
+
+{{bc|1=
+[Network]
+MACVLAN=enp1s0
+}}
+
+For containers started from the command line, pass them the {{ic|--network-macvlan{{=}}enp1s0}} option.
+
+In the container, the MACVLAN interface will have the name {{ic|mv-''underlying_interface_name''}} (e.g. {{ic|mv-enp1s0}}). Configure the network connection as necessary (just like in the host) by matching the interface name. For example, using DHCP:
+
+{{hc|/etc/systemd/network/30-mv-enp1s0.network|2=
+[Match]
+Name=mv-enp1s0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+}}
+
+== Tips and tricks ==
+
+=== Interface and desktop integration ===
+
+''systemd-networkd'' does not have a proper interactive graphical management interface. Still, some tools are available to either display or modify the current state of the network, receive notifications or interact with the wireless configuration:
+
+* ''networkctl'' provides a [[command-line shell]] interface to query or modify the network interface states. It is worth noting that in order to change only some aspects of an interface behavior, one is required to first [[Help:Reading#Append, add, create, edit|edit]] one or more configuration files in {{ic|/etc/systemd/network/}}.  
+* When ''networkd'' is configured with [[wpa_supplicant]], both ''wpa_cli'' and ''wpa_gui'' offer the ability to associate and configure WLAN interfaces dynamically.
+* The {{AUR|networkd-dispatcher}} daemon allows executing scripts in response to network interface state changes, similar to ''NetworkManager-dispatcher''.
+* The {{AUR|networkd-notify-git}} creates simple notification messages on interface changes.
+* As for the DNS resolver ''systemd-resolved'', information about current DNS servers can be visualized with {{ic|resolvectl status}}.
+
+=== Configuring static IP or DHCP based on SSID (location) ===
+
+Often there is a situation where your home wireless network uses DHCP and office wireless network uses static IP. This mixed setup can be configured as follows:
+
+{{Note|Number in the file name decides the order in which the files are processed. Users can {{ic|[Match]}} based on SSID or BSSID, or both.}}
+
+{{hc|/etc/systemd/network/24-wireless-office.network|2=
+# special configuration for office Wi-Fi network
+[Match]
+Name=wlp2s0
+SSID=office_ap_name
+#BSSID=aa:bb:cc:dd:ee:ff
+
+[Network]
+Address=10.1.10.9/24
+Gateway=10.1.10.1
+DNS=10.1.10.1
+#DNS=8.8.8.8
+}}
+
+{{hc|/etc/systemd/network/25-wireless-dhcp.network|2=
+# use DHCP for any other Wi-Fi network
+[Match]
+Name=wlp2s0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+}}
+
+=== Bonding a wired and wireless interface ===
+
+See also [[Wireless bonding]].
+
+Bonding allows connection sharing through multiple interfaces, so if e.g. the wired interface is unplugged, the wireless is still connected and the network connectivity remains up seamlessly.
+
+Create a bond interface. In this case the mode is ''active-backup'', which means packets are routed through a secondary interface if the primary interface goes down.
+
+{{hc|/etc/systemd/network/30-bond0.netdev|2=
+[NetDev]
+Name=bond0
+Kind=bond
+
+[Bond]
+Mode=active-backup
+PrimaryReselectPolicy=always
+MIIMonitorSec=1s
+}}
+
+Set the wired interface as the primary:
+
+{{hc|/etc/systemd/network/30-ethernet-bond0.network|2=
+[Match]
+Name=enp0s25
+
+[Network]
+Bond=bond0
+PrimarySlave=true
+}}
+
+Set the wireless as the secondary:
+
+{{hc|/etc/systemd/network/30-wifi-bond0.network|2=
+[Match]
+Name=wlan0
+
+[Network]
+Bond=bond0
+}}
+
+{{Note|When using MAC addresses in the {{ic|[Match]}} section, use of {{ic|PermanentMACAddress}} is recommended over {{ic|MACAddress}}, see [https://github.com/systemd/systemd/issues/27432 this upstream discussion].}}
+
+Configure the bond interface just like a normal interface:
+
+{{hc|/etc/systemd/network/30-bond0.network|2=
+[Match]
+Name=bond0
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+BindCarrier=enp0s25 wlan0
+DHCP=yes
+}}
+
+Now if the wired network is unplugged, the connection should remain through the wireless:
+
+{{hc|$ networkctl|
+IDX LINK    TYPE     OPERATIONAL      SETUP     
+  1 lo      loopback carrier          unmanaged 
+  2 enp0s25 ether    no-carrier       configured
+  3 bond0   bond     degraded-carrier configured
+  5 wlan0   wlan     enslaved         configured
+
+4 links listed.
+}}
+
+=== Speeding up TCP slow-start ===
+
+On a higher bandwidth link with moderate latency (typically a home Internet connection that is above 10 Mbit/s) the default settings for the TCP Slow Start algorithm are somewhat conservative.  This issue exhibits as downloads starting slowly and taking a number of seconds to speed up before they reach the connection's full bandwidth.  It is particularly noticeable with a pacman upgrade, where each package downloaded starts off slowly and often finishes before it has reached the connection's full speed.
+
+These settings can be adjusted to make TCP connections start with larger window sizes than the defaults, avoiding the time it takes for them to automatically increase on each new TCP connection[https://www.cdnplanet.com/blog/tune-tcp-initcwnd-for-optimum-performance/].  While this will usually decrease performance on slow connections (or if the values are increased too far) due to having to retransmit a larger number of lost packets, they can substantially increase performance on connections with sufficient bandwidth.
+
+It is important to benchmark before and after changing these values to ensure it is improving network speed and not reducing it.  If you are not seeing downloads begin slowly and gradually speed up, then there is no need to change these values as they are already optimal for your connection speed.  When benchmarking, be sure to test against both a high speed and low speed remote server to ensure you are not speeding up access to fast machines at the expense of making access to slow servers even slower.
+
+To adjust these values, edit the ''.network'' file for the connection:
+
+{{hc|/etc/systemd/network/eth0.network|2=
+[Match]
+Name=eth0
+
+#[Network]
+#Gateway=...  <-- Remove this if you have it, and put it in the Gateway= line below
+
+[Route]
+# This will apply to the gateway supplied via DHCP.  If you manually specify
+# your gateway, put it here instead.
+Gateway=_dhcp4
+
+# The defaults for these values is 10.  They are a multiple of the MSS (1460 bytes).
+InitialCongestionWindow=10
+InitialAdvertisedReceiveWindow=10
+}}
+
+The defaults of {{ic|10}} work well for connections slower than 10 Mbit/s.  For a 100 Mbit/s connection, a value of {{ic|30}} works well.  The manual page {{man|5|systemd.network|[ROUTE] SECTION OPTIONS}} says a value of {{ic|100}} is considered excessive.
+
+If the [[sysctl]] setting {{ic|net.ipv4.tcp_slow_start_after_idle}} is enabled then the connection will return to these initial settings after it has been idle for some time (and often a very small amount of time).  If this setting is disabled then the connection will maintain a higher window if a larger one was negotiated during packet transfer.  Regardless of the setting, each new TCP connection will begin with the {{ic|Initial*}} settings set above.
+
+The sysctl setting {{ic|net.ipv4.tcp_congestion_control}} is not directly related to these values, as it controls how the congestion and receive windows are adjusted while a TCP link is active, and particularly when the path between the two hosts is congested and throughput must be reduced.  The above {{ic|Initial*}} values simply set the default window values selected for each new connection, before any congestion algorithm takes over and adjusts them as needed.  Setting higher initial values simply shortcuts some negotiation while the congestion algorithm tries to find the optimum values (or, conversely, setting the wrong initial values adds additional negotiation time while the congestion algorithm works towards correcting them, slowing down each newly established TCP connection for a few seconds extra).
+
+=== Prevent multiple default routes ===
+
+''systemd-networkd'' [https://github.com/systemd/systemd/issues/17698 does not set per-interface-type default route metrics], i.e. they need to be configured manually when using multiple network devices. For example, the following {{ic|ip route}} shows multiple default routes:
+
+{{hc|ip route|2=
+default via 10.30.1.1 dev eno2 proto dhcp src 10.30.1.15 metric 1024
+default via 192.168.1.254 dev eno1 proto dhcp src 172.18.105.104 metric 1024
+}}
+
+Since the same default {{ic|metric}} value {{ic|1024}} is assigned, there is a race condition which of both is chosen as default route. Since the {{ic|eno2}} device came up first, it is preferred and thus, access available via {{ic|eno1}} may be ignored.
+
+To prevent the race condition, assign different {{ic|1=RouteMetric=}} values for the devices. See [[#Wired and wireless adapters on the same machine]] for a corresponding example.
+
+If instead one device should not provide a default route, the {{ic|1=UseGateway=false}} option in {{ic|[DHCPv4]}} and {{ic|[IPv6AcceptRA]}} sections can be used to omit creating the default route provided by the DHCP/RA server while keeping other classless static routes. This may be useful, for example, if the device provides a connection to a single other machine.
+
+=== Configuring a second static IP with its own MAC address on an existing interface ===
+
+To make your computer appear as two completely separate devices to your router, you can create a virtual interface not just with a different IP but also with a different MAC address.
+
+To achieve this, create a virtual interface (''macvlan'') on top of your physical interface with a unique MAC address:
+
+{{hc|/etc/systemd/network/''25-eth210''.netdev|2=
+[NetDev]
+Name=''eth210''
+Kind=macvlan
+MACAddress=''00:11:22:33:44:55''
+
+[MACVLAN]
+Mode=bridge
+}}
+
+Then add a network file as usual, using the same subnet and gateway, and avoiding the range of IP numbers used for DHCP if you configure a static IP. For example:
+
+{{hc|/etc/systemd/network/''25-eth210''.network|2=
+[Match]
+Name=''eth210''
+
+[Network]
+Address=''192.168.132.210/24''
+Gateway=''192.168.132.1''
+
+[Route]
+Destination=''192.168.132.0/24''
+Metric=2
+}}
+
+The ''macvlan'' interface route has metric 2. This ensures that traffic will prefer going through the main interface, since that (implicitly) has a default route with metric 1, unless specifically directed to use the ''macvlan'' interface.
+
+Finally, add {{ic|1=MACVLAN=eth210}} to the {{ic|[Network]}} section of the ''.network'' file of your main interface!
+
+At this point, a fast way to make your router aware of the new MAC (and configure it to accept that MAC) you can for example run {{ic|arping -I eth210 192.168.132.1}} as root. After configuring your router for the "new device" you can test if the new interface has internet access with for example {{ic|curl --interface 192.168.132.210 ifconfig.me}} that should then print your public IP number.
+
+== See also ==
+
+* {{man|8|systemd-networkd}}
+* [https://web.archive.org/web/20201111213850/https://coreos.com/blog/intro-to-systemd-networkd/ Tom Gundersen posts on Core OS blog]
+* [https://bbs.archlinux.org/viewtopic.php?pid=1393759#p1393759 How to set up systemd-networkd with wpa_supplicant] (WonderWoofy's walkthrough on Arch forums)

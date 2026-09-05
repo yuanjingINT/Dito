@@ -1,0 +1,462 @@
+[[Category:Text editors]]
+[[Category:Console applications]]
+[[de:Vim]]
+[[es:Vim]]
+[[hu:Vim]]
+[[ja:Vim]]
+[[pt:Vim]]
+[[ru:Vim]]
+[[tr:Vim]]
+[[zh-hans:Vim]]
+{{Related articles start}}
+{{Related|Neovim}}
+{{Related|vi}}
+{{Related articles end}}
+
+[[Wikipedia:Vim (text editor)|Vim]] is a [[List of applications/Documents#Vi-style text editors|vi-style terminal text editor]]. It is an extended version of [[vi]] with additional features, including syntax highlighting, a comprehensive help system, native scripting (''Vim script''), a visual mode for text selection, comparison of files ({{man|1|vimdiff|pkg=vim}}), and tools with restricted capabilities such as {{man|1|rview|pkg=vim}} and {{man|1|rvim|pkg=vim}}.
+
+== Installation ==
+
+[[Install]] one of the following packages:
+
+* {{Pkg|vim}} — with [[Python]], [[Lua]], [[Ruby]] and [[Perl]] interpreters support but without [[GTK]]/[[X]] support.
+* {{Pkg|gvim}} — which also provides the same as the above ''vim'' package with GTK/X support.
+
+{{Note|
+* The ''vim'' package is built without [[Xorg]] support; specifically the {{ic|+clipboard}} feature is missing, so ''Vim'' will not be able to operate with the ''primary'' and ''clipboard'' [[Clipboard|selection buffers]]. The ''gvim'' package provides also the CLI version of ''Vim'' with the {{ic|+clipboard}} feature.
+* The unofficial repository [[Unofficial user repositories#herecura|herecura]] also provides a number of ''Vim/gVim'' variants: {{ic|vim-cli}}, {{ic|vim-gvim-common}}, {{ic|vim-gvim-gtk3}}, {{ic|vim-rt}} and {{ic|vim-tiny}}.
+}}
+
+== Usage ==
+
+For a basic overview on how to use ''Vim'', follow the ''Vim tutorial'' by running either ''vimtutor'' (for the terminal version) or ''gvimtutor'' (for the graphical version).
+
+''Vim'' includes a broad help system that can be accessed with the {{ic|:h ''subject''}} command. Subjects include commands, configuration options, key bindings, plugins etc. Use the {{ic|:h}} command (without any subject) for information about the help system and jumping between subjects.
+
+== Configuration ==
+
+''Vim'''s user-specific configuration file is located in the home directory: {{ic|~/.vimrc}}, and Vim files of current user are located inside {{ic|~/.vim/}}. The global configuration file is located at {{ic|/etc/vimrc}}. Global Vim files such as {{ic|defaults.vim}} and {{ic|archlinux.vim}} are located inside {{ic|/usr/share/vim/}}.
+
+From version 9.1.0327 Vim adopts [https://specifications.freedesktop.org/basedir-spec/latest/ freedesktop XDG Base Directory Specification]: that means, you can now place your configuration files under {{ic|~/.config/vim/}} so Vim will stop littering your home directory.
+
+{{Style|Adapt the note (moved from [[XDG Base Directory]]) better into the text.}}
+
+{{Note|
+{{ic|$XDG_CONFIG_HOME/vim/}} (configuration files formerly under {{ic|~/.vim}}) and {{ic|$XDG_CONFIG_HOME/vim/vimrc}}
+
+By default, only the XDG directories/files above are used. To enable the others, create the {{ic|$XDG_CONFIG_HOME/vim/}} directory and then run {{ic|$VIMRUNTIME/xdg.vim}}. The following files/directories require running {{ic|$VIMRUNTIME/xdg.vim}} to enable (see [https://vimhelp.org/starting.txt.html#xdg-base-dir :h xdg-base-dir]):
+
+* {{ic|$XDG_STATE_HOME/vim/viminfo}}
+
+The following directories require uncommenting certain lines in {{ic|$VIMRUNTIME/xdg.vim}} before running it to enable:
+
+* {{ic|$XDG_DATA_HOME/vim/undo/}}
+* {{ic|$XDG_DATA_HOME/vim/}} (formerly {{ic|~/.vim/pack/}} and Netrw data under {{ic|~/.vim/}})
+* {{ic|$XDG_DATA_HOME/vim/view/}} (formerly {{ic|~/.vim/view/}})
+* {{ic|$XDG_DATA_HOME/vim/spell/}} (formerly {{ic|~/.vim/spell/}})
+* {{ic|$XDG_STATE_HOME/vim/swap/}}
+* {{ic|$XDG_STATE_HOME/vim/backup/}}
+}}
+
+For ''gVim'', the user-specific configuration file is located at {{ic|~/.gvimrc}} and the global configuration file is located at {{ic|/etc/gvimrc}}.
+
+{{Note|
+* Commonly expected behavior such as syntax highlighting is enabled in {{ic|defaults.vim}}, which is loaded when no {{ic|~/.vimrc}} is present. Add {{ic|1=let skip_defaults_vim=1}} to {{ic|/etc/vimrc}} to disable loading of {{ic|defaults.vim}} completely. [https://github.com/vim/vim/issues/1033]. Alternatively, to enable {{ic|defaults.vim}} even when {{ic|~/.vimrc}} is present, see {{ic|:h defaults}} in vim.
+* ''gVim'' loads both ''Vim''<nowiki/>'s and ''gVim''<nowiki/>'s configuration file, while ''Vim'' only loads ''Vim''<nowiki/>'s configuration file.
+}}
+
+=== Clipboard ===
+
+''Vim'' commands such as {{ic|:yank}} or {{ic|:put}} normally operate with the unnamed register {{ic|""}}. If the {{ic|+clipboard}} feature is available and its value includes {{ic|unnamed}}, then ''Vim'' yank, delete, change and put operations which would normally go to the unnamed register will use the clipboard register {{ic|"*}} instead, which is the {{ic|PRIMARY}} buffer in X.
+
+To change the default register, you can {{ic|1=:set clipboard=unnamedplus}} to use the {{ic|"+}} register instead. The {{ic|"+}} clipboard register corresponds to the {{ic|CLIPBOARD}} buffer in X. It should be noted that the {{ic|clipboard}} option can be set to a comma-delimited value. If you {{ic|1=:set clipboard=unnamedplus,unnamed}}, then yank operations will also copy the yanked text to the {{ic|"*}} register in addition to the {{ic|"+}} register (however, delete, change and put operations will still only operate on the {{ic|"+}} register).
+
+For more information, see {{ic|:help 'clipboard'}}. There are other values which can be set for the {{ic|clipboard}} feature. You can use {{ic|:help clipboard-unnamed}} to take you to the help topic for the first valid value which can be set for this feature, followed by help for all other valid values.
+
+{{Tip|
+* Custom shortcuts for copy and paste operations can be created. See e.g. [https://superuser.com/a/189198] for binding {{ic|Ctrl+c}}, {{ic|Ctrl+v}} and {{ic|Ctrl+x}}.
+* The X clipboard gets flushed when ''Vim'' exits. To make the ''Vim'' selection persistent within X clipboard, you need a [[clipboard manager]]. Alternatively, you can add {{ic|autocmd VimLeave * call system("echo -n $'" . escape(getreg(), "'") . "' {{!}} xsel --input --clipboard")}} to your {{ic|.vimrc}} (requires the {{Pkg|xsel}} package).
+* From version 9.1.1485, builds with system clipboard feature also include native clipboard support for Wayland.
+}}
+
+=== Syntax highlighting ===
+
+To enable syntax highlighting for many programming languages:
+
+ :filetype plugin on
+ :syntax on
+
+=== Indentation ===
+
+{{Expansion|Describe the {{ic|autoindent}} and {{ic|smartindent}} options.}}
+
+The indent file for specific file types can be loaded with:
+
+ :filetype indent on
+
+=== Visual wrapping ===
+
+The {{ic|wrap}} option is on by default, which instructs ''Vim'' to wrap lines longer than the width of the window, so that the rest of the line is displayed on the next line. The {{ic|wrap}} option only affects how text is displayed, the text itself is not modified.
+
+The wrapping normally occurs after the last character that fits the window, even when it is in the middle of a word. More intelligent wrapping can be controlled with the {{ic|linebreak}} option. When it is enabled with {{ic|set linebreak}}, the wrapping occurs after characters listed in the {{ic|breakat}} string option, which by default contains a space and some punctuation marks (see {{ic|:help breakat}}).
+
+Wrapped lines are normally displayed at the beginning of the next line, regardless of any indentation. The [https://retracile.net/wiki/VimBreakIndent breakindent] option instructs ''Vim'' to take indentation into account when wrapping long lines, so that the wrapped lines keep the same indentation of the previously displayed line. The behaviour of {{ic|breakindent}} can be fine-tuned with the {{ic|breakindentopt}} option, for example to shift the wrapped line another four spaces to the right for Python files (see {{ic|:help breakindentopt}} for details):
+
+ autocmd FileType python set breakindentopt=shift:4
+
+=== Using the mouse ===
+
+''Vim'' has the ability to make use of the mouse, but it only works for certain terminals:
+
+* [[xterm]]/[[urxvt]]-based terminal emulators
+* Linux console with {{Pkg|gpm}} (see [[Console mouse support]] for details)
+* [[PuTTY]]
+
+To enable this feature, add this line into {{ic|~/.vimrc}}:
+
+ set mouse=a
+
+The {{ic|1=mouse=a}} option is set in {{ic|defaults.vim}}.
+
+{{Note|Copy/paste will use the {{ic|"*}} register if there is access to an X server, see the [[#Clipboard]] section. The xterm handling of the mouse buttons can still be used by keeping the {{ic|shift key}} pressed.}}
+
+=== Traverse line breaks with arrow keys ===
+
+By default, pressing {{ic|Left}} at the beginning of a line, or pressing {{ic|Right}} at the end of a line, will not let the cursor traverse to the previous, or following, line.
+
+The default behavior can be changed by adding {{ic|1=set whichwrap=b,s,<,>,[,]}} to your {{ic|~/.vimrc}} file.
+
+== Merging files ==
+
+''Vim'' includes a diff editor (a program that shows differences between two or more files and aids to conveniently merge them). Use ''vimdiff'' to run the diff editor — just specify some couple of files to it: {{ic|vimdiff ''file1'' ''file2''}}. Here is the list of ''vimdiff''-specific commands.
+
+{| class="wikitable"
+! Action          !! Shortcut
+|-
+| next change     || {{ic|]c}}
+|-
+| previous change || {{ic|[c}}
+|-
+| diff obtain     || {{ic|do}}
+|-
+| diff put        || {{ic|dp}}
+|-
+| fold open       || {{ic|zo}}
+|-
+| fold close      || {{ic|zc}}
+|-
+| rescan files    || {{ic|:diffupdate}}
+|}
+
+== Tips and tricks ==
+
+=== Line numbers ===
+
+To show the line number column, use {{ic|:set number}}. By default absolute line numbers are shown, relative numbers can be enabled with {{ic|:set relativenumber}}. Setting both enables hybrid line numbers—the current line is absolute, while the others are relative.
+
+Jumping to a specific line is possible with {{ic|:''line number''}} or {{ic|''line number''gg}}. Jumps are remembered in a jump list, see {{ic|:h jump-motions}} for details.
+
+=== Spell checking ===
+
+''Vim'' has the ability to do spell checking, enable by entering:
+
+ set spell
+
+By default, only English language dictionaries are installed (in {{ic|/usr/share/vim/vim82/spell/}}). More dictionaries can be found in the [[official repositories]] by searching for {{ic|vim-spell}}. Additional dictionaries can be put in the folder {{ic|~/.vim/spell/}} and enabled with the command: {{ic|1=:setlocal spell spelllang=''en_us''}} (replacing the {{ic|''en_us''}} with the name of the needed dictionary).
+
+{| class="wikitable"
+! Action                      !! Shortcut
+|-
+| next spelling               || {{ic|]s}}
+|-
+| previous spelling           || {{ic|[s}}
+|-
+| spelling suggestions        || {{ic|1=z=}}
+|-
+| spelling good, add          || {{ic|zg}}
+|-
+| spelling good, session      || {{ic|zG}}
+|-
+| spelling wrong, add         || {{ic|zw}}
+|-
+| spelling wrong, session     || {{ic|zW}}
+|-
+| spelling repeat all in file || {{ic|:spellr}}
+|}
+
+{{Tip|
+* To enable spelling in two languages (for instance English and German), add {{ic|1=set spelllang=''en,de''}} into your {{ic|~/.vimrc}} or {{ic|/etc/vimrc}}, and then restart ''Vim''.
+* You can enable spell checking for arbitrary file types (e.g. ''.txt'') by using the FileType plugin and a custom rule for file type detection. To enable spell checking for any file ending with ''.txt'', create the file {{ic|/usr/share/vim/vimfiles/ftdetect/plaintext.vim}}, and insert the line {{ic|1=autocmd BufRead,BufNewFile *.txt set filetype=plaintext}} into that file. Next, insert the line {{ic|1=autocmd FileType plaintext setlocal spell spelllang=''en_us''}} into your {{ic|~/.vimrc}} or {{ic|/etc/vimrc}}, and then restart ''Vim''. Alternatively, one can simply insert the line {{ic|autocmd BufRead,BufNewFile *.txt setlocal spell}} into their {{ic|~/.vimrc}} or {{ic|/etc/vimrc}}, and then restart ''Vim''. Be sure to edit this line (specifically {{ic|*.txt}}) to include the filetype(s) intended for spell checking.
+* To enable spell checking for LaTeX (or TeX) documents only, add {{ic|1=autocmd FileType '''tex''' setlocal spell spelllang=''en_us''}} into your {{ic|~/.vimrc}} or {{ic|/etc/vimrc}}, and then restart ''Vim''.
+}}
+
+=== Saving runtime state ===
+
+Normally, exiting {{ic|vim}} discards all unessential information such as opened files, command line history, yanked text etc. Preserving this information can be configured in the following ways.
+
+==== viminfo files ====
+
+The {{ic|viminfo}} file may also be used to store command line history, search string history, input-line history, registers' content, marks for files, location marks within files, last search/substitute pattern (to be used in search mode with {{ic|n}} and {{ic|&}} within the session), buffer list, and any global variables you may have defined. For the {{ic|viminfo}} modality to be available, the version of {{ic|vim}} you installed must have been compiled with the {{ic|+viminfo}} feature.
+
+Configure what is kept in your {{ic|viminfo}} file, by adding (for example) the following to your {{ic|~/.vimrc}} file:
+
+ set viminfo='10,<100,:100,%,n~/.vim/.viminfo
+
+where each parameter is preceded by an identifier:
+
+ 'q  : q, number of edited file remembered
+ <m  : m, number of lines saved for each register
+ :p  : p, number of history cmd lines remembered
+ %   : saves and restores the buffer list
+ n...: fully qualified path to the viminfo files (note that this is a literal "''n''")
+
+See the official [https://vimdoc.sourceforge.net/htmldoc/options.html#'viminfo' viminfo documentation] for particulars on how a pre-existing {{ic|viminfo}} file is modified as it is updated with current session information, say from several buffers in the current session you are in the process of exiting.
+
+==== Session files ====
+
+Session files can be used to save the state of any number of particular sessions over time. One distinct session file may be used for each session or project of your interest. For that modality to be available, the version of {{ic|vim}} you installed must have been compiled with the {{ic|+mksession}} feature.
+
+Within a session, {{ic|:mksession[!] [''my_session_name.vim'']}} will write a vim-script to {{ic|''my_session_name.vim''}} in the current directory, or {{ic|Session.vim}} by default if you choose ''not'' to provide a file name. The optional {{ic|!}} will clobber a pre-existing session file with the same name and path.
+
+A ''Vim'' session can be resumed either when starting ''Vim'' from terminal:
+
+ $ vim -S [''my_session_name.vim'']
+
+Or in an already opened session buffer by running the ''Vim'' command:
+
+ :source ''my_session_name.vim''
+
+Exactly what is saved and additional details on session files options are extensively covered in the [https://vimdoc.sourceforge.net/htmldoc/usr_21.html#21.4 Vim documentation]. Commented examples are found [https://vim.wikia.com/wiki/Go_away_and_come_back here].
+
+==== Saving cursor position ====
+
+See [https://vim.wikia.com/wiki/Restore_cursor_to_file_position_in_previous_editing_session Restore cursor to file position in previous editing session] on the ''Vim'' wiki.
+
+=== Replace vi command with Vim ===
+
+Create an [[alias]] for {{ic|vi}} to {{ic|vim}}.
+
+Alternatively, if you want to be able to type {{ic|sudo vi}} and get {{ic|vim}}, install {{Pkg|ex-vi-compat}}. You could also create the symbolic links this package provides yourself.
+
+=== DOS/Windows carriage returns ===
+
+If there is a {{ic|^M}} at the end of each line then this means you are editing a text file which was created in MS-DOS or Windows. This is because in Linux only a single line feed character (LF) used for line break, but in Windows/MS DOS systems they are using a sequence of a carriage return (CR) and a line feed (LF) for the same. And this carriage returns are displayed as {{ic|^M}}.
+
+To remove all carriage returns from a file do:
+
+ :%s/^M//g
+
+Note that there {{ic|^}} is a control letter. To enter the control sequence {{ic|^M}} press {{ic|Ctrl+v,Ctrl+m}}.
+
+Alternatively install the package {{Pkg|dos2unix}} and run {{ic|dos2unix ''file''}} to fix the file.
+
+{{Note|Another simple way is by changing {{ic|fileformat}} setting. {{ic|1=set ff=unix}} to convert files with DOS/Windows line ending to Unix line ending. To do the reverse, just issue {{ic|1=set ff=dos}} to convert files with Unix line ending to DOS/Windows line ending.}}
+
+=== Empty space at the bottom of gVim windows ===
+
+When using a [[window manager]] configured to ignore window size hints, ''gVim'' will fill the non-functional area with the GTK theme background color.
+
+The solution is to adjust how much space ''gVim'' reserves at the bottom of the window. Put the following line in {{ic|~/.vimrc}}:
+
+ set guiheadroom=0
+
+{{Note|If you set it to zero, you will not be able to see the bottom horizontal scrollbar.}}
+
+=== Vim as a pager ===
+
+Scripts allow ''Vim'' to be used as a [[terminal pager]], with the benefit of various vim features such as color schemes. To change the default pager, [[export]] the {{ic|PAGER}} environment variable.
+
+''Vim'' comes with the {{ic|/usr/share/vim/vim91/macros/less.sh}} script, for which you can create an [[alias]]. Note that this script does not support any command-line flags mentioned in {{man|1|less|OPTIONS}}.
+
+Alternatively, there is also the {{Pkg|vimpager}} ''Vim'' script. Note that not all command-line flags are supported; the list of supported flags is [https://github.com/rkitover/vimpager#command-line-options available on GitHub].
+
+A middle way between a pager and an editor are {{ic|[g]vim -R}} ({{ic|gvim -R}} is equivalent to {{ic|gview}}). This will cause the editor to open files in a {{ic|readonly}} mode. Every editor feature that does not involve modifying the files is available as usual. In fact, the {{ic|readonly}} mode can be explicitly overridden, to enable modification as well.
+
+=== Highlighting search results ===
+
+In order to highlight the first string that will be matched in a search while typing the search, add the following line to your {{ic|~/.vimrc}}:
+
+ set incsearch
+
+In order to highlight all strings that will be matched in a search while typing the search, and after the search has been executed, add the following line to your {{ic|~/.vimrc}}:
+
+ set hlsearch
+
+{{Note|
+* Setting {{ic|hlsearch}} will keep all matches highlighted until a further search is made. This behaviour may be undesired, so to temporarily disable the highlighting until the next search, run {{ic|:nohlsearch}}. If you find yourself running this command often, consider binding it to a key.
+* This behaviour will also be observed when matching regex during other commands that involve them like {{ic|s}} or {{ic|g}}.
+}}
+
+== Plugins ==
+
+Adding plugins to ''Vim'' can increase your productivity by extending ''Vim'' features. Plugins can alter ''Vim'' UI, add new commands, enable code completion support, integrate other programs and utilities with ''Vim'', add support for additional languages and more.
+
+{{Tip|For a list of popular plugins, see [https://vimawesome.com/ Vim Awesome].}}
+
+=== Installation ===
+
+==== Using the built-in package manager ====
+
+''Vim'' has the possibility to load third-party plugins natively. This functionality can be used by storing third-party packages in the {{ic|~/.vim/pack}} folder. The structure of this folder differs slightly from that of typical plugin managers which will usually have a single directory per plugin. What follows is a typical installation procedure and directory structure (using [https://github.com/tpope/vim-surround Tim Pope's vim-surround plugin] as an example):
+
+ $ mkdir -p ~/.vim/pack/tpope/start
+
+It is important to note that {{ic|~/.vim/pack/tpope}} is a ''package directory'' which is loosely defined as directory containing one or more plugins in the [https://vimhelp.org/repeat.txt.html#packages Vim documentation]. Plugin repositories should not be downloaded to this directory though. The name of the package directory is also arbitrary. You can choose to keep all your plugins in a single package directory or, as in our example, use the author's GitHub name, {{ic|tpope}}.
+
+The package directory can contain the following subfolders:
+
+* {{ic|start}} - plugins from this subfolder will be loaded automatically when ''Vim'' starts. This is the most frequently used location.
+* {{ic|opt}} - plugins from this subfolder can be loaded on-demand by issuing {{ic|:packadd}} command inside ''Vim''.
+
+Now change into the {{ic|start}} folder and checkout the plugin repository:
+
+ $ cd ~/.vim/pack/tpope/start
+ $ git clone https://tpope.io/vim/surround.git
+
+This creates an additional subfolder, {{ic|~/.vim/pack/tpope/start/surround}}, where the plugin files are placed.
+
+Next, update the help index if the plugin contains help files:
+
+ $ vim -u NONE -c "helptags surround/doc" -c q
+
+The plugin will now be loaded automatically when starting ''Vim''. No changes to {{ic|~/.vimrc}} are required, barring plugin-specific options.
+
+==== Using a plugin manager ====
+
+A plugin manager is a plugin that installs, manages and updates ''Vim'' plugins. This can be useful if you are also using ''Vim'' on platforms other than Arch Linux and want a consistent method of updating plugins.
+
+* [https://github.com/junegunn/vim-plug Vim-plug] is a minimalist ''Vim'' plugin manager with many features like on-demand plugin loading and parallel updating, available as {{AUR|vim-plug}} or {{AUR|vim-plug-git}}.
+* [https://github.com/gmarik/Vundle.vim Vundle] is available as {{AUR|vundle}} or {{AUR|vundle-git}}.
+* [https://github.com/tpope/vim-pathogen pathogen.vim] is a simple plugin for managing ''Vim'''s runtimepath, available as {{AUR|vim-pathogen}} or {{AUR|vim-pathogen-git}}.
+* [https://github.com/Shougo/dein.vim Dein.vim] is a plugin manager replacing [https://github.com/Shougo/neobundle.vim NeoBundle], available as {{AUR|vim-dein}} or {{AUR|vim-dein-git}}.
+
+==== From Arch repositories ====
+
+The {{Grp|vim-plugins}} group provides various plugins. Use {{ic|pacman -Sg vim-plugins}} command to list available packages which you can then [[install]] with pacman.
+
+=== Notable plugins ===
+
+==== cscope ====
+
+[https://cscope.sourceforge.net/ Cscope] is a tool for browsing a project. By navigating to a word/symbol/function and calling cscope (usually with shortcut keys) it can find: functions calling the function, the function definition, and more.
+
+[[Install]] the {{Pkg|cscope}} package.
+
+Copy the cscope default file where it will be automatically read by ''Vim'':
+
+ mkdir -p ~/.vim/plugin
+ wget -P ~/.vim/plugin https://cscope.sourceforge.net/cscope_maps.vim
+
+Create a file which contains the list of files you wish cscope to index (cscope can handle many languages but this example finds ''.c'', ''.cpp'' and ''.h'' files, specific for C/C++ project):
+
+ $ cd ''/path/to/project/dir''
+ $ find . -type f -print | grep -E '\.(c(pp)?|h)$' > cscope.files
+
+Create database files that cscope will read:
+
+ $ cscope -bq
+
+{{Note|You must browse your project files from this location or set and export the {{ic|$CSCOPE_DB}} variable, pointing it to the {{ic|cscope.out}} file.}}
+
+Default keyboard shortcuts:
+
+  Ctrl-\ and
+       c: Find functions calling this function
+       d: Find functions called by this function
+       e: Find this egrep pattern
+       f: Find this file
+       g: Find this definition
+       i: Find files #including this file
+       s: Find this C symbol
+       t: Find assignments to
+
+Feel free to change the shortcuts.
+
+ #Maps ctrl-c to find functions calling the function
+ nnoremap <C-c> :cs find c <C-R>=expand("<cword>")<CR><CR>
+
+==== Taglist ====
+
+[https://vim-taglist.sourceforge.net/ Taglist] provides an overview of the structure of source code files and allows you to efficiently browse through source code files in different programming languages.
+
+[[Install]] the {{AUR|vim-taglist}} package.
+
+Useful options to be put in {{ic|~/.vimrc}}:
+
+ let Tlist_Compact_Format = 1
+ let Tlist_GainFocus_On_ToggleOpen = 1
+ let Tlist_Close_On_Select = 1
+ nnoremap <C-l> :TlistToggle<CR>
+
+== Troubleshooting ==
+
+=== gVim is slow ===
+
+''Vim'''s GTK 3 GUI may be slower than the GTK 2 version (see {{Bug|51366}}). {{AUR|gvim-gtk2}} can be installed as a workaround.
+
+=== gVim does not launch under Wayland ===
+
+By default, gVim will try to search for an X11 display and resort to terminal if unable to find one. To use it under Wayland-only environments, add the {{ic|GVIM_ENABLE_WAYLAND{{=}}1}} [[environment variable]].
+
+=== Bidirectional support ===
+
+''Vim'' still [[Bidirectional text#Support|lacks full bidirectional support]], and this varies depending on the terminal.
+
+Use {{ic|:rightleft}} to force text alignment using. It can be assigned to a keybind using:
+
+ inoremap <C-X> <C-O>:silent if &rl <Bar> set rl! <Bar> else <Bar> set rl <Bar> endif<CR>
+
+''Vim'' has its own letter shaping functionality. Despite some [https://github.com/vim/vim/issues/14115 rendering issues], this works on terminals with no letter shaping support like [[alacritty]] and [[st]]. The shaping depends on [https://unicode.org/charts/PDF/UFE70.pdf Arabic Presentation Forms-B (U+FE70–FEFF)], so make sure your font includes support for these characters. As there is no known monospace font with full support for these characters, you need to have an additional fallback font (e.g: {{AUR|vazir-code-fonts}} with fallback to {{pkg|ttf-dejavu}}). See [[St#Arabic shaping support]] for example terminal fonts setup.
+
+However, if the terminal supports letter shaping like gnome-terminal and other libvte-based terminals, then ''Vim'' and the terminal letter shaping could conflict, resulting in mangled Arabic text. Currently, ''Vim'' [https://github.com/vim/vim/issues/5023 doesn't detect] if the terminal has letter-shaping capabilities or not. So the workaround is to manually tell Vim to leave letter-shaping up to the terminal by {{ic|:set notbidi}}. Note that will cause reversed text when {{ic|:set rightleft}} because of a [https://github.com/vim/vim/issues/7116#issuecomment-2261054833 limitation]. See [https://vim-jp.org/vimdoc-en/arabic.html :set arabic] for more info.
+
+== See also ==
+
+=== Official ===
+
+* [https://www.vim.org/ Homepage]
+* [https://vimdoc.sourceforge.net/ Documentation]
+* [https://vim.wikia.com Vim Wiki]
+* [https://www.vim.org/scripts/ Vim Scripts]
+
+=== Tutorials ===
+
+* [https://danielmiessler.com/study/vim/ vim Tutorial and Primer]
+* [https://web.archive.org/web/20140822135551/http://usalug.com/vi.html vi Tutorial and Reference Guide]
+* [http://www.viemu.com/a_vi_vim_graphical_cheat_sheet_tutorial.html Graphical vi-Vim Cheat Sheet and Tutorial]
+* [https://web.archive.org/web/20190228223619/https://blog.interlinked.org/tutorials/vim_tutorial.html Vim Introduction and Tutorial]
+* [https://www.openvim.com/ Open Vim] — collection of Vim learning tools
+* [https://yannesposito.com/Scratch/en/blog/Learn-Vim-Progressively/ Learn Vim Progressively]
+* [https://benmccormick.org/learning-vim-in-2014/ Learning Vim in 2014]
+* [https://www.moolenaar.net/habits.html Seven habits of effective text editing]
+
+==== Videos ====
+
+* [http://vimcasts.org/ Vimcasts] — screencasts in ''.ogg'' format.
+* [http://derekwyatt.org/vim/tutorials/ Vim Tutorial Videos] — covering the basics up to advanced topics.
+
+==== Cheat sheets ====
+
+* https://devhints.io/vim
+* https://vim.rtorr.com/ - A mobile friendly ''Vim'' cheat sheet - [https://github.com/rtorr/vim-cheat-sheet Sources]
+
+==== Games ====
+
+* [https://vim-adventures.com/ Vim Adventures]
+* [https://vimgolf.com/ VimGolf]
+
+=== Configuration ===
+
+* [https://web.archive.org/web/20131020125020/http://nion.modprobe.de/setup/vimrc nion's]
+* [https://github.com/amix/vimrc A detailed configuration from Amir Salihefendic]
+* [https://web.archive.org/web/20131004071740/http://www.jukie.net/~bart/conf/vimrc Bart Trojanowski]
+* [https://github.com/spf13/spf13-vim Steve Francia's Vim Distribution]
+* [https://vimawesome.com/ Vim Awesome] - Vim Plugins
+* [https://github.com/W4RH4WK/dotVim W4RH4WK's Vim configuration]
+* [https://www.askapache.com/linux/fast-vimrc/ Fast vimrc/colorscheme from askapache]
+* [https://gist.github.com/anonymous/c966c0757f62b451bffa Basic vimrc]
+
+==== Colors ====
+
+* [http://bytefluent.com/vivify/ Vivify]
+* [https://linuxtidbits.wordpress.com/2014/10/14/vim-customize-installed-colorschemes/ Vim colorscheme customization]

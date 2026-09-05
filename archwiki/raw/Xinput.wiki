@@ -1,0 +1,89 @@
+{{Lowercase title}}
+[[Category:Xorg commands]]
+[[Category:Input devices]]
+[[es:Xinput]]
+[[ja:Xinput]]
+{{Style|Not sure if we need this page. Many examples are scattered across pages such as [[libinput]], [[Touchpad Synaptics]], [[Mouse acceleration]], [[Mouse buttons]] or [[Touchscreen]]. They are much more useful than this page and collecting everything here is most likely futile.|section=Future of this page}}
+
+{{Related articles start}}
+{{Related|Xorg}}
+{{Related|libinput}}
+{{Related articles end}}
+
+''xinput'' is a utility to configure and test X input devices, such as mice, keyboards, and touchpads. It is found in the {{Pkg|xorg-xinput}} package.
+
+== Usage ==
+
+=== List devices ===
+
+To list what xinput devices are available, use:
+
+{{hc|$ xinput list|2=
+⎡ Virtual core pointer                    	id=2	[master pointer  (3)]
+⎜   ↳ Virtual core XTEST pointer              	id=4	[slave  pointer  (2)]
+⎜   ↳ DELL0ABC:DE F123:4567 Mouse             	id=9	[slave  pointer  (2)]
+⎜   ↳ DELL0ABC:DE F123:4567 Touchpad          	id=10	[slave  pointer  (2)]
+⎜   ↳ PS/2 Generic Mouse                      	id=16	[slave  pointer  (2)]
+⎣ Virtual core keyboard                   	id=3	[master keyboard (2)]
+    ↳ Virtual core XTEST keyboard             	id=5	[slave  keyboard (3)]
+    ↳ Video Bus                               	id=6	[slave  keyboard (3)]
+    ↳ Power Button                            	id=7	[slave  keyboard (3)]
+    ...
+}}
+
+A {{ic|''device''}} may be identified by its name ({{ic|"DELL0ABC:DE F123:4567 Touchpad"}}) or ID ({{ic|10}}).
+
+When being executed in a startup script, it is recommended that you use the name, as the ID may change following a reboot and lead to inconsistencies.
+
+=== List properties ===
+
+To list all the properties of a device that can be set, use the following command:
+
+ $ xinput list-props ''device''
+
+This may yield results like such:
+
+{{hc|$ xinput list-props "DELL0ABC:DE F123:4567 Touchpad"|2=
+Device 'DELL0ABC:DE F123:4567 Touchpad':
+	Device Enabled (179):	1
+	Coordinate Transformation Matrix (181):	1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000
+	libinput Tapping Enabled (336):	0
+	libinput Tapping Enabled Default (337):	0
+	libinput Tapping Drag Enabled (338):	1
+	libinput Tapping Drag Enabled Default (339):	1
+    ...
+}}
+
+Each {{ic|''property''}} can be identified using its name ({{ic|"libinput Tapping Enabled"}}) or number ({{ic|336}}).
+
+As with devices, it is recommended to use the name in startup scripts, as the ID may change, albeit less often.
+
+=== Set device properties ===
+
+Properties of devices can be set one or more (up to three) values. The syntax for setting a property to a value is:
+
+ $ xinput set-prop ''device'' ''property'' ''values''
+
+Where {{ic|''values''}} is replaced with the value(s) of the property.
+
+For an instance, to enable tapping with the above output. Either of the following commands could be used:
+
+ $ xinput set-prop "DELL0ABC:DE F123:4567 Touchpad" "libinput Tapping Enabled" 1
+
+or
+
+ $ xinput set-prop 10 338 1
+
+On success, no output should be produced.
+
+== Usage examples ==
+
+Below are some of the ways ''xinput'' can be used.
+
+=== Remove the middle and right mouse buttons ===
+
+ $ xinput set-button-map ''mouse-device'' 1 1 1
+
+The above command will make middle and right mouse button to function like the left button. Putting zeros will disable them.
+
+ $ xinput set-button-map ''mouse-device'' 1 0 0

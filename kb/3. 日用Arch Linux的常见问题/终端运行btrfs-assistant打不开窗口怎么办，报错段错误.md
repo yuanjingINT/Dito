@@ -1,0 +1,1 @@
+如果报错信息是“xx段错误”的话是权限问题。终端打开btrfs-assistant的正确命令是`btrfs-assistant-launcher`，会调用polkit进行身份验证。如果一定要sudo btrfs-assistant打开的话需要安装`xorg-xhost`，用`xhost +local:root`允许root访问X服务器，然后就可以正常用sudo打开btrfs-assistant了。

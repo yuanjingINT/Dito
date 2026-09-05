@@ -1,0 +1,920 @@
+[[Category:File systems]]
+[[de:Arch auf BtrFS]]
+[[es:Btrfs]]
+[[it:Btrfs]]
+[[hu:Btrfs]]
+[[ja:Btrfs]]
+[[pt:Btrfs]]
+[[ru:Btrfs]]
+[[zh-hans:Btrfs]]
+{{out of date|[https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/Main_Page.html btrfs Wiki], prominently linked to, has been archived since February 2023, and links should be replaced to the corresponding [https://btrfs.readthedocs.io BTRFS documentation] links.}}
+{{Related articles start}}
+{{Related|File systems}}
+{{Related|Snapper}}
+{{Related|Timeshift}}
+{{Related|Yabsnap}}
+{{Related articles end}}
+
+From the [https://btrfs.readthedocs.io/en/latest/Introduction.html Btrfs Documentation]:
+
+:Btrfs is a modern copy on write (COW) file system for Linux aimed at implementing advanced features while also focusing on fault tolerance, repair and easy administration.
+
+{{Note|Like some other file systems, Btrfs is under continuous development. This means that specific features may not be ready for everyday use yet. To see if your use case might be affected, check the Btrfs Documentation's [https://btrfs.readthedocs.io/en/latest/Status.html Status] and the [[#Known issues]] section of this article.}}
+
+== Preparation ==
+
+For user space utilities, [[install]] the {{Pkg|btrfs-progs}} package that is required for basic operations.
+
+If you need to boot from a Btrfs file system (i.e., your kernel and initramfs reside on a Btrfs partition), check if your [[boot loader]] supports Btrfs.
+
+== File system creation ==
+
+The following shows how to create a new Btrfs [[file system]]. To convert an Ext3/4 partition to Btrfs, see [[#Ext3/4 to Btrfs conversion]]. To use a partitionless setup, see [[#Partitionless Btrfs disk]].
+
+See {{man|8|mkfs.btrfs}} for more information.
+
+=== File system on a single device ===
+
+To create a Btrfs file system on partition {{ic|/dev/''partition''}}:
+
+ # mkfs.btrfs -L ''mylabel'' /dev/''partition''
+
+The Btrfs default nodesize for metadata is 16 KiB, while the default sectorsize for data is equal to page size and autodetected. To use a larger nodesize for metadata (must be a multiple of sectorsize, up to 64 KiB is allowed), specify a value for the {{ic|nodesize}} via the {{ic|-n}} switch as shown in this example using 32 KiB blocks:
+
+ # mkfs.btrfs -L ''mylabel'' -n 32k /dev/''partition''
+
+{{Note|According to {{man|8|mkfs.btrfs|OPTIONS}}, "[a] smaller node size increases fragmentation but leads to taller b-trees which in turn leads to lower locking contention. Higher node sizes give better packing and less fragmentation at the cost of more expensive memory operations while updating the metadata blocks".}}
+
+=== Multi-device file system ===
+
+{{Warning|
+* The RAID 5 and RAID 6 modes of Btrfs are fatally flawed, and should not be used for "anything but testing with throw-away data." [https://lore.kernel.org/linux-btrfs/20200627032414.GX10769@hungrycats.org/ List of known problems and partial workarounds]. See {{man|5|btrfs|RAID56 STATUS AND RECOMMENDED PRACTICES}} for status updates.
+* By default, [[systemd]] disables [[#Copy-on-Write (CoW)|CoW]] for {{ic|/var/log/journal}}, which can cause data corruption on RAID 1 (see [[#Disabling CoW]]). To prevent this, create an empty file {{ic|/etc/tmpfiles.d/journal-nocow.conf}} to override {{ic|/usr/lib/tmpfiles.d/journal-nocow.conf}} (see {{man|5|tmpfiles.d|CONFIGURATION DIRECTORIES AND PRECEDENCE}}).
+}}
+
+Multiple devices can be used to create a RAID. Supported RAID levels include RAID 0, RAID 1, RAID 10, RAID 5 and RAID 6, see [https://btrfs.readthedocs.io/en/latest/mkfs.btrfs.html#profiles Btrfs Profiles] for the options. The RAID levels can be configured separately for data and metadata using the {{ic|-d}} and {{ic|-m}} options respectively. By default, the data has one copy ({{ic|single}}) and the metadata is mirrored ({{ic|raid1}}). This is similar to creating a [[Wikipedia:JBOD|JBOD configuration]], where disks are seen as one file system, but files are not duplicated. See [https://btrfs.readthedocs.io/en/latest/Volume-management.html Btrfs Volume management],{{man|8|btrfs-device}} and {{man|8|mkfs.btrfs|MULTIPLE DEVICES}} for more information about how to create a Btrfs RAID volume.
+
+ # mkfs.btrfs -d single -m raid1 /dev/''part1'' /dev/''part2'' ...
+
+You must include either the {{ic|udev}} hook, {{ic|systemd}} hook or the {{ic|btrfs}} hook in {{ic|/etc/mkinitcpio.conf}} in order to use multiple Btrfs devices in a pool. See the [[Mkinitcpio#Common hooks]] article for more information.
+
+Once the file system is created, it is advised to run the following command to scan for multi-device Btrfs file systems and register them, allowing to mount the multi-device file system by specifying only one member:
+
+ # btrfs device scan
+
+{{Note|
+* It is possible to add devices to a multiple-device file system later on. See the [https://btrfs.readthedocs.io/en/latest/Volume-management.html Btrfs Volume management] for more information.
+* Devices can be of different sizes. However, if one drive in a RAID configuration is bigger than the others, this extra space will not be used.
+* Some [[boot loader]]s such as [[Syslinux]] do not support multi-device file systems.
+* Btrfs does not automatically read from the fastest device, so mixing different kinds of disks results in inconsistent performance. See [https://stackoverflow.com/a/55408367] for details.
+}}
+
+See [[#RAID]] for advice on maintenance specific to multi-device Btrfs file systems.
+
+==== Profiles ====
+
+Btrfs uses the concept of [https://btrfs.readthedocs.io/en/latest/mkfs.btrfs.html#profiles profiles] to configure mirroring, parity, and striping. In standard [[Wikipedia:RAID|RAID]] terminology, this is called ''RAID level''. Profiles for metadata (the {{ic|-m}} option of {{man|8|mkfs.btrfs}}) and data (the {{ic|-d}} option of {{man|8|mkfs.btrfs}}) may be different for the same Btrfs file system.
+
+Some notable profiles:
+
+; single
+: No mirroring, no striping, no parity, enables mapping several devices to a single file system, called {{ic|LINEAR}} in [[mdadm]] terminology.
+; raid0
+: No mirroring, striping, no parity, enables parallel access between devices, but not limited to same-size devices like traditional [[mdadm]] RAID.
+; raid1
+: Mirroring, no striping, no parity, enables recovering from one drive failure.
+
+== Configuring the file system ==
+
+=== Copy-on-Write (CoW) ===
+
+By default, Btrfs uses [[Wikipedia:copy-on-write|copy-on-write]] for all files all the time. Writes do not overwrite data in place; instead, a modified copy of the block is written to a new location, and metadata is updated to point at the new location. See the [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/SysadminGuide.html#Copy_on_Write_.28CoW.29 Btrfs Sysadmin Guide section] for implementation details, as well as advantages and disadvantages.
+
+==== Disabling CoW ====
+
+{{Warning|Disabling CoW in Btrfs also disables checksums. Btrfs will not be able to detect corrupted {{ic|nodatacow}} files. When combined with RAID 1, power outages or other sources of corruption can cause the data to become out of sync.}}
+
+To disable copy-on-write for newly created files in a mounted subvolume, use the {{ic|nodatacow}} mount option. This will only affect newly created files. Copy-on-write will still happen for existing files. The {{ic|nodatacow}} option also disables compression. See {{man|5|btrfs}} for details.
+
+{{Note|
+* From {{man|5|btrfs|MOUNT OPTIONS}}: "within a single file system, it is not possible to mount some subvolumes with {{ic|nodatacow}} and others with {{ic|datacow}}. The mount option of the first mounted subvolume applies to any other subvolumes."
+* Even with Copy-on-Write disabled, it may still be triggered in certain cases. See [[#Cases where CoW is still triggered]] below for details.
+}}
+
+To disable copy-on-write for single files/directories, do:
+
+ $ chattr +C ''/dir/file''
+
+{{Note|From [https://btrfs.readthedocs.io/en/latest/Common-features.html#attributes Btrfs documentation: File attributes]: "When set on a directory, all newly created files will inherit this attribute. Due to implementation limitations, this flag can be set/unset only on empty files."}}
+
+{{Tip|1=In accordance with the note above, you can use the following trick to disable copy-on-write on existing files in a directory:
+
+ $ mv ''/path/to/dir'' ''/path/to/dir''_old
+ $ mkdir ''/path/to/dir''
+ $ chattr +C ''/path/to/dir''
+ $ cp -a --reflink=never ''/path/to/dir''_old/. ''/path/to/dir''
+ $ rm -rf ''/path/to/dir''_old
+
+Make sure that the data are not used during this process. For more on the use of the {{ic|1=--reflink=never}} option, see [[#Effect on copying]] below.
+}}
+
+===== Cases where CoW is still triggered =====
+
+Copy-on-Write will ''still'' be triggered if a file with the NOCOW attribute (+C) has more than one reference (for example, a copy created via {{ic|cp}} using [https://btrfs.readthedocs.io/en/latest/Reflink.html#reflink reflink] or a snapshot made by Btrfs).
+
+{{Style|5 levels of subsections is too much.}}
+
+====== Effect on copying ======
+
+When using {{ic|cp}} to copy files, the NOCOW attribute is ''not'' determined by the source file, but by the destination path—either inherited from the directory or determined by whether the subvolume is mounted with the {{ic|nodatacow}} option. Reflink copying is possible only if both the source and destination files either have or do not have the NOCOW attribute. The actual behavior depends on the {{ic|--reflink}} option, with three possible outcomes:
+
+* With {{ic|1=--reflink=auto}} (default): If the NOCOW attributes match, reflink is used; otherwise, a deep copy is made.
+* With {{ic|--reflink}} (or {{ic|1=--reflink=always}}): If the NOCOW attributes match, reflink is used; if they differ, the operation fails.
+* With {{ic|1=--reflink=never}}: A deep copy is always performed.
+
+For more information on the {{ic|--reflink}} option, refer to {{man|1|cp}}.
+
+====== Effect on snapshots ======
+
+If a file has copy-on-write disabled (NOCOW) and a [[#Snapshots|snapshot]] is taken, the first write to a file block after the snapshot [https://www.spinics.net/lists/linux-btrfs/msg33090.html will be a COW operation] because the snapshot locks the old file blocks in place. However, the file will retain the NOCOW attribute and any subsequent writes to the same file block will be in-place until the next snapshot.
+
+Frequent snapshots can reduce the effectiveness of NOCOW, as COW is still required on the first write. To avoid copy-on-write for such files altogether, put them in a separate subvolume and do not take snapshots of that subvolume.
+
+=== Compression ===
+
+Btrfs supports [https://btrfs.readthedocs.io/en/latest/Compression.html transparent and automatic compression]. This reduces the size of files as well as significantly increases the lifespan of flash-based media by reducing write amplification. See [[Fedora:Changes/BtrfsByDefault#Compression]], [https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/message/NTV77NFF6NDZM3QTPUM2TQZ5PCM6GOO2/], and [https://pagure.io/fedora-btrfs/project/issue/36#comment-701551]. It can also [https://www.phoronix.com/scan.php?page=article&item=btrfs_compress_2635&num=1 improve performance], in some cases (e.g. single thread with heavy file I/O), while obviously harming performance in other cases (e.g. multi-threaded and/or CPU intensive tasks with large file I/O). Better performance is generally achieved with the fastest compress algorithms, ''zstd'' and ''lzo'', and some [https://www.phoronix.com/scan.php?page=article&item=btrfs-zstd-compress benchmarks] provide detailed comparisons.
+
+==== Compression types ====
+
+Btrfs supports the compression algorithms {{ic|zlib}} ([[wikipedia:Deflate|DEFLATE]] provided by [[wikipedia:zlib|zlib]]), {{ic|lzo}} ([[wikipedia:LZO|LZO]]), and {{ic|zstd}} ([[wikipedia:Zstandard|Zstandard]] implemented by [https://github.com/torvalds/linux/tree/master/lib/zstd zstd]). LZO has no compression levels, whereas zlib and zstd have adjustable compression levels (zlib: 1-9; zstd: -15 to -1, 1-15, must be integers). Higher levels provide better compression but require more processing time. Changing the levels will affect CPU and I/O throughput differently, so they should be checked / benchmarked before and after changing. For more information about compression types, see {{man|5|btrfs|COMPRESSION}}.
+
+{{Warning|Systems using older kernels or {{Pkg|btrfs-progs}} without {{ic|zstd}} support (especially levels -15 to -1) may be unable to read or repair your file system if you use this option.}}
+
+==== Enabling compression ====
+
+===== For filesystems =====
+
+The {{ic|1=compress=''alg[:level]''}} mount option enables automatically considering compression for every write to the filesystem, where {{ic|''alg''}} is either {{ic|zlib}}, {{ic|lzo}}, {{ic|zstd}}, or {{ic|no}} (for no compression), and the optional {{ic|''level''}} specifies the compression level (defaults to 3 when not specified or set to 0; not applicable for {{ic|lzo}}). Using this option, Btrfs will check if compressing the '''first data block''' of a file write shrinks it. If it does, the entire write to that file will be compressed. If it does not, the file is marked as {{ic|NOCOMPRESS}}, and '''both the current write and all subsequent writes''' to that file will not be compressed [https://btrfs.readthedocs.io/en/latest/Compression.html#incompressible-data]. This is done to prevent making the disk wait to start writing until all of the data to be written is fully given to Btrfs and compression is attempted.
+
+{{Note|
+* Compression mount options are shared across all mount points of the same filesystem (including different subvolumes and bind mounts) [https://btrfs.readthedocs.io/en/latest/Compression.html#incompressible-data].
+* If one write to a file cannot be compressed, subsequent writes will not be compressed either.
+}}
+
+Alternatively you can set the compression property on a btrfs subvolume and it will persist and apply regardless of how it is mounted, use the {{ic|btrfs property set / compression ''alg''}} where {{ic|''alg''}} can be {{ic|zstd}} or {{ic|zstd:''n''}} where {{ic|''n''}} is the level of compression.
+
+{{Expansion|Missing reference for the "empirical testing" mentioned in the following paragraph, and the percentage descriptions in the original text are not accurate.}}
+
+The {{ic|1=compress-force=''alg[:level]''}} mount option can be used instead, which makes Btrfs check '''each data block of every write''' and decide whether to compress them individually. Empirical testing on multiple mixed-use systems showed that using {{ic|1=compress-force=zstd}} can significantly improve space savings (from 10% to 20%) compared to {{ic|1=compress=zstd}}, but this causes (slightly) higher CPU usage and longer write times without purpose. However, forcing compression is against [https://btrfs.readthedocs.io/en/latest/Compression.html#incompressible-data official Btrfs guidelines].
+
+Only files created or modified after adding either of the above mount options will be automatically compressed.
+
+{{Tip|To enable compression when installing Arch to an empty Btrfs partition, use the {{ic|compress}} option when [[mounting]] the file system before installation: {{ic|1=mount -o compress=zstd /dev/sd''xY'' /mnt/}}. During configuration, add the same {{ic|compress}} mount option to the root file system in [[fstab]].}}
+
+===== For existing files =====
+
+To apply compression to existing files, use the {{ic|btrfs filesystem defragment -c''alg''}} command, where {{ic|''alg''}} is either {{ic|zlib}}, {{ic|lzo}} or {{ic|zstd}}. To specify the compression level, use the {{ic|-L}} option, otherwise the default level is used (not applicable for {{ic|lzo}}). For example, to re-compress all files with {{ic|zstd}} and compression level 1, run the following command:
+
+ # btrfs -v filesystem defragment -r -czstd -L1 /
+
+{{Warning|Defragmenting a file which has a COW copy (either a snapshot copy or one made with {{ic|cp}}) may result in two unrelated files, potentially greatly increasing disk usage.}}
+
+Using the above method to compress files is not persistent; other write operations will apply the original compression settings.
+
+The following two methods can persistently enable compression for individual files:
+
+ $ chattr +c ''file''
+ $ btrfs property set ''file'' compression zstd
+
+The first command uses the legacy interface of file attributes inherited from the ext2 filesystem and is not flexible, defaulting to {{ic|zlib}} compression algorithm. The second command can specify the compression algorithm, but specifying compression levels is not yet implemented, so the default level 3 is used (not applicable for {{ic|lzo}}).
+
+==== View compression types and ratios ====
+
+{{Pkg|compsize}} takes a list of files or directories (or an entire Btrfs file system) and outputs the compression types used and actual compression ratios (compressed size/uncompressed size). Uncompressed size may not match the number given by other programs such as {{man|1|du}}, because every extent is counted once and only once—even if it has multiple [https://btrfs.readthedocs.io/en/latest/Reflink.html#reflink reflinks], or if parts of it are no longer used anywhere but have not been garbage collected.
+
+The {{ic|-x}} option keeps it on a single file system, which is useful in situations like {{ic|compsize -x /}} to avoid it from attempting to access non-Btrfs subdirectories and failing the entire run.
+
+=== Subvolumes ===
+
+"A Btrfs subvolume is not a block device (and cannot be treated as one) instead, a Btrfs subvolume can be thought of as a POSIX file namespace. This namespace can be accessed via the top-level subvolume of the file system, or it can be mounted in its own right." [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/SysadminGuide.html#Subvolumes]
+
+Each Btrfs file system has a top-level subvolume with ID 5. This subvolume cannot be removed or replaced by another subvolume. The top-level subvolume has path {{ic|/}} on the file system and other subvolumes are ''nested'' below the top-level subvolume. However, subvolumes can be moved around in the file system and their path may change, whereas their ID cannot.
+
+By default, the top-level subvolume is mounted when mounting the file system. Options allow to [[#Mounting subvolumes|mount a specific subvolume]] instead.
+
+A major use case for subvolumes are [[#Snapshots|snapshots]].
+
+See the following links for more details:
+
+* [https://btrfs.readthedocs.io/en/latest/Subvolumes.html Btrfs Documentation]
+* [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/SysadminGuide.html#Subvolumes Btrfs Wiki SysadminGuide#Subvolumes]
+* [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/Trees.html Btrfs Wiki Trees]
+
+==== Creating a subvolume ====
+
+To create a subvolume, the Btrfs file system must be mounted.
+
+ # btrfs subvolume create ''/path/to/subvolume''
+
+{{Note|
+* You can use {{ic|--parents}} to automatically create parent directories if they do not exist.
+* If the top-level subvolume is not mounted and you want to create subvolumes inside it, you can temporarily mount it by specifying {{ic|1=subvolid=5}}. See [[#Mounting subvolumes]].
+}}
+
+==== Listing subvolumes ====
+
+To see a list of all subvolumes of the filesystem that {{ic|''path''}} belongs to:
+
+ # btrfs subvolume list -t ''path''
+
+{{ic|-t}} triggers a more readable table view.
+
+==== Deleting a subvolume ====
+
+To delete a subvolume:
+
+ # btrfs subvolume delete ''/path/to/subvolume''
+
+If the subvolume contains other subvolumes that should be deleted, add the {{ic|-R}}/{{ic|--recursive}} option. Alternatively, a subvolume can be deleted like a regular directory ({{ic|rm -r}}, {{ic|rmdir}}).
+
+{{Warning|Make sure that a subvolume is not mounted before deleting it. Deleting a mounted subvolume can lead to filesystem inconsistencies.}}
+
+==== Mounting subvolumes ====
+
+Subvolumes can be mounted using the {{ic|1=subvol=''/path/to/subvolume''}} or {{ic|1=subvolid=''objectid''}} mount options. One can mimic traditional file system partitions by creating various subvolumes under the top level of the file system and then mounting them at the appropriate mount points.
+
+For example, the following mounts the top-level subvolume to {{ic|/mnt/}} and creates two subvolumes named {{ic|subvol_root}} and {{ic|subvol_home}}. When the top-level subvolume is unmounted, the new subvolumes are mounted to {{ic|/mnt/}} and {{ic|/mnt/home/}}:
+
+ # mount ''device'' /mnt/ -o subvolid=5
+ # btrfs subvolume create /mnt/subvol_root/
+ # btrfs subvolume create /mnt/subvol_home/
+ # umount /mnt/
+ # mount -o subvol=/subvol_root ''device'' /mnt/
+ # mount -o subvol=/subvol_home --mkdir ''device'' /mnt/home/
+
+Referencing a subvolume with the {{ic|subvol}} mount option requires using the path relative to the ''top-level subvolume''. This can be different from the path where the top-level subvolume is mounted.
+
+{{Tip|1=<nowiki />
+* It is preferable to mount using {{ic|1=subvol=''/path/to/subvolume''}}, rather than the subvolid, as the subvolid may change when restoring [[#Snapshots]], requiring a change of mount configuration.
+* Changing subvolume layouts is made simpler by not using the top-level subvolume (ID=5) as {{ic|/}} (which is done by default). Instead, consider creating a subvolume to house your actual data and mounting it as {{ic|/}}.
+}}
+
+{{Note|From {{man|5|btrfs|MOUNT OPTIONS}}: "Most mount options apply to the '''whole file system''', and only the options for the first subvolume to be mounted will take effect. This is due to lack of implementation and may change in the future."}}
+
+See [[Snapper#Suggested filesystem layout]], [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/SysadminGuide.html#Managing_Snapshots Btrfs SysadminGuide#Managing Snapshots], and [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/SysadminGuide.html#Layout SysadminGuide#Layout] for example file system layouts using subvolumes.
+
+==== Mounting subvolume as root ====
+
+To use a subvolume as the root mountpoint, either make it the [[#Changing the default sub-volume|default subvolume]], or specify the subvolume via a [[kernel parameter]] using {{ic|1=rootflags=subvol=''/path/to/subvolume''}}. Edit the root mountpoint in {{ic|/etc/fstab}} and specify the mount option {{ic|1=subvol=}}. Alternatively, the subvolume can be specified with its id, {{ic|1=rootflags=subvolid=''objectid''}} as kernel parameter and {{ic|1=subvolid=''objectid''}} as mount option in {{ic|/etc/fstab}}. It is preferable to mount using {{ic|1=subvol=''/path/to/subvolume''}}, rather than the subvolid, as the subvolid may change when restoring [[#Snapshots]], requiring a change of mount configuration, or else the system will not boot.
+
+==== Changing the default sub-volume ====
+
+The default sub-volume is mounted if no {{ic|1=subvol=}} mount option is provided. To change the default subvolume, do:
+
+ # btrfs subvolume set-default ''subvolume-id'' /
+
+where ''subvolume-id'' can be found by [[#Listing subvolumes|listing]].
+
+Changing the default subvolume with {{ic|btrfs subvolume set-default}} will make the top level of the file system inaccessible, except by use of the {{ic|1=subvol=/}} or {{ic|1=subvolid=5}} mount options [https://btrfs.readthedocs.io/en/latest/Administration.html].
+
+{{Note|1=<nowiki/>
+* [[GRUB]]'s {{ic|grub-mkconfig}} script does ''not'' respect Btrfs default subvolume settings. If {{ic|/}} is the top-level subvolume, it will never specify {{ic|1=subvol=/}} or {{ic|1=subvolid=5}} mount options, which may cause boot failure. If {{ic|/}} is not the top-level subvolume, it will always specify the corresponding {{ic|1=subvol}} option, making it impossible to fall back by simply setting the default subvolume ([https://savannah.gnu.org/bugs/?func=detailitem&item_id=66509 bug report]). Currently this can be resolved by manually modifying the {{ic|rootflags}} [[kernel parameter]] in {{ic|grub.cfg}} (see [[#Mounting subvolumes]]), or by using tools to automatically create boot entries for snapshots in [[GRUB]] (see [[#Booting into snapshots]]). Additionally, if the actual location of {{ic|grub.cfg}} changes, such as when the subvolume containing {{ic|/boot}} changes, you need to run {{ic|grub-install}} again. See [https://bbs.archlinux.org/viewtopic.php?pid=1615373 this forum thread].
+* If you plan to use one of the [[Synchronization and backup programs]], it is recommended to not change the default subvolume as it can cause problems when restoring a snapshot for any subvolume other than the default. For instance, [[Timeshift]] creates a path {{ic|timeshift-btrfs}} relative to the default subvolume of the filesystem to store the snapshots, and having a seperate non-default subvolume for root and home is preferred.
+}}
+
+=== Quota ===
+
+The concept of [[wikipedia:Disk quota|disk quota]] has a long tradition in the Unix world. Traditional quotas are based on file ownership, controlling space usage by limiting the total size of all files owned by users. While this approach is straightforward for file management, it has limitations in directory-level restrictions, typically requiring partitioning at installation time and lacking dynamic adjustment capabilities. Btrfs adopts a different quota design philosophy from traditional Unix systems and does not support traditional [[users and groups|user- or group]]-based quota functionality. This is because its modern storage features (such as [[#Snapshots]], [[#Copy-on-Write (CoW)]], [[#Deduplication]], and [[#Compression]]) make traditional quota space calculations extremely complex and inaccurate [https://btrfs.readthedocs.io/en/latest/Qgroups.html]. As an alternative, Btrfs uses a subvolume-based quota mechanism, currently providing two implementation approaches — traditional [[#Quota groups (qgroups)]] and the newer [[#Simple quotas (squotas)]] (introduced in kernel 6.7 released in late 2023) to achieve similar space management effects. While this increases management complexity, it provides more flexible and precise storage control capabilities, allowing directory size limitations without partitioning and enabling dynamic quota adjustments.
+
+{{Note|Quota management is only possible after mounting a Btrfs filesystem (or any of its subvolumes).}}
+
+==== Quota groups (qgroups) ====
+
+{{Warning|While [https://btrfs.readthedocs.io/en/latest/Qgroups.html Btrfs qgroups] are considered stable for general use, enabling qgroups, especially in environments with frequent creation of large numbers of snapshots, can still lead to performance degradation, particularly during snapshot deletion. Qgroup accounting introduces additional metadata overhead and may affect system responsiveness under high-intensity snapshot workloads.
+
+Recent kernel improvements (5.15 and later versions) have fixed many [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/Quota_support.html#Known_issues historical issues], but [https://lwn.net/Articles/944371/ some limitations remain], particularly in advanced application scenarios such as deeply nested subvolumes or complex qgroup hierarchical structures. The suggestion written here since 2016 — to carefully evaluate specific use cases before enabling qgroups — still applies today. Please be sure to consult the latest [https://btrfs.readthedocs.io/en/latest/Qgroups.html Btrfs documentation] for current detailed information. It is worth noting that to address the performance issues of qgroups, Btrfs introduced the [[#Simple quotas (squotas)]] functionality, providing an alternative solution with slightly less flexibility but better performance.
+}}
+
+Btrfs's precise quota support is implemented through qgroups above subvolumes. Qgroups are represented using ''qgroupids'' in the format {{ic|''level''/''ID''}}. Subvolumes have level 0, where {{ic|0/}} can be omitted, and the corresponding {{ic|''ID''}} is the subvolume ID. For example, {{ic|0/5}} represents the qgroup of the top-level subvolume. Subvolume paths can also be used instead of the {{ic|0/''ID''}} representation. Qgroups form a ''tree'' hierarchy, but a qgroup can have multiple parent qgroups [https://btrfs.readthedocs.io/en/latest/Qgroups.html]. Leaf qgroups have level 0, corresponding directly to subvolumes. The {{ic|''ID''}} of all higher-level qgroups can be freely specified. Higher-level qgroups contain lower-level qgroups, and same-level groups cannot be nested, but level does not indicate nesting depth. For example, child qgroup {{ic|0/5}} can be assigned to qgroup {{ic|5/100}}.
+
+===== Total referenced space and exclusively referenced space =====
+
+Each qgroup primarily tracks two values: the amount of ''total referenced space'' and the amount of ''exclusively referenced space''. ''Total referenced space'' refers to the storage space occupied by all data accessible from within the qgroup, while ''exclusively referenced space'' refers to the storage space occupied by data that is only referenced by '''subvolumes''' belonging to the qgroup (and not referenced by '''subvolumes''' outside the qgroup).
+
+===== Enabling/disabling qgroups =====
+
+Use the following command to enable qgroups for the filesystem containing ''path'':
+
+ # btrfs quota enable ''path''
+
+Change {{ic|enable}} to {{ic|disable}} to disable qgroups.
+
+{{Warning|Disabling qgroups will destroy all current qgroups and remove their relationships.}}
+
+===== Creating/destroying qgroups =====
+
+Level 0 qgroups corresponding to subvolumes are always automatically created. Even if subvolumes are created before enabling quotas, the corresponding qgroups will be automatically created when quotas are enabled. Similarly, when [[#Deleting a subvolume|deleting subvolumes]], the corresponding qgroups will be deleted and automatically disassociate from higher-level qgroups that originally contained these qgroups.
+
+Use the following command to create qgroup ''qgroupid'' in the filesystem containing ''path'':
+
+ # btrfs qgroup create ''qgroupid'' ''path''
+
+Change {{ic|create}} to {{ic|destroy}} to destroy the qgroup. Destroying a qgroup is similar to using {{ic|rm -d}} to delete a directory — if the qgroup has child qgroups, relationships must be removed first; if only parent qgroups exist, relationships will be automatically removed.
+
+{{Note|Qgroups corresponding to subvolumes cannot be deleted directly, but should be automatically deleted by directly deleting the subvolume.}}
+
+===== Assigning/removing child qgroups =====
+
+Use the following command to assign ''src'' as the child qgroup of ''dst'' in the filesystem containing ''path'', note that ''dst'' must be at a higher level than ''src'':
+
+ # btrfs qgroup assign ''src'' ''dst'' ''path''
+
+Change {{ic|assign}} to {{ic|remove}} to remove this relationship.
+
+{{Note|After assigning/removing child qgroups, [[#Quota rescan]] may be needed, which is automatically triggered in current versions, but may cause performance overhead. See the [[#Quota rescan]] section for details.}}
+
+===== Limiting/unlimiting qgroups =====
+
+You can limit the total referenced space or exclusively referenced space of qgroups, or limit both simultaneously. For example, use the following command to limit the '''total referenced space''' of ''qgroupid'' to no more than 1G'''i'''B in the filesystem containing ''path'':
+
+ # btrfs qgroup limit 1G ''qgroupid'' ''path''
+
+{{Note|If [[#Enabling compression|enabled compression]], Btrfs currently only supports limiting the space occupied by compressed data.}}
+
+If ''qgroupid'' is omitted, it attempts to interpret ''path'' as a subvolume path. Add the {{ic|-e}} option (after {{ic|limit}}) to limit '''exclusively referenced space''' instead. Change ''size'' to {{ic|none}} to remove the limit.
+
+===== Listing qgroups =====
+
+Use the following command to list all qgroups in the filesystem containing ''path'':
+
+ # btrfs qgroup show ''path''
+
+{{Note|Since {{ic|btrfs qgroup show}} uses data from disk, {{ic|sync}} may be needed before displaying accurate statistics. For this purpose, you can add the {{ic|--sync}} option (after {{ic|show}}) to first perform a forced synchronization operation on the filesystem containing ''path''.}}
+
+The "Path" column in the output may display some special values with the following meanings:
+
+* {{ic|<toplevel>}}: Qgroup corresponding to the top-level subvolume.
+* {{ic|<under deletion>}}: The subvolume corresponding to this qgroup has been deleted (its directory has been removed), but the subvolume metadata has not been completely cleaned up.
+{{Tip|You can use {{ic|btrfs subvolume sync ''path'' ''subvolid''}} to wait for complete deletion of subvolumes in the filesystem containing ''path'' (multiple subvolume IDs can be specified; if none are specified, it waits for all currently pending subvolume deletions in the filesystem to complete). However, note to unmount the subvolume first.}}
+* {{ic|<squota space holder>}}: (Only applicable to [[#Simple quotas (squotas)]]) The subvolume corresponding to this qgroup has been completely deleted but related statistics are still retained. This is because simple quotas only attribute extents to the subvolume that first allocated them, and while that subvolume has been completely deleted, the extents are still referenced by other subvolumes.
+
+According to your needs, you can add some display options (after {{ic|show}}). Common options include:
+
+* {{ic|-p}}: Show parent qgroups.
+* {{ic|-c}}: Show child qgroups.
+* {{ic|-r}}: Show total referenced space limits.
+* {{ic|-e}}: Show exclusively referenced space limits.
+* {{ic|-f}}: Only list qgroups corresponding to the subvolume containing ''path''.
+* {{ic|-F}}: Only list qgroups corresponding to the subvolume containing ''path'' and higher-level qgroups that contain these qgroups.
+
+For more options, please refer to {{man|8|btrfs-qgroup|show}}.
+
+===== Quota rescan =====
+
+[https://btrfs.readthedocs.io/en/latest/btrfs-qgroup.html#quota-rescan Quota rescan] reads the metadata of all extents in the filesystem and updates the statistics of each qgroup accordingly.
+
+Btrfs qgroups can handle many complex extent sharing and unsharing scenarios (including deletion of subvolumes and child qgroups) while maintaining accurate counts of total referenced space and exclusively referenced space. However, when qgroup relationships change (manual [[#Assigning/removing child qgroups|assignment/removal of child qgroups]]), due to insufficient recorded data (only recording total referenced space and exclusively referenced space, without explicitly recording which extents belong to shared or exclusive), quota rescan across the entire filesystem is usually required. At this time, qgroups will be marked as "inconsistent", indicating a state that requires quota rescan.
+
+The only exception in the current implementation is when a qgroup's total referenced space equals its exclusively referenced space, meaning all data is exclusive. In this case, when performing assign/remove operations on this subvolume, it only needs to add/subtract this qgroup's referenced space to/from the parent qgroup's total referenced space and exclusively referenced space simultaneously.
+
+Starting from kernel version 4.19, manual [[#Assigning/removing child qgroups|assignment/removal of child qgroups]] automatically triggers quota rescan (when necessary). However, since quota rescan has high overhead, can only be performed once at a time, and this method cannot wait for the rescan to complete before returning, you can add the {{ic|--no-rescan}} option (after {{ic|assign}}/{{ic|remove}}) to avoid automatic triggering and manually trigger it later.
+
+{{Tip|After using the {{ic|--no-rescan}} option for [[#Assigning/removing child qgroups|assignment/removal of child qgroups]], if quota rescan is needed, a corresponding warning will be displayed. Warnings can also be displayed through [[#Listing qgroups]].}}
+
+Use the following command to manually trigger quota rescan for the filesystem containing ''path'':
+
+ # btrfs quota rescan ''path''
+
+The command returns immediately. Add the {{ic|-w}} ({{ic|--wait}}) option (after {{ic|rescan}}) to wait for the rescan to complete (even if already started) before returning. Use the {{ic|-W}} ({{ic|--wait-norescan}}) option to only wait for the currently running rescan to complete. Use the {{ic|-s}} ({{ic|--status}}) option to return current progress.
+
+==== Simple quotas (squotas) ====
+
+[[#Quota groups (qgroups)|Qgroups]] can handle many complex extent sharing and unsharing scenarios (including deletion of subvolumes and child qgroups) while maintaining accurate counts of total referenced space and exclusively referenced space. However, this flexibility comes at a cost: many computational operations are global in nature, meaning that when extent reference relationships change, they affect the statistics of all qgroups that reference the extent. This can lead to slower transaction commit speeds and unacceptable delays, especially when the number of snapshots increases dramatically.
+
+To address this limitation of qgroups, Btrfs supports a second set of quota semantics: [https://btrfs.readthedocs.io/en/latest/Qgroups.html#simple-quotas-squota simple quotas (squotas)]. Squotas reuse the qgroup API and hierarchical structure model but do not track shared and exclusive usage. Instead, squotas attribute all extents to the subvolume that first allocated them. By introducing a small amount of new metadata records, this allows all accounting decisions to be completed locally in operations involving the allocation or release of data blocks themselves, completely avoiding complex and time-consuming reverse reference resolution processes.
+
+Squotas need to be enabled at the filesystem level by simply adding the {{ic|-s}} ({{ic|--simple}}) option (after {{ic|enable}}) to the [[#Enabling/disabling qgroups|enabling qgroups]] command. Note that if qgroups are already enabled, you need to first [[#Enabling/disabling qgroups|disable qgroups]] and then enable squotas, otherwise it will not take effect [https://elixir.bootlin.com/linux/v6.16/source/fs/btrfs/qgroup.c#L1021-L1022]. Due to its simple calculation method, squota mode does not need (and cannot) perform [[#Quota rescan]]. Apart from these two points, squotas operate exactly the same as qgroups, but the so-called "total referenced space" and "exclusively referenced space" displayed and limited are all values calculated through the method described above (attributing all extents to the subvolume that first allocated them). Since squotas need to record the subvolume that first allocated extents, they only take effect for extents written after enabling. If squotas are enabled on a non-empty filesystem, the statistics will be 0 when first enabled, so only by enabling squota limits on empty subvolumes and then writing data can you ensure accurate statistics.
+
+=== Commit interval ===
+
+The resolution at which data are written to the file system is dictated by Btrfs itself and by system-wide settings. Btrfs defaults to a 30 seconds checkpoint interval in which new data are committed to the file system. This can be changed by appending the {{ic|commit}} mount option in {{ic|/etc/fstab}} for the Btrfs partition.
+
+ LABEL=arch64 / btrfs defaults,compress=zstd,commit=120 0 0
+
+System-wide settings also affect commit intervals. They include the files under {{ic|/proc/sys/vm/*}} and are out-of-scope of this wiki article. The kernel documentation for them is available at https://docs.kernel.org/admin-guide/sysctl/vm.html.
+
+=== SSD TRIM ===
+
+A Btrfs file system is able to free unused blocks from an SSD drive supporting the TRIM command. Asynchronous discard support is available with mount option {{ic|1=discard=async}}, and is enabled by default as of {{Pkg|linux}} 6.2. Freed extents are not discarded immediately, but grouped together and trimmed later by a separate worker thread, improving commit latency.
+
+Asynchronous discard can safely be used alongside periodic trim [https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/MLZIPQUXMJFRVSFJS6B2ACDKTYNSX3AX/].
+
+More information about enabling and using TRIM can be found in [[Solid state drive#TRIM]].
+
+== Usage ==
+
+=== Swap file ===
+
+{{Note|
+There are some limitations of the implementation in Btrfs and Linux swap subsystem [https://btrfs.readthedocs.io/en/latest/btrfs-man5.html#swapfile-support]:
+
+* Swap files on file systems spanning multiple devices are not supported
+* Data [[#Profiles|profile]] must be {{ic|single}}
+* Snapshots cannot be created for subvolumes containing active swap files
+* Swap files must be pre-allocated (i.e., no holes)
+* Copy-on-write must be [[#Disabling CoW|disabled]] individually for swap files (i.e., swap files must have the NOCOW attribute)
+
+The last two limitations for swap files are automatically handled by the {{ic|btrfs filesystem mkswapfile}} command.
+}}
+
+For general information about swap files, see [[Swap#Swap file]].
+
+To properly create a swap file on Btrfs, first [[#Creating a subvolume|create a subvolume]] to store the swap file, as snapshots cannot be created for that subvolume afterwards. For example, create the {{ic|/swap}} subvolume:
+
+ # btrfs subvolume create /swap
+
+{{Tip|Consider [[#Creating a subvolume|creating the subvolume]] directly below the top-level subvolume, then [[#Mounting subvolumes|mount]] it to {{ic|/swap}} (or any other accessible location).}}
+
+Create a 4 G'''i'''B swap file {{ic|swapfile}} in {{ic|/swap/}}:
+
+ # btrfs filesystem mkswapfile --size 4g --uuid clear /swap/swapfile
+
+The {{ic|--size}} option specifies the swap file size, with a default of 2 GiB and minimum of 40 KiB.
+
+Activate the swap file:
+
+ # swapon /swap/swapfile
+
+Finally, edit the [[fstab]] configuration to add an entry for the swap file:
+
+{{hc|/etc/fstab|
+/swap/swapfile none swap defaults 0 0
+}}
+
+For additional information, see [[fstab#Usage]].
+
+For more information about removing swap files and other details, see [[Swap#Swap file]].
+
+{{Tip|To use hibernation functionality, in addition to configuring the swap file, you need to complete additional steps described in [[Power management/Suspend and hibernate]].}}
+
+=== Displaying used/free space ===
+
+General linux userspace tools such as {{man|1|df}} will inaccurately report free space on a Btrfs partition as they do not account for both file and metadata usage. It is recommended to use {{ic|btrfs filesystem usage}} to query Btrfs partitions. For example, for a full breakdown of device allocation and usage stats:
+
+ # btrfs filesystem usage /
+
+{{Note|{{ic|btrfs filesystem usage}} and {{ic|btrfs filesystem df}} show inaccurate results if {{ic|RAID5}} or {{ic|RAID6}} [[#Profiles|profile]] coexist with other profiles in the same filesystem (e.g. metadata using {{ic|DUP}} while data uses {{ic|RAID5}}) [https://btrfs.readthedocs.io/en/latest/btrfs-man5.html#missing-incomplete-support].}}
+
+Alternatively, {{ic|btrfs filesystem df}} allows a quick check on usage of allocated space without the requirement to run as root:
+
+ $ btrfs filesystem df /
+
+See [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/FAQ.html#How_much_free_space_do_I_have.3F] for more information.
+
+The same limitations apply to tools which analyze space usage for some subset of the file system, such as {{man|1|du}} or {{man|1|ncdu}}, as they do not consider [[#Copy-on-Write (CoW)]] or transparent [[#Compression]]. Instead, see {{AUR|btdu}} and [[#View compression types and ratios|compsize]] for Btrfs-aware alternatives.
+
+=== Defragmentation ===
+
+Btrfs supports online defragmentation through the mount option {{ic|autodefrag}}; see {{man|5|btrfs|MOUNT OPTIONS}}. To manually defragment your root (not descending to subvolumes, mount points and directory symlinks), use:
+
+ # btrfs filesystem defragment -r /
+
+{{Warning|Defragmenting will break up the reflinks of [[#Copy-on-Write (CoW)]] data (for example files copied with {{ic|cp}}, [[#Snapshots]] or [[#Deduplication|deduplicated]] data). This may cause considerable increase of space usage depending on the broken up reflinks [https://btrfs.readthedocs.io/en/latest/btrfs-filesystem.html#subcommand].}}
+
+{{Note|Directory arguments without {{ic|-r}} do not defragment files recursively but will defragment certain internal trees (extent tree and the subvolume tree). This has been confusing and could be removed in the future.}}
+
+{{Tip|You can specify compression at the same time using options {{ic|-c}} and {{ic|-L}}; see [[#For existing files]].}}
+
+=== RAID ===
+
+Btrfs offers native "RAID" for [[#Multi-device file system]]s. Notable features which set Btrfs RAID apart from [[mdadm]] are self-healing redundant arrays and online balancing. See [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/Using_Btrfs_with_Multiple_Devices.html the Btrfs wiki page] for more information. The Btrfs sysadmin page also [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/SysadminGuide.html#RAID_and_data_replication has a section] with some more technical background.
+
+{{Warning|Parity RAID (RAID 5/6) code has multiple serious data-loss bugs in it. See the Btrfs Wiki's [https://btrfs.readthedocs.io/en/latest/btrfs-man5.html#raid56-status-and-recommended-practices RAID5/6 page] and a bug report on [https://lore.kernel.org/linux-btrfs/8695beeb-f991-28c4-cf6b-8c92339e468f@inwind.it/ linux-btrfs mailing list] for more detailed information. In June 2020, somebody posted a [https://lore.kernel.org/linux-btrfs/20200627030614.GW10769@hungrycats.org/ comprehensive list of current issues] and a [https://lore.kernel.org/linux-btrfs/20200627032414.GX10769@hungrycats.org/ helpful recovery guide]. }}
+
+==== Scrub ====
+
+{{Expansion|[https://unix.stackexchange.com/questions/556816/does-btrfs-scrub-examine-subvolume-or-the-device-that-subvolume-resides-on Does Btrfs scrub examine subvolume or the device that subvolume resides on?]}}
+
+The [https://btrfs.readthedocs.io/en/latest/Glossary.html Btrfs Wiki Glossary] says that Btrfs scrub is "[a]n online file system checking tool. Reads all the data and metadata on the file system and uses checksums and the duplicate copies from RAID storage to identify and repair any corrupt data."
+
+{{Note|A running scrub process will prevent the system from suspending, see [https://lore.kernel.org/linux-btrfs/20140227190656.GA28338@merlins.org/ this thread] for details.}}
+
+===== Start manually =====
+
+To start a (background) scrub on the file system which contains {{ic|/}}:
+
+ # btrfs scrub start /
+
+To check the status of a running scrub:
+
+ # btrfs scrub status /
+
+===== Start with a service or timer =====
+
+The {{Pkg|btrfs-progs}} package brings the {{ic|btrfs-scrub@.timer}} unit for monthly scrubbing the specified mountpoint. [[Enable]] the timer with an escaped path, e.g. {{ic|btrfs-scrub@-.timer}} for {{ic|/}} and {{ic|btrfs-scrub@home.timer}} for {{ic|/home}}. You can use {{ic|systemd-escape -p ''/path/to/mountpoint''}} to escape the path; see {{man|1|systemd-escape}} for details.
+
+You can also run the scrub by [[starting]] {{ic|btrfs-scrub@.service}} (with the same encoded path). The advantage of this over {{ic|btrfs scrub}} (as the root user) is that the results of the scrub will be logged in the [[systemd journal]].
+
+On large NVMe drives with insufficient cooling (e.g. in a laptop), scrubbing can read the drive fast enough and long enough to get it very hot. If you are running scrubs with systemd, you can easily limit the rate of scrubbing with the {{ic|IOReadBandwidthMax}} option described in {{man|5|systemd.resource-control}} by using a [[drop-in file]].
+
+==== Balance ====
+
+"A balance passes all data in the file system through the allocator again. It is primarily intended to rebalance the data in the file system across the devices when a device is added or removed. A balance will regenerate missing copies for the redundant RAID levels, if a device has failed." [https://btrfs.readthedocs.io/en/latest/Glossary.html] See [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/FAQ.html#What_does_.22balance.22_do.3F Upstream FAQ page].
+
+On a single-device filesystem, a balance may be also useful for (temporarily) reducing the amount of allocated but unused (meta)data chunks. Sometimes this is needed for fixing [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/FAQ.html#Help.21_Btrfs_claims_I.27m_out_of_space.2C_but_it_looks_like_I_should_have_lots_left.21 "file system full" issues].
+
+ # btrfs balance start --bg /
+ # btrfs balance status /
+
+=== Snapshots ===
+
+"A snapshot is simply a subvolume that shares its data (and metadata) with some other subvolume, using Btrfs's COW capabilities." See [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/SysadminGuide.html#Snapshots Btrfs Wiki SysadminGuide#Snapshots] and [https://btrfs.readthedocs.io/en/latest/Subvolumes.html the Btrfs documentation] for details.
+
+To create a snapshot:
+
+ # btrfs subvolume snapshot ''source'' [''dest''/]''name''
+
+To create a readonly snapshot, add the {{ic|-r}} flag. To create a writable version of a readonly snapshot, simply create a snapshot of it.
+
+{{Note|
+* It is possible for a snapshot to be converted in-place from readonly to writeable with {{ic|btrfs property set -f -ts '/path/to/snapshot' ro false}}. However, this is not recommended because it [https://lore.kernel.org/linux-btrfs/06e92a0b-e71b-eb21-edb5-9d2a5513b718@gmail.com/ causes issues] with any future incremental send/receive. Making a new writeable snapshot prevents such issues.
+* Snapshots are not recursive. Every nested subvolume will be an empty directory inside the snapshot.
+}}
+
+=== Send/receive ===
+
+A subvolume can be sent to stdout or a file using the {{ic|send}} command. This is usually most useful when piped to a Btrfs {{ic|receive}} command. For example, to send a snapshot named {{ic|/root_backup}} (perhaps of a snapshot you made of {{ic|/}} earlier) to {{ic|/backup}}, you would do the following:
+
+ # btrfs send /root_backup | btrfs receive /backup
+
+The snapshot that is sent ''must'' be readonly. The above command is useful for copying a subvolume to an external device (e.g. a USB disk mounted at {{ic|/backup}} above).
+
+The subvolume will be created on the receiving end. It does not need to be created manually.
+
+Another example which creates: {{ic|/mnt/arch-v2/subvolumes/@var}}:
+
+ # btrfs send --proto 2 --compressed-data '/mnt/arch/snapshots/@var' | btrfs receive '/mnt/arch-v2/subvolumes/'
+
+The parameters {{ic|--proto 2}} and {{ic|--compressed-data}} used in the example might be useful for more efficient sending (assumes compressed data).
+
+You can also send only the difference between two snapshots. For example, if you have already sent a copy of {{ic|root_backup}} above and have made a new readonly snapshot on your system named {{ic|root_backup_new}}, then to send only the incremental difference to {{ic|/backup}}, do:
+
+ # btrfs send -p /root_backup /root_backup_new | btrfs receive /backup
+
+Now, a new subvolume named {{ic|root_backup_new}} will be present in {{ic|/backup}}.
+
+See [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/Incremental_Backup.html Btrfs Wiki's Incremental Backup page] and [[#Incremental backup to external drive]] on how to use this for incremental backups and for tools that automate the process.
+
+=== Deduplication ===
+
+Using copy-on-write, Btrfs is able to copy files or whole subvolumes without actually copying the data. However, whenever a file is altered, a new ''proper'' copy is created. Deduplication takes this a step further by actively identifying blocks of data which share common sequences and combining them into an extent with the same copy-on-write semantics.
+
+Tools dedicated to deduplicate a Btrfs formatted partition include {{Pkg|duperemove}} and {{Pkg|bees}}. One may also want to merely deduplicate data on a file based level instead using e.g. {{AUR|rmlint-git}}, {{Pkg|rdfind}}, {{Pkg|jdupes}} or {{AUR|dduper-git}}. For an overview of available features of those programs and additional information, have a look at the [https://btrfs.readthedocs.io/en/latest/Deduplication.html upstream Wiki entry].
+
+
+==== Bees ====
+
+[https://github.com/Zygo/bees Bees] is a root daemon that deduplicates Btrfs filesystem on the block level, ignoring the actual layout of files and subvolumes. As a result, it can deduplicate files between different users without them noticing, also deduplicate between the system files and podman containers, and deduplicate identical parts of files that are partially different.
+
+To run {{Pkg|bees}}, install it and configure. One instance of bees works with a single filesystem, so to process multiple filesystems you need to run multiple instances of bees with different config files. In {{ic|/etc/bees/}} create a copy of {{ic|beesd.conf.sample}} with arbitrary name ending in .conf: {{ic|beesd_myroot.conf}}. Edit it. You must provide the UUID of the filesystem you want to deduplicate (find it with {{ic|lsblk -f}} as root). You must also decide how much RAM this instance of Bees will take. The value affects the minimum size of duplicate blocks Bees will detect. See comments in the config file for examples. Write the value into DB_SIZE variable. 
+
+[[Start/enable]] the Bees {{ic|beesd@''aaaa-bbbb-cccc-dddd''.service}}, where the {{ic|''aaaa-bbbb-cccc-dddd''}} qualifier is the UUID. See its logs with [[journalctl]] if needed.
+
+{{Note|Bees can not deduplicate files that have been snapshotted '''if''' those snapshots had been made when Bees was not running. Running Bees on a fully snapshotted filesystem with lead to increase of used space instead of decrease. Delete all existing snapshots before of after starting Bees, and make new snapshots afterwards as needed. If you make automatic snapshots after boot, make sure the snapshots are taken after Bees has been ''fully'' started. Also, stop Bees while making large balancing operations on the filesystem, such as adding or replacing a drive in RAID.[https://zygo.github.io/bees/gotchas.html]}}
+
+=== Resizing ===
+
+{{Warning|To avoid data loss, ensure that you back up your data before you begin any resizing task.}}
+
+You can grow a file system to the maximum space available on the device, or specify an exact size. Ensure that you grow the size of the device or logical volume before you attempt to increase the size of the file system.
+When specifying an exact size for the file system on a device, either increasing or decreasing, ensure that the new size satisfies the following conditions:
+
+* The new size must be greater than the size of the existing data; otherwise, data loss occurs.
+* The new size must be equal to or less than the current device size because the file system size cannot extend beyond the space available.
+
+{{Note|If you plan to also decrease the size of the logical volume that holds the file system, ensure that you decrease the size of the file system before you attempt to decrease the size of the device or logical volume.}}
+
+To extend the file system size to the maximum available size of the device:
+
+ # btrfs filesystem resize max /
+
+To extend the file system to a specific size:
+
+ # btrfs filesystem resize ''size'' /
+
+Replace {{ic|''size''}} with the desired size in bytes. You can also specify units on the value, such as K (kibibytes), M (mebibytes), or G (gibibytes). Alternatively, you can specify an increase or decrease to the current size by prefixing the value with a plus (+) or a minus (-) sign, respectively:
+
+ # btrfs filesystem resize +''size'' /
+ # btrfs filesystem resize -''size'' /
+
+== Known issues ==
+
+A few limitations should be known before trying.
+
+=== Encryption ===
+
+Btrfs has no built-in encryption support, but there is an ongoing effort [https://lore.kernel.org/linux-btrfs/20240124195831.GA1212739@perftesting/T/] to incorporate encryption based on [[Fscrypt]].
+
+Users can however encrypt the partition before running {{ic|mkfs.btrfs}}, see [[dm-crypt/Encrypting an entire system]]. Another approach is [[Data-at-rest encryption#Stacked filesystem encryption|stacked filesystem encryption]].
+
+=== btrfs check issues ===
+
+The tool {{ic|btrfs check}} has known issues and should not be run without further reading; see section [[#btrfs check]].
+
+== Tips and tricks ==
+
+=== Checksums ===
+
+[https://btrfs.readthedocs.io/en/latest/Checksumming.html CRC32C checksums] for data and metadata are used by default. A different hash (supported options CRC32C, XXHASH64, SHA256, Blake2b) can be configured on file system creation only. If considering what hash to use, {{Aur|btrfs-progs-git}} provides the additional Btrfs ''btrfs-hash-speedtest'' utility to benchmark options. Even if one rather prefers the stable {{Pkg|btrfs-progs}} repository release, it can be useful to test prior to file system creation.
+
+Alternatively, a manual benchmark for XXHASH can be done by executing {{ic|xxhsum -b}} from package {{Pkg|xxhash}} and comparing it with separate benchmarks using {{Pkg|rhash}} for the other supported hash algorithms, e.g. {{ic|rhash --benchmark --crc32c}}.
+
+=== Partitionless Btrfs disk ===
+
+{{Warning|This type of setup is not ideal for a boot device and it is recommended to instead set up a Btrfs partition along with a separate [[EFI system partition]]. Furthermore, GRUB strongly discourages installation to a partitionless disk.}}
+
+Btrfs can occupy an entire data storage device, replacing the [[MBR]] or [[GPT]] partitioning schemes, using [[#Subvolumes|subvolumes]] to simulate partitions. However, using a partitionless setup is not required to simply [[#File system creation|create a Btrfs file system]] on an existing [[partition]] that was created using another method. There are some limitations to partitionless single disk setups:
+
+* Cannot place other [[file systems]] on another partition on the same disk.
+* Due to the previous point, having an [[ESP]] on this disk is not possible. Another device is necessary for [[UEFI]] boot.
+
+To create a partitionless Btrfs disk, run the following command:
+
+ # mkfs.btrfs /dev/sd''X''
+
+For example, use {{ic|/dev/sda}} rather than {{ic|/dev/sda1}}. The latter would format an existing partition instead of replacing the entire partitioning scheme. Because the root partition is Btrfs, make sure {{ic|btrfs}} is compiled into the kernel, or put {{ic|btrfs}} into [[mkinitcpio.conf#MODULES]] and [[regenerate the initramfs]].
+
+Install the [[boot loader]] like you would for a data storage device with a [[Master Boot Record]]. See [[Syslinux#Manually]] or [[GRUB/Tips and tricks#Install to partition or partitionless disk]]. If your kernel does not boot due to {{ic|Failed to mount /sysroot.}}, please add {{ic|1=GRUB_PRELOAD_MODULES="btrfs"}} in {{ic|/etc/default/grub}} and [[GRUB#Generate the main configuration file|generate]] the grub configuration.
+
+=== Conversion ===
+
+{{Warning|There are many reports on the btrfs mailing list about incomplete/corrupt/broken conversions. Make sure you have ''working'' backups of any data you cannot afford to lose. See the [https://btrfs.readthedocs.io/en/latest/Convert.html Convert] page on the Btrfs wiki for more information.}}
+
+{{Note|Converting an existing filesystem to Btrfs is a time consuming operation. For a 4 TiB file system and a regular HDD, it can take up to 10 hours.}}
+
+==== Ext3/4 to Btrfs conversion ====
+
+Boot from an install CD, then convert by doing:
+
+ # btrfs-convert /dev/''partition''
+
+Mount the partition and test the conversion by checking the files.  Be sure to change the {{ic|/etc/fstab}} to reflect the change (''type'' to {{ic|btrfs}} and ''fs_passno'' −the last field− to {{ic|0}} as Btrfs does not do a file system check on boot). Also note that the UUID of the partition will have changed, so update fstab accordingly when using UUIDs. {{ic|chroot}} into the system and rebuild your boot loader's menu list (see [[Install from existing Linux]]). If converting a root file system, while still chrooted, [[regenerate the initramfs]] or the system will not successfully boot.
+
+{{Note|
+* If there is anything wrong, either unable to mount or write files to the newly converted Btrfs; there is always the option to rollback as long as the backup subvolume {{ic|/ext2_saved}} is still there. Use the {{ic|btrfs-convert -r /dev/''partition''}} command to rollback; this will discard any modifications to the newly converted Btrfs file system.
+* If mounting a converted ext partition results in an error like {{ic|ERROR: dev extent devid 1 physical offset XXX len XXX is beyond device boundary XXX}}, the conversion might succeed if you create some empty space after the partition first. Rollback the conversion, then use {{ic|resize2fs}} to shrink the partition by 50000 blocks and then grow it by 5000 blocks (creating 45000 free blocks). Then try the conversion again. See [https://bugzilla.kernel.org/show_bug.cgi?id{{=}}206995 upstream bug report].
+}}
+
+After confirming that there are no problems, complete the conversion by deleting the backup {{ic|ext2_saved}} sub-volume. Note that you cannot revert back to ext3/4 without it.
+
+ # btrfs subvolume delete /ext2_saved
+
+Remember that some applications which were installed prior have to be adapted to Btrfs.
+
+==== NTFS to Btrfs conversion ====
+
+NTFS can be converted using {{AUR|ntfs2btrfs}} or {{AUR|ntfs2btrfs-git}}.
+
+Unmount the target filesystem and run the conversion, the exact compression and checksum types can be specified:
+
+ # ntfs2btrfs -c zstd -h crc32c /dev/partition
+
+If everything works well after the conversion, you can delete the {{ic|image/ntfs.img}} image otherwise used for restoring the original filesystem.
+
+==== After conversion ====
+
+{{Warning|Only ever take these steps after confirming you're not going to revert to the original filesystem, as they make doing so impossible, even if you kept the recovery files.}}
+
+There are some steps you can take after converting an existing filesystem into Btrfs.
+
+Make file data more contiguous
+
+ # btrfs filesystem defrag -v -r -f -t 32M /mnt/filesystem
+
+[[#Balance]] to make Btrfs metadata more compact
+
+=== Corruption recovery ===
+
+{{Warning|The tool {{ic|btrfs check}} has known issues, see section [[#btrfs check]]}}
+
+''btrfs-check'' cannot be used on a mounted file system. To be able to use ''btrfs-check'' without booting from a live USB, add it to the initial ramdisk:
+
+{{hc|/etc/mkinitcpio.conf|output=
+BINARIES=(btrfs)
+}}
+
+[[Regenerate the initramfs]].
+
+Then if there is a problem booting, the utility is available for repair.
+
+{{Note|If the fsck process has to invalidate the space cache (and/or other caches?), it is normal for a subsequent boot to hang up for a while (it may give console messages about btrfs-transaction being hung). The system should recover from this after a while.}}
+
+See {{man|8|btrfs-check}} for more information.
+
+=== Booting into snapshots ===
+
+In order to boot into a snapshot, the same procedure applies as for mounting a subvolume as your root partition, as given in section [[#Mounting subvolume as root|mounting a subvolume as your root partition]], because snapshots can be mounted like subvolumes.
+
+* If using [[GRUB]], you can automatically populate your boot menu with Btrfs snapshots when regenerating the configuration file with the help of {{Pkg|grub-btrfs}} or {{AUR|grub-btrfs-git}}.
+* If using [[rEFInd]], you can automatically populate your boot menu with Btrfs snapshots with the help of {{AUR|refind-btrfs}}, after [[enabling]] {{ic|refind-btrfs.service}}.
+* If using [[Limine]], you can install {{AUR|limine-snapper-sync}}, which automatically generates snapshot entries in your boot menu whenever your [[Snapper]] list changes after enabling {{ic|limine-snapper-sync.service}}. See [[Limine#Snapper snapshot integration for Btrfs]] for more information.
+
+=== Use Btrfs subvolumes with systemd-nspawn ===
+
+See the [[systemd-nspawn#Use Btrfs subvolume as container root]] and [[systemd-nspawn#Use temporary Btrfs snapshot of container]] articles.
+
+=== Reducing access time metadata updates ===
+
+Because of the copy-on-write nature of Btrfs, simply accessing files can trigger the metadata copy and writing. Reducing the frequency of access time updates may eliminate this unexpected disk usage and increase performance. See [[fstab#atime options]] for the available options.
+
+=== Incremental backup to external drive ===
+
+The following packages use {{ic|btrfs send}} and {{ic|btrfs receive}} to send backups incrementally to an external drive. Refer to their documentation to see differences in implementation, features, and requirements.
+
+* {{App|snbk|A command-line tool provided by {{Pkg|snapper}} for copying snapper snapshots to remote or local backups.|http://snapper.io/|{{Pkg|snapper}}}}
+* {{App|btrbk|Tool for creating snapshots and remote backups of Btrfs subvolumes.|https://github.com/digint/btrbk|{{Pkg|btrbk}}}}
+* {{App|snap-sync|Use [[Snapper]] snapshots to backup to external drive or remote machine.|https://github.com/wesbarnett/snap-sync|{{AUR|snap-sync}}}}
+
+The following package allows backing up snapper snapshots to non-Btrfs file systems:
+
+* {{App|snapborg|borgmatic-like tool which integrates snapper snapshots with {{Pkg|borg}} backups.|https://github.com/enzingerm/snapborg|{{AUR|snapborg}}}}
+
+=== Automatic snapshots ===
+
+For the managing and automatic creation of Btrfs snapshot, one may use a snapshot manager such as [[Snapper]], [[Timeshift]] or [[Yabsnap]].
+
+=== Automatic notifications ===
+
+Desktop notifications help you notice serious Btrfs issues immediately, offering better awareness compared to having no notifications at all.
+
+{{AUR|btrfs-desktop-notification}} provides desktop notifications for the following events:
+
+* Booting into any read-only snapshot or system.
+* Btrfs warning, error, or fatal messages appearing in the dmesg log.
+
+See https://gitlab.com/Zesko/btrfs-desktop-notification for more information and configuration.
+
+For proactive monitoring of the allocator state described in [[#Displaying used/free space]], install the {{AUR|btrfs-headroom}} package. It performs read-only periodic checks of raw allocator and metadata headroom and can report elevated risk of allocator-related {{ic|ENOSPC}}, including conditions not apparent from {{man|1|df}}. To run periodic checks, [[enable]] {{ic|btrfs-headroom.timer}}. For desktop notifications, install the {{Pkg|jq}} and {{Pkg|libnotify}} packages and [[enable]] the {{ic|btrfs-headroom-notify.path}} user unit.
+
+=== space cache v1 is being deprecated ===
+If your Btrfs filesystem was created with older defaults, you may see a warning similar to this in your system logs:
+{{bc|1=BTRFS warning (device sdb4): space cache v1 is being deprecated and will be removed in a future release, please use -o space_cache=v2}}
+To convert the Btrfs space cache from the older v1 format to the newer v2 format and resolve this warning, 
+you can either modify the mount options for the partition to include {{ic|space_cache{{=}}v2}} in [[fstab]],
+or perform the conversion manually:
+
+ # umount /dev/''partition''
+ # mount /dev/''partition'' -o rw,space_cache=v2 /mnt
+ # umount /mnt
+
+The result of the conerversation can be inspected in the [[systemd journal]] log, e.g.
+{{bc|1=
+kernel: BTRFS info (device ...): creating free space tree
+kernel: BTRFS info (device ...): setting compat-ro feature flag for FREE_SPACE_TREE (0x1)
+kernel: BTRFS info (device ...): setting compat-ro feature flag for FREE_SPACE_TREE_VALID (0x2)
+kernel: BTRFS info (device ...): cleaning free space cache v1
+kernel: BTRFS info (device ...): enabling free space tree
+}}
+{{Note|After this conversion, Btrfs sets a compat-ro feature flag on the filesystem. As a result, this filesystem may no longer be able to be mounted by very old Btrfs kernel implementations.}}
+
+== Troubleshooting ==
+
+See the [https://btrfs.readthedocs.io/en/latest/trouble-index.html Btrfs Troubleshooting pages] and [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/Problem_FAQ.html Btrfs Problem FAQ] for general troubleshooting.
+
+=== GRUB ===
+
+==== Partition offset ====
+
+The offset problem may happen when you try to embed {{ic|core.img}} into a partitioned disk. It means that [[Special:Diff/319474|it is OK]] to embed GRUB's {{ic|core.img}} into a Btrfs pool on a partitionless disk (e.g. {{ic|/dev/sd''X''}}) directly.
+
+[[GRUB]] can boot Btrfs partitions, however the module may be larger than other [[file systems]]. And the {{ic|core.img}} file made by {{ic|grub-install}} may not fit in the first 63 sectors (31.5KiB) of the drive between the MBR and the first partition. Up-to-date partitioning tools such as {{ic|fdisk}} and {{ic|gdisk}} avoid this issue by offsetting the first partition by roughly 1MiB or 2MiB.
+
+=== Long boot time ===
+
+Sometimes a large (> 4TB) Btrfs volume can take a long time to mount, slowing down boots.
+Changing the group tree to block group tree can help with that
+
+ # btrfstune --convert-to-block-group-tree /dev/sd''X''
+
+=== Mounting timed out ===
+
+Sometimes, especially with large RAID1 arrays, mounting might time out during boot with a journal message such as:
+
+{{bc|1=
+Jan 25 18:05:12 host systemd[1]: storage.mount: Mounting timed out. Terminating.
+Jan 25 18:05:46 host systemd[1]: storage.mount: Mount process exited, code=killed, status=15/TERM
+Jan 25 18:05:46 host systemd[1]: storage.mount: Failed with result 'timeout'.
+Jan 25 18:05:46 host systemd[1]: Failed to mount /data.
+Jan 25 18:05:46 host systemd[1]: Startup finished in 32.943s (firmware) + 3.097s (loader) + 7.247s (kernel)>
+Jan 25 18:05:46 host kernel: BTRFS error (device sda): open_ctree failed
+}}
+
+This can easily be worked around by providing a longer timeout via the systemd-specific mount option {{ic|x-systemd.mount-timeout}} in [[fstab]]. For example:
+
+ UUID=''xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx''  /data  btrfs  rw,relatime,x-systemd.mount-timeout=5min  0 0
+
+=== BTRFS: open_ctree failed ===
+
+{{Accuracy|The status is old. Replacing udev hook with systemd makes no sense since they both use systemd-udevd.}}
+
+As of November 2014, there seems to be a bug in [[systemd]] or [[mkinitcpio]] causing the following error on systems with multi-device Btrfs file system using the {{ic|btrfs}} hook in {{ic|mkinitcpio.conf}}:
+
+{{bc|<nowiki>
+BTRFS: open_ctree failed
+mount: wrong fs type, bad option, bad superblock on /dev/sdb2, missing codepage or helper program, or other error
+
+In some cases, useful info is found in syslog - try dmesg|tail or so.
+
+You are now being dropped into an emergency shell.
+</nowiki>}}
+
+A workaround is to remove {{ic|btrfs}} from the {{ic|HOOKS}} array in {{ic|/etc/mkinitcpio.conf}} and instead add {{ic|btrfs}} to the {{ic|MODULES}} array. Then [[regenerate the initramfs]] and reboot.
+
+You will get the same error if you try to mount a raid array without one of the devices. In that case, you must add the {{ic|degraded}} mount option to {{ic|/etc/fstab}}. If your root resides on the array, you must also add {{ic|1=rootflags=degraded}} to your [[kernel parameters]].
+
+As of August 2016, a potential workaround for this bug is to mount the array by a single drive only in {{ic|/etc/fstab}}, and allow Btrfs to discover and append the other drives automatically. Group-based identifiers such as UUID and LABEL appear to contribute to the failure. For example, a two-device RAID1 array consisting of 'disk1' and disk2' will have a UUID allocated to it, but instead of using the UUID, use only {{ic|/dev/mapper/disk1}} in {{ic|/etc/fstab}}. For a more detailed explanation, see the following [https://web.archive.org/web/20161108175034/http://blog.samcater.com/fix-for-btrfs-open_ctree-failed-when-running-root-fs-on-raid-1-or-raid10-arch-linux/ blog post].
+
+Another possible workaround is to remove the {{ic|udev}} hook in [[mkinitcpio.conf]] and replace it with the {{ic|systemd}} hook. In this case, {{ic|btrfs}} should ''not'' be in the {{ic|HOOKS}} or {{ic|MODULES}} arrays.
+
+See the [https://bbs.archlinux.org/viewtopic.php?id=189845 original forums thread] and {{Bug|42884}} for further information and discussion.
+
+=== btrfs check ===
+
+{{Out of date|The "heavy development" status is old.}}
+
+{{Warning|Since Btrfs is under heavy development, especially the {{ic|btrfs check}} command, it is highly recommended to create a [[backup]] and consult {{man|8|btrfs-check}} before executing {{ic|btrfs check}} with the {{ic|--repair}} switch.}}
+
+The {{man|8|btrfs-check}} command can be used to check or repair an unmounted Btrfs file system. However, this repair tool is still immature and not able to repair certain file system errors even those that do not render the file system unmountable.
+
+=== Constant drive activity ===
+
+Since the [[kernel]] version 6.2, {{ic|1=discard=async}} {{man|8|mount}} option is set by default. This [https://lore.kernel.org/linux-btrfs/Y%2F%2Bn1wS%2F4XAH7X1p@nz/#r has been reported] to cause constant drive activity on some drives even while idle, as the discard queue is filled faster than it is processed. This can cause increased power usage, especially on NVMe-based drives.
+
+As of kernel version 6.3, the default discard {{ic|iops_limit}} has been changed from 100 to 1000 to address this issue. You can manually set it to a desired value on an old kernel version, e.g.
+
+ # echo 1000 > /sys/fs/btrfs/''uuid''/discard/iops_limit
+
+Where {{ic|''uuid''}} is the UUID of the Btrfs file system. The limit of {{ic|1000}} will need to be tuned experimentally.
+
+To set the parameter on boot, [[systemd-tmpfiles]] may be used, e.g. by creating the following file:
+
+{{hc|/etc/tmpfiles.d/btrfs-discard.conf|
+w /sys/fs/btrfs/''uuid''/discard/iops_limit - - - - 1000
+}}
+
+Alternatively, one can disable asynchronous discard altogether by mounting using the {{ic|nodiscard}} mount option in [[fstab]], and instead use [[Solid state drive#Periodic TRIM|Periodic TRIM]].
+
+=== Device total_bytes should be at most X but found Y ===
+
+If a drive has been moved from another computer or the order of devices has changed, and the difference in sizes reported is tiny (at most megabytes), it is possible [[Wikipedia:Host protected area|HPA (Host Protected Area)]] is in effect.
+
+To verify if HPA is enabled, use {{Pkg|hdparm}}:
+
+ # hdparm -N DEVICE
+
+The output provides two numbers: the number of visible sectors and the actual number of sectors. If they differ, HPA is enabled.
+
+If motherboard sets this forcefully and the firmware provides no option to turn that off, the only option is to shrink the affected file system.  This is most easily done on the original computer, or on any machine that does not apply HPA.
+
+=== No space left on device ===
+
+The blog post [https://marc.merlins.org/perso/btrfs/post_2014-05-04_Fixing-Btrfs-Filesystem-Full-Problems.html Fixing Btrfs Filesystem Full Problems] suggests and explains the following checks/steps:
+
+# Clear space now (remove historical snapshots)
+# Is your filesystem really full? Mis-balanced metadata and/or data chunks (run {{ic|btrfs balance}})
+# Is your filesystem really full? Mis-balanced data chunks
+# Is your filesystem really full? Mis-balanced metadata
+# Balance cannot run because the filesystem is full (temporarily add a device such as USB key or loop device to the btrfs filesystem using {{ic|btrfs device add}} before running {{ic|btrfs balance}})
+
+For more up-to-date instructions regarding ENOSPC ("Out of disk space"), see [https://wiki.tnonline.net/w/Btrfs/ENOSPC ENOSPC - No available disk space | Forza's Ramblings].
+
+=== Warning about device extents that are inside the reserved range ===
+Btrfs filesystems created prior v4.1 btrfs-progs may produce a warning in the kernel log:
+
+ kernel: BTRFS warning (device dm-0): '''devid 1''' physical 0 len 4194304 inside the reserved space
+
+because Btrfs has now reserved the first 1MiB for the primary super block (at 64KiB offset) and bootloaders. To resolve the warning, start a dedicated filesystem balance for the respective ''devid'':
+
+ # btrfs balance start --force -sdrange=0..1048576,'''devid=1''' ''/mnt/filesystem''
+
+More details, before and after, gives {{ic|btrfs inspect-internal list-chunks}}. [https://github.com/torvalds/linux/commit/3613249a1b30ef6f7a7566e39878ea550af51049] [https://unix.stackexchange.com/questions/793746/what-does-btrfs-warning-device-nvme0n1p7-devid-1-physical-0-len-4194304-insi]
+
+== See also ==
+
+* '''Official site'''
+** [https://btrfs.readthedocs.io Btrfs Documentation]
+** [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/ Archived Btrfs Wiki]
+* '''Performance related'''
+** [https://superuser.com/questions/432188/should-i-put-my-multi-device-btrfs-filesystem-on-disk-partitions-or-raw-devices Btrfs on raw disks?]
+** [https://lore.kernel.org/linux-btrfs/CAKcLGm_MKEdTiHFBd-b-v2sN5gJmgFRqsykzWRXTVqUw4O6Acw@mail.gmail.com/ Varying leafsize and nodesize in Btrfs]
+** [https://lore.kernel.org/linux-btrfs/jgui4j$th5$1@dough.gmane.org/ Btrfs support for efficient SSD operation (data blocks alignment)]
+** [https://archive.kernel.org/oldwiki/btrfs.wiki.kernel.org/index.php/FAQ.html#Is_Btrfs_optimized_for_SSD.3F Is Btrfs optimized for SSDs?]
+** [https://blog.erdemagaoglu.com/post/4605524309/lzo-vs-snappy-vs-lzf-vs-zlib-a-comparison-of Lzo vs. zLib]
+* '''Miscellaneous'''
+** [[Debian:Btrfs]]
+** [[Gentoo:Btrfs]]
+** [[Funtoo:BTRFS Fun]]
+** [https://www.phoronix.com/scan.php?page=news_item&px=MTA0ODU Avi Miller presenting Btrfs] at SCALE 10x, January 2012.
+** [https://www.phoronix.com/scan.php?page=news_item&px=MTA4Mzc Summary of Chris Mason's talk] from LFCS 2012
+** [https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=35054394c4b3cecd52577c2662c84da1f3e73525 Btrfs: stop providing a bmap operation to avoid swapfile corruptions] 2009-01-21
+** [https://marc.merlins.org/perso/btrfs/post_2014-03-22_Btrfs-Tips_-Doing-Fast-Incremental-Backups-With-Btrfs-Send-and-Receive.html Doing Fast Incremental Backups With Btrfs Send and Receive]

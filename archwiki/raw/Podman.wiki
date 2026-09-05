@@ -1,0 +1,583 @@
+[[Category:Virtualization]]
+[[Category:Sandboxing]]
+[[ja:Podman]]
+[[pt:Podman]]
+[[zh-hans:Podman]]
+{{Related articles start}}
+{{Related|systemd-nspawn}}
+{{Related|Linux Containers}}
+{{Related|Docker}}
+{{Related|Buildah}}
+{{Related|Vagrant}}
+{{Related articles end}}
+[https://podman.io/ Podman] is an alternative to [[Docker]], providing a similar interface. It supports rootless containers and a shim service for ''docker-compose''.
+
+== Installation ==
+
+[[Install]] the {{Pkg|podman}} package.
+
+Podman depends on the {{Pkg|netavark}} package as the default network backend for rootful containers (see {{man|1|podman-network}}). Netavark depends on {{Pkg|aardvark-dns}} for name resolution among containers in the same network. Support for the alternative network backend (CNI, {{Pkg|cni-plugins}}) is deprecated.
+
+If you want to replace [[Docker]], one can install {{Pkg|podman-docker}} to mimic the docker binary along with man pages. 
+
+Unlike [[Docker]], Podman does not require a daemon, but there is one providing an API for services like [[cockpit]] via {{Pkg|cockpit-podman}}.
+
+For advanced usage related to building containers see {{man|1|podman-build}} which is based on [[Buildah]].
+
+== Configuration ==
+
+Configuration files for configuring how containers behave are located at {{ic|/usr/share/containers/}}. You must copy necessary files to {{ic|/etc/containers}} before editing. To configure the network bridge interface used by Podman, see {{ic|/etc/cni/net.d/87-podman.conflist}}.
+
+=== Registries ===
+
+By default, no container image registries are configured in Arch Linux [https://github.com/containers/podman/issues/8896]. This means unqualified searches like {{ic|podman search httpd}} will not work. To make Podman behave like Docker, configure {{man|5|containers-registries.conf}}:
+
+{{hc|/etc/containers/registries.conf.d/10-unqualified-search-registries.conf|2=
+unqualified-search-registries = ["docker.io"]
+}}
+
+=== User namespace mode ===
+
+By default, processes in Podman containers run within the same user namespace as the caller, i.e. containers are not isolated by the {{man|7|user_namespaces}} feature. This is the behavior of {{ic|1=--userns=host}}, see {{man|1|podman-run}}.
+
+The {{ic|1=--userns=auto}} flag automatically creates a unique user namespace for the container using an empty range of UIDs and GIDs:
+
+* For containers started by root, the {{ic|1=--userns=auto}} flag requires the user name {{ic|containers}} to be specified in the {{ic|/etc/subuid}} and {{ic|/etc/subgid}} files with an unused range of IDs. For example: {{ic|containers:2147483647:2147483648}}.
+* For containers started by other users, the user's range from the {{ic|/etc/subuid}} and {{ic|/etc/subgid}} files will be used. See [[#Rootless Podman]] for the necessary configuration.
+
+There are other valid values for the {{ic|--userns}} flag, see {{man|1|podman-run}} for details. The user namespace mode can also be configured in the {{man|5|containers.conf}} file on a per-system or per-user basis.
+
+=== Rootless Podman ===
+
+{{Warning|Rootless Podman relies on the unprivileged user namespace usage ({{ic|CONFIG_USER_NS_UNPRIVILEGED}}) which has some serious security implications, see [[Security#Sandboxing applications]] for details.}}
+
+By default, only {{ic|root}} is allowed to run containers (or namespaces in kernelspeak). Running rootless Podman improves security as an attacker will not have root privileges over your system, and also allows multiple unprivileged users to run containers on the same machine. See also {{man|1|podman|Rootless mode}} and the official [https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md rootless tutorial] (may be outdated).
+
+==== Enable kernel.unprivileged_userns_clone ====
+
+First, check the value of {{ic|kernel.unprivileged_userns_clone}} by running:
+
+ $ sysctl kernel.unprivileged_userns_clone
+
+If it is currently set to {{ic|0}}, enable it by setting {{ic|1}} via [[sysctl]] or a [[kernel parameter]].
+
+{{Note|{{Pkg|linux-hardened}} has {{ic|kernel.unprivileged_userns_clone}} set to {{ic|0}} by default.}}
+
+==== Set subuid and subgid ====
+
+In order for users to run rootless Podman, a {{man|5|subuid}} and {{man|5|subgid}} configuration entry must exist for each user that wants to use it. New [[users]] created using {{man|8|useradd}} have these entries by default.
+
+===== Migration for users created prior to shadow 4.11.1-3 =====
+
+Users created prior to {{Pkg|shadow}} 4.11.1-3 do not have entries in {{ic|/etc/subuid}} and {{ic|/etc/subgid}} by default. An entry can be created for them using the {{man|8|usermod}} command or by manually modifying the files.
+
+The following command enables the {{ic|''username''}} user and group to run Podman containers (or other types of containers in that case). It allocates a given range of UIDs and GIDs to the given user and group.
+
+ # usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ''username''
+
+The above range for the user {{ic|''username''}} may already be taken by another user as it defines the default range for the first user on the system. If in doubt, first consult the {{ic|/etc/subuid}} and {{ic|/etc/subgid}} files to find the already reserved ranges.
+
+{{Note|
+* Many images require 65536 UIDs/GIDs for mapping (notably the base ''busybox'' and ''alpine'' images). It is recommended that you allocate at least that many UIDs/GIDs for each user to maximize compatibility with Docker.
+* The configuration file lists the start and count and not the start and end subuid like the ''usermod'' command. See {{man|5|subuid}}.
+}}
+
+===== Workaround for users managed by homed =====
+
+Homed does not seem to allocate ''gid'' and ''uid'' entries to its users. To do this manually, run:
+
+ # usermod --add-subuids 524288-589823 --add-subgids 524288-589823 ''username''
+
+Or simply edit the following configuration files as root and add these lines
+
+{{hc|/etc/subuid|2=
+''username'':524288:65536
+}}
+
+{{hc|/etc/subgid|2=
+''username'':524288:65536
+}}
+
+This allocates ''uid'' and ''gid'' range {{ic|524288-589823}} to the {{ic|''username''}} user. If these ranges are already taken by other users, you need to shift/adjust the ranges accordingly.
+
+You might need to reboot to reflect the changes.
+
+{{Note|
+* This is a workaround only, [https://github.com/containers/podman/issues/20040#issuecomment-1731335711 Podman does not seem to support homed officially].
+* This is a [https://github.com/systemd/systemd/issues/29297 known issue] of ''systemd-homed''.
+* Using Docker [https://github.com/systemd/systemd/issues/29297#issuecomment-1823566012 seems to work] (adding the user to the {{ic|docker}} group, but it has its own [https://docs.docker.com/engine/security/ security implications]).
+}}
+
+===== Propagate changes to subuid and subgid =====
+
+Rootless Podman uses a pause process to keep the unprivileged namespaces alive. This prevents any change to the {{ic|/etc/subuid}} and {{ic|/etc/subgid}} files from being propagated to the rootless containers while the pause process is running. For these changes to be propagated it is necessary to run:
+
+ $ podman system migrate
+
+After this, the user/group specified in the above files is able to start and run Podman containers.
+
+==== Enable native rootless overlays ====
+
+Previously, it was necessary to use the {{Pkg|fuse-overlayfs}} package for [[FUSE]] overlay mounts in a rootless environment. However, modern versions of Podman and Linux kernel [https://www.redhat.com/sysadmin/podman-rootless-overlay support] ''native'' rootless overlays, which yields better performance.
+
+{{Note|When starting a rootless container with modified UID/GID mapping, and no container has yet been created with the specified container image and UID/GID mapping, using ''native overlays'' causes a performance penalty compared to ''fuse-overlayfs'', because the UID/GID of all files for the container must be updated on disk. This affects especially {{ic|--userns auto}} where different UID/GID mappings could potentially be used on each invocation. See the [https://github.com/containers/podman/blob/main/docs/tutorials/performance.md#choosing-a-storage-driver Podman performance guide] for details.}}
+
+To migrate from {{Pkg|fuse-overlayfs}}, run the following command (it will unfortunately delete all pulled images):
+
+ $ podman system reset
+
+Also make sure that Podman uses the {{ic|overlay}} driver and that the {{ic|mount_program}} parameter is not defined in {{man|5|containers-storage.conf}}. Follow the instructions in [[Docker#Enable native overlay diff engine]].
+
+To verify that native rootless overlays are enabled, run
+
+ $ podman info | grep -i overlay
+
+It should show {{ic|graphDriverName: overlay}} and {{ic|Native Overlay Diff: "true"}}.
+
+==== Networking ====
+
+Podman depends on {{Pkg|passt}}, which provides [https://passt.top/passt/about/#pasta pasta] as the default rootless network backend.
+
+An alternative rootless network backend is {{Pkg|slirp4netns}}, which was the default up to Podman 5.
+
+A major difference between the two is outlined in [https://blog.podman.io/2024/03/podman-5-0-breaking-changes-in-detail/#:~:text=Pasta%20by%20default%20performs%20no%20Network%20Address%20Translation%20(NAT)%20and%20copies%20the%20ip%20addresses%20from%20your%20main%20interface%20into%20the%20container%20namespace. Podman 5.0 breaking changes in detail]:
+
+:''Pasta by default performs no Network Address Translation (NAT) and copies the ip addresses from your main interface into the container namespace.''
+
+The consequences of this change are explained in upstream's [https://github.com/containers/podman/blob/main/rootless.md Shortcomings of Rootless Podman]:
+
+:''Since pasta copies the IP address of the main interface, connections to that IP from containers do not work. This means that unless you have more than one interface, inter-container connections cannot be made without explicitly passing a pasta network configuration, either in {{ic|containers.conf}} or at runtime.''
+
+{{Tip|The container-to-host communication problem is fixed in Podman 5.3.[https://blog.podman.io/2024/10/podman-5-3-changes-for-improved-networking-experience-with-pasta/]}}
+
+An example to mimic slirp4netns behavior is given in the "Podman 5.0 breaking changes" blog post:
+
+{{hc|containers.conf|2=
+[network]
+pasta_options = ["-a", "10.0.2.0", "-n", "24", "-g", "10.0.2.2", "--dns-forward", "10.0.2.3"]
+}}
+
+Also, the default rootless networking tool can be selected in {{ic|containers.conf}} under the {{ic|[network]}} section with {{ic|default_rootless_network_cmd}}, which can be set to {{ic|pasta}} or {{ic|slirp4netns}}. So, if you run into bugs, you can always revert to slirp4netns like so (provided it is installed):
+
+{{hc|containers.conf|2=
+[network]
+default_rootless_network_cmd = "slirp4netns"
+}}
+
+===== Dual-stack IPv4/IPv6 =====
+
+The default network created by Podman only supports IPv4 networking [https://github.com/containers/podman/issues/14768].
+
+You can create a new network with support for dual-stack IPv4/IPv6 support using:
+
+ $ podman network create --ipv6 podman_dual_stack
+
+To change the default rootless network to this, set {{ic|netns}}:
+
+{{hc|/etc/containers/containers.conf|2=
+[containers]
+netns = "podman_dual_stack"
+}}
+
+=== Storage ===
+
+The configuration for how and where container images and instances are stored takes place in {{ic|/etc/containers/storage.conf}}.
+
+{{Note|When using [[#Rootless Podman]], overrides to the storage settings can be added to {{ic|$XDG_CONFIG_HOME/containers/storage.conf}} on a per-user basis.}}
+
+The default {{ic|overlay}} driver is well tested and supports reflink copies [https://github.com/containers/podman/issues/6563#issuecomment-659085291] on filesystems that support it ([[Btrfs]], [[XFS]], [[ZFS]]...) [https://github.com/containers/podman/blob/main/docs/tutorials/performance.md#choosing-a-host-file-system].
+
+For more information on the available alternatives and other configuration options, see {{man|5|containers-storage.conf|STORAGE_TABLE}}.
+
+=== Foreign architectures ===
+
+Podman is able to run images built for different CPU architecture than the host using the [[Wikipedia:binfmt_misc]] system.
+
+To enable it, install {{Pkg|qemu-user-static}} and {{Pkg|qemu-user-static-binfmt}}.
+
+[[systemd]] comes with the {{ic|systemd-binfmt.service}} service which should enable new rules.
+
+Verify that binfmt rules have been added:
+
+{{hc|$ ls /proc/sys/fs/binfmt_misc|
+DOSWin        qemu-cris        qemu-ppc      qemu-sh4eb        status
+qemu-aarch64  qemu-m68k        qemu-ppc64    qemu-sparc        
+qemu-alpha    qemu-microblaze  qemu-riscv64  qemu-sparc32plus  
+qemu-arm      qemu-mips        qemu-s390x    qemu-sparc64      
+qemu-armeb    qemu-mipsel      qemu-sh4      register
+}}
+
+Podman should now be able to run foreign architecture images. Most commands use the foreign architecture when {{ic|--arch}} option is passed.
+
+Example:
+
+{{hc|# podman run --arch arm64 'docker.io/alpine:latest' arch|
+aarch64
+}}
+
+=== Docker Compose ===
+
+Podman has a ''compose'' subcommand which is a thin wrapper around a compose provider, either {{Pkg|docker-compose}} or {{Pkg|podman-compose}}. If both are installed, ''docker-compose'' takes precedence. You can override this using the {{ic|PODMAN_COMPOSE_PROVIDER}} environment variable.
+
+If you want to use ''docker-compose'', you will need to [[enable]] the {{ic|podman.socket}} [[user unit]] and set docker socket environment variable for that user:
+
+ $ export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+
+This is not required when using ''podman-compose'' as it will use ''podman'' directly.
+
+{{Note|
+* If you have enabled buildkit in docker, the integration will not work. You need to disable buildkit by setting the {{ic|1=DOCKER_BUILDKIT=0}} [[environment variable]].
+* {{Pkg|podman-compose}} has compatibility issues, see [https://github.com/containers/podman-compose/issues].
+}}
+
+=== NVIDIA GPUs ===
+
+[https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#podman NVIDIA Container Toolkit] provides container runtime for NVIDIA GPUs. Install the {{Pkg|nvidia-container-toolkit}} package. It contains a [[pacman hook]] that generates the CDI specification for your GPU and saves it in {{ic|/etc/cdi/nvidia.yaml}}.
+
+Test the setup:
+
+ $ podman run --rm --gpus all archlinux nvidia-smi -L
+
+{{Note|The NVIDIA CDI hook does not work with the {{ic|--userns nomap}} and {{ic|--userns auto}} podman run parameters. [https://github.com/NVIDIA/nvidia-container-toolkit/issues/648]}}
+
+=== Containers with restart policy ===
+
+To automatically start containers with a restart policy, [[enable]] {{ic|podman-restart.service}}.
+
+== Runtimes ==
+
+Podman allows you to use different container runtimes that should each more or less provide the same features and guarantees.
+
+* {{pkg|runc}}: The former default runtime.
+* {{pkg|crun}}: The new default runtime. Generally preferable since it is faster than {{ic|runc}}.
+* {{pkg|krun}}: A special {{pkg|crun}} runtime mode that uses KVM-backed [https://github.com/containers/krunvm krunvm]-based micro VMs to execute the container. Compared to a full VM, these micro VMs start in milliseconds and use a different kernel. This should provide better security compared to regular containers that run with the host kernel.
+* {{aur|youki}}: Memory-safe runtime written in Rust.
+
+To start a single command in an alternative runtime, you can use {{ic|--runtime}} like so:
+
+ $ podman run --rm --runtime=krun archlinux uname -a
+
+To make this change permanent, you can put it into {{ic|containers.conf}}:
+
+{{hc|containers.conf|2=
+[engine]
+runtime = "krun"
+}}
+
+== Quadlet ==
+
+[https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html Quadlet] allows to manage Podman containers with [[systemd]].
+
+For rootless Podman, place Quadlet files under one of following directories:
+
+* {{ic|$XDG_CONFIG_HOME/containers/systemd/}} or {{ic|~/.config/containers/systemd/}}
+* {{ic|/etc/containers/systemd/users/''UID''}} for the user matching {{ic|''UID''}}
+* {{ic|/etc/containers/systemd/users/}} for all users
+
+For Podman with root permissions, the directory is {{ic|/etc/containers/systemd/}}.
+
+Podman will read Quadlet files with extensions ''.container'', ''.volume'', ''.network'', ''.kube'', ''.image'', ''.build'' and ''.pod''. A corresponding ''.service'' file will be generated using {{man|7|systemd.generator}}. The Quadlet files are read during boot or manually by running a [[daemon-reload]].
+
+Quadlet files can also be generated from Podman commands using {{Pkg|podlet}}.
+
+For example, here is a command that will run [[Syncthing]] container from LinuxServer.io:
+
+ $ podman run \
+     --rm \
+     --replace \
+     --label io.containers.autoupdate=registry \
+     --name syncthing \
+     --hostname=syncthing \
+     --uidmap 1000:0:1 \
+     --uidmap 0:1:1000 \
+     --uidmap 1001:1001:64536 \
+     --env PUID=1000 \
+     --env PGID=1000 \
+     --env TZ=Etc/UTC \
+     --publish 127.0.0.1:8384:8384/tcp \
+     --publish 22000:22000/tcp \
+     --volume /path/to/syncthing/config:/config \
+     --volume /path/to/data1:/data1 \
+     lscr.io/linuxserver/syncthing:latest
+
+To manage it as a systemd service, create the following Quadlet file:
+
+{{hc|~/.config/containers/systemd/syncthing-lsio.container|2=
+[Unit]
+Description=Syncthing container
+
+# Containers can depend on one another using systemd dependencies, but with a ".service" suffix.
+# For example, to make another container wait until this one starts, add "After=syncthing-lsio.service"
+# to its [Unit] section.
+
+[Container]
+ContainerName=syncthing
+Image=lscr.io/linuxserver/syncthing:latest
+
+# Enable auto-update container
+AutoUpdate=registry
+
+Volume=/path/to/syncthing/config:/config
+Volume=/path/to/data1:/data1
+
+HostName=syncthing
+PublishPort=127.0.0.1:8384:8384/tcp
+PublishPort=22000:22000/tcp
+
+Environment=PUID=1000
+Environment=PGID=1000
+Environment=TZ=Etc/UTC
+
+# UID mapping is needed to run linuxserver.io container as rootless podman.
+# This will map ''UID=1000'' inside the container to intermediate ''UID=0''.
+# For rootless podman intermediate ''UID=0'' will be mapped to the UID of current user.
+UIDMap=1000:0:1
+UIDMap=0:1:1000
+UIDMap=1001:1001:64536
+
+[Service]
+Restart=on-failure
+
+# Extend Timeout to allow time to pull the image
+TimeoutStartSec=300
+
+# The [Install] section allows enabling the generated service.
+[Install]
+WantedBy=default.target
+}}
+
+We can validate the Quadlet file via
+
+{{bc|$ /usr/lib/podman/quadlet -dryrun -user}}
+
+Then, [[daemon-reload]] and [[start]] {{ic|syncthing-lsio.service}}. See [[systemd/User#Automatic start-up of systemd user instances]] to start rootless containers without any open sessions.
+
+If you want to start containers at boot, make sure that your [[network manager]] supports and is configured for [[systemd#Running services after the network is up|running services after the network is up]].
+
+{{Note|
+* Services generated from the Quadlet files with an {{ic|[Install]}} section are [[enabled]] automatically (the generator creates the symlink in the {{ic|/run/user/$UID/systemd/generator/}} directory, see [https://unix.stackexchange.com/a/332797]).
+* Quadlet will add implicit dependencies on the {{ic|network-online.target}} (as root) or {{ic|podman-user-wait-network-online.service}} (as user) by adding {{ic|1=After=}} and {{ic|1=Wants=}} properties to the systemd unit. This is to ensure that the network is reachable if an image needs to be pulled and by the time the container is started. See {{man|5|podman-systemd.unit|Implicit network dependencies}} for details.
+}}
+
+Valid options for the {{ic|Container}} section are listed under {{man|5|podman-systemd.unit|Container units [Container]}}. {{ic|1=PodmanArgs=}} can be used to add other Podman arguments that do not have corresponding file options.
+
+See {{man|5|podman-systemd.unit|EXAMPLES}} for more examples including {{ic|Pod}}, {{ic|Volume}}, {{ic|Network}} and {{ic|Image}} units.
+
+== Images ==
+
+{{Note|You may omit the registry prefix from the images, as Podman will automatically search for the image in all registries defined in {{ic|/etc/containers/registries.conf}} at {{ic|unqualified-search-registries}} in the defined order. The following images will always contain the prefix, to allow for configurations without {{ic|docker.io}} in the configuration.}}
+
+=== Arch Linux ===
+
+The following command pulls the [https://hub.docker.com/_/archlinux/ Arch Linux] x86_64 image from [https://hub.docker.com/ Docker Hub].
+
+ # podman pull docker.io/archlinux
+
+See the Docker Hub page for a full list of available tags, including versions with and without build tools.
+
+See also [https://gitlab.archlinux.org/archlinux/archlinux-docker/blob/master/README.md README.md].
+
+=== Alpine Linux ===
+
+[https://www.alpinelinux.org/ Alpine Linux] is a popular choice for small container images, especially for software compiled as static binaries. The following command pulls the latest Alpine Linux image from [https://hub.docker.com/ Docker Hub]:
+
+ # podman pull docker.io/alpine
+
+Alpine Linux uses the [https://musl.libc.org/ musl] libc implementation instead of the [https://www.gnu.org/software/libc/ glibc] libc implementation used by most Linux distributions. Because Arch Linux uses glibc, there are a number of functional differences between an Arch Linux host and an Alpine Linux container that can impact the performance and correctness of software. A list of these differences is documented in https://wiki.musl-libc.org/functional-differences-from-glibc.html.
+
+Note that dynamically linked software built on Arch Linux (or any other system using glibc) may have bugs and performance problems when run on Alpine Linux (or any other system using a different libc). See [https://bugs.python.org/issue32307], [https://superuser.com/questions/1219609/why-is-the-alpine-docker-image-over-50-slower-than-the-ubuntu-image] and [https://pythonspeed.com/articles/alpine-docker-python] for examples.
+
+=== CentOS Stream ===
+
+The following command pulls the latest [https://quay.io/repository/centos/centos CentOS Stream] image from [https://quay.io/ Quay]:
+
+ # podman pull quay.io/centos/centos
+
+See the Quay page for a full list of available tags for each CentOS release.
+
+=== Debian ===
+
+The following command pulls the latest [https://hub.docker.com/_/debian Debian] image from [https://hub.docker.com/ Docker Hub]:
+
+ # podman pull docker.io/debian
+
+See the Docker Hub page for a full list of available tags, including both standard and slim versions for each Debian release.
+
+== Troubleshooting ==
+
+=== Add pause to process ===
+
+ WARN[0000] Failed to add pause process to systemd sandbox cgroup: Process org.freedesktop.systemd1 exited with status 1 
+
+Can be solved using: https://github.com/containers/crun/issues/704
+
+ # echo +cpu +cpuset +io +memory +pids > /sys/fs/cgroup/cgroup.subtree_control
+
+=== Containers terminate on shell logout ===
+
+After logging out from machine, Podman containers are stopped for some users. To prevent that, [[systemd/User#Automatic start-up of systemd user instances|enable lingering]] for users running containers.
+
+You can also create user systemd unit as described in {{man|1|podman-auto-update|EXAMPLES}}.
+
+=== Error on commit in rootless mode ===
+
+ Error committing the finished image: error adding layer with blob "sha256:02823fca9b5444c196f1f406aa235213254af9909fca270f462e32793e2260d8": Error processing tar file(exit status 1) permitted operation
+
+Check that the storage driver is overlay in the [[#Storage|storage configuration]].
+
+=== Error when creating a container with bridge network in rootless mode ===
+
+{{Out of date|The CNI network backend is deprecated. Is this an issue with the Netavark backend?}}
+
+If you are using [[AppArmor]] you might end up with problems when creating container using a bridge network with the {{ic|dnsname}} plugin enabled:
+
+{{hc|$ podman network create foo|
+/home/''user''/.config/cni/net.d/foo.conflist
+}}
+
+{{hc|1=$ podman run --rm -it --network=foo docker.io/library/alpine:latest ip addr|2=
+Error: command rootless-cni-infra [alloc 89398a9315256cb1938075c377275d29c2b6ebdd75a96b5c26051a89541eb928 foo festive_hofstadter    ] in container 1f4344bbd1087c892a18bacc35f4fdafbb61106c146952426488bc940a751efe failed with status 1, stdout="", stderr="exit status 3\n"
+}}
+
+This can be solved by adding the following lines to {{ic|/etc/apparmor.d/local/usr.sbin.dnsmasq}}:
+
+ owner /run/user/[0-9]*/containers/cni/dnsname/*/dnsmasq.conf r,
+ owner /run/user/[0-9]*/containers/cni/dnsname/*/addnhosts r,
+ owner /run/user/[0-9]*/containers/cni/dnsname/*/pidfile rw,
+
+And then reloading the AppArmor profile:
+
+ # apparmor_parser -R /etc/apparmor.d/usr.sbin.dnsmasq
+ # apparmor_parser /etc/apparmor.d/usr.sbin.dnsmasq
+
+=== No image found ===
+
+{{Merge|#Registries|Now the topic should be covered in the configuration section.}}
+
+By default, the registry list is not populated as the files in the package come from upstream. This means that by default, trying to pull any image without specifying the registry will result in an error similar to the following:
+
+ Error: short-name "archlinux" did not resolve to an alias and no unqualified-search registries are defined in "/etc/containers/registries.conf"
+
+A starting configuration could be the following:
+
+{{hc|/etc/containers/registries.conf.d/00-unqualified-search-registries.conf|2=
+unqualified-search-registries = ["docker.io"]
+}}
+
+{{hc|/etc/containers/registries.conf.d/01-registries.conf|<nowiki>
+[[registry]]
+location = "docker.io"
+</nowiki>}}
+
+This is equivalent to the default docker configuration.
+
+A less convenient alternative, but having a higher compatibility with systems without configured shortnames, use the full registry path in the {{ic|Containerfile}} or {{ic|Dockerfile}}.
+
+{{hc|Containerfile|
+FROM docker.io/archlinux/archlinux
+}}
+
+=== Permission denied: OCI permission denied ===
+
+{{hc|$ podman exec openvas_openvas_1 bash|
+Error: crun: writing file `/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-b3e8048a9b91e43c214b4d850ac7132155a684d6502e12e22ceb6f73848d117a.scope/container/cgroup.procs`: Permission denied: OCI permission denied
+}}
+
+Can be solved: [https://bbs.archlinux.org/viewtopic.php?id=253966 BBS#253966]
+
+ $ env DBUS_SESSION_BUS_ADDRESS= podman ...
+ $ env DBUS_SESSION_BUS_ADDRESS= podman-compose ...
+
+=== Pushing images to Docker Hub: access denied/authentication required ===
+
+When using {{ic|podman push}} to push container images to Docker Hub, the following errors could occur: {{ic|Requested access to the resource is denied}} or {{ic|Authentication required}}. The following hints can help to fix potential issues: 
+
+* Tag the local image: {{bc|# podman tag <localImage> docker.io/<dockerHubUsername>/<dockerHubRepository>:<Tag>}}
+* Push the tagged image: {{bc|# podman push docker.io/<dockerHubUsername>/<dockerHubRepository>:<Tag> docker://docker.io/<dockerHubUsername>/<dockerHubRepository>:<Tag>}}
+* Login to docker.io, the Docker Hub repository and Docker Hub Registry server: 
+: {{bc|<nowiki>
+# podman login -u <DockerHubUsername> -p <DockerHubPassword> registry-1.docker.io
+# podman login -u <DockerHubUsername> -p <DockerHubPassword> docker.io/<dockerHubUsername>/<dockerHubRepository>
+# podman login -u <DockerHubUsername> -p <DockerHubPassword> docker.io
+</nowiki>}}
+* Logout from all registries before the login, e.g., {{bc|# podman logout --all}}
+* Add {{ic|<dockerHubUsername>}} as collaborator in the Docker Hub Collaborators tab of the repository
+
+=== WARN[0000] "/" is not a shared mount, this could cause issues or missing mounts with rootless containers ===
+
+Buildah/Podman running as rootless expects the bind mount to be shared, check if it is set to private:
+
+{{hc|$ findmnt -o PROPAGATION /|
+PROPAGATION
+private
+}}
+
+In this case see {{man|8|mount|Shared_subtree_operations}} and set '''temporarily''' the mount as shared with:
+
+ # mount --make-shared /
+
+To set it '''permanently''' edit [[Fstab#Usage|/etc/fstab]] and add the ''shared'' option to the desired mount and reboot. It will result in a entry like:
+
+{{hc|/etc/fstab|2=
+# <device>                                <dir> <type> <options> <dump> <fsck>
+UUID=0a3407de-014b-458b-b5c1-848e92a327a3 /     ext4   defaults,shared   0      1
+}}
+
+=== Networking issues inside containers ===
+
+==== IP networking ====
+
+{{Accuracy|This is an overly verbose introduction to the statement that containers networking is affected by the firewall on host. Netavark creates its own firewall rules using iptables, so default {{ic|DROP}} policy in iptables chains is not a problem.}}
+
+Podman containers are by default bridged with the host through their own virtual network interfaces.
+
+For example, inside a container, virtual interface {{ic|eth0@if6}} has IP 10.89.0.3 (IPs might be different on your system!):
+
+{{hc|container# ip addr|
+...
+2: eth0@if6: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    ...
+    inet 10.89.0.3/24 brd 10.89.0.255 scope global eth0
+       valid_lft forever preferred_lft forever
+}}
+
+On the host, packets from the container exit on the host side from another virtual interface, here named {{ic|podman1}} as if routed via IP 10.89.0.1:
+
+{{hc|host# ip addr|
+...
+4: podman1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    ...
+    inet 10.89.0.1/24 brd 10.89.0.255 scope global podman1
+}}
+
+Despite being virtual IP addresses, packets are still routed through the kernel's packet filtering system and can therefore be blocked by iptables/nftables rules. In particular, default {{ic|DROP}} policy in {{ic|INPUT}} or {{ic|FORWARD}} iptables filter chains and/or running firewalls ([[ufw]], [[firewalld]]) can affect containers in some cases. Check your configuration (for example with {{ic|iptables -L -n -v}} or {{ic|nft list ruleset}}) if you think this may be the case.
+
+After a change in {{ic|docker-compose.yml}}, note that created networks (from the {{ic|networks:}} section) may not be destroyed when using {{ic|podman compose down}} to destroy an environment. Make sure (using {{ic|podman network ls}} and {{ic|podman network rm}} if necessary) that they are if that is your intention.
+
+==== DNS and name resolution ====
+
+Name resolution is handled by subsystems of Podman (for example {{Pkg|aardvark-dns}}), which provide both external DNS (usually through the host's DNS resolver) and container name resolution (e.g. {{ic|webserver.dns.podman}} talking to {{ic|database.dns.podman}}).
+
+In the example above, containers are configured automatically by Podman via {{ic|/etc/resolv.conf}} to ask a DNS resolver running on port 53 on the host-side of the pipe:
+
+{{hc|container# cat /etc/resolv.conf|
+search dns.podman
+nameserver 10.89.0.1
+}}
+
+Check that you don't have another DNS resolver running on the host on port 53 (for example [[systemd-resolved]] or [[Unbound]]), as it may interfere with Podman name resolution. If that is the case, you can change the port used by Podman on the host to any other available port, and Podman should automatically forward container requests from containers to the correct port on the host:
+
+{{hc|host# # cat /etc/containers/containers.conf|
+...
+dns_bind_port {{=}} 20053
+}}
+
+=== kernel does not support overlay fs: 'overlay' is not supported over <filesystem> ===
+
+Reboot your system, as explained in [[General troubleshooting#Cannot use some peripherals after kernel upgrade]].
+
+== See also ==
+
+* [https://podman.io/ Official website]
+* [https://github.com/containers/podman/blob/main/docs/tutorials/README.md Podman Tutorials]
+* [https://phoenixnap.com/kb/podman-vs-docker Podman vs. Docker: Everything You Need to Know]

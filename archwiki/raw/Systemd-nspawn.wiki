@@ -1,0 +1,723 @@
+{{Lowercase title}}
+[[Category:Sandboxing]]
+[[Category:Virtualization]]
+[[es:Systemd-nspawn]]
+[[ja:Systemd-nspawn]]
+[[zh-hans:Systemd-nspawn]]
+{{Related articles start}}
+{{Related|Docker}}
+{{Related|Linux Containers}}
+{{Related|systemd}}
+{{Related|systemd-networkd}}
+{{Related articles end}}
+
+''systemd-nspawn'' is like the [[chroot]] command, but it is a ''chroot on steroids''.
+
+''systemd-nspawn'' may be used to run a command or operating system in a light-weight namespace container. It is more powerful than ''chroot'' since it fully virtualizes the file system hierarchy, as well as the process tree, the various IPC subsystems and the host and domain name.
+
+''systemd-nspawn'' limits access to various kernel interfaces in the container to read-only, such as {{ic|/sys}}, {{ic|/proc/sys}} or {{ic|/sys/fs/selinux}}. Network interfaces and the system clock may not be changed from within the container. Device nodes may not be created. The host system cannot be rebooted and kernel modules may not be loaded from within the container.
+
+''systemd-nspawn'' is a simpler tool to configure than [[LXC]] or [[Libvirt]].
+
+== Installation ==
+
+''systemd-nspawn'' is part of and packaged with {{Pkg|systemd}}.
+
+== Examples ==
+
+=== Create and boot a minimal Arch Linux container ===
+
+Create a directory to hold the container, in this example we will use {{ic|~/MyContainer}}.
+
+Use [[pacstrap]] from {{Pkg|arch-install-scripts}} package to install a basic Arch system into the container. At minimum we need to install the {{Pkg|base}} package.
+
+ # pacstrap -K -c ~/MyContainer base ''[additional packages/groups]''
+
+{{Tip|The {{Pkg|base}} package does not depend on the {{Pkg|linux}} kernel package and is container-ready.}}
+
+{{Note|If creating from a different operating system where [[pacstrap]] is not available, [[Install Arch Linux from existing Linux#Creating a chroot|bootstrap tarball]] can be used as container image. pacman keyring will need to be initialized inside the container, see [[Install Arch Linux from existing Linux#Initializing pacman keyring]].}}
+
+Once your installation is finished, enter the container, and set a root password:
+
+ # systemd-nspawn -D ~/MyContainer
+ # passwd
+ # logout
+
+{{Tip|Setting root password is optional. You can get a root shell in a booted container directly without having to log in by running {{ic|machinectl shell root@MyContainer}}. See [[#machinectl]].}}
+
+Finally, boot into the container:
+
+ # systemd-nspawn -b -D ~/MyContainer
+
+The {{ic|-b}} option will boot the container (i.e. run {{ic|systemd}} as PID=1), instead of just running a shell, and {{ic|-D}} specifies the directory that becomes the container's root directory.
+
+After the container starts, log in as "root" with your password.
+
+The container can be powered off by running {{ic|poweroff}} from within the container. From the host, containers can be controlled by the [[#machinectl|machinectl]] tool.
+
+{{Note|To terminate the ''session'' from within the container, hold {{ic|Ctrl}} and rapidly press {{ic|]}} three times.}}
+
+=== Create a Debian or Ubuntu environment ===
+
+Install {{Pkg|debootstrap}}, and one or both of {{Pkg|debian-archive-keyring}} or {{Pkg|ubuntu-keyring}} depending on which distribution you want.
+
+Then invoke ''deboostrap'' with the following structure:
+
+ # debootstrap [OPTIONS...] ''SUITE'' ''TARGET'' [''MIRROR'']
+
+* ''SUITE'' (required) is the code name or alias for the specific version of the desired distribution as found in [https://salsa.debian.org/installer-team/debootstrap/-/tree/master/scripts the scripts directory]:
+** for Debian, valid suite names are either the stable aliases {{ic|stable}}, {{ic|testing}} and {{ic|unstable}}, or release names like {{ic|bookworm}} and {{ic|sid}}: see [https://www.debian.org/releases/] for a list.
+**For Ubuntu, only version names such as {{ic|jammy}} and {{ic|noble}} should be used and not version numbers: see [https://wiki.ubuntu.com/Releases] and [https://wiki.ubuntu.com/DevelopmentCodeNames#Release_Naming_Scheme] for a table of code names to version numbers.
+** other references exist in the scripts directory for other Debian-based distributions such as Devuan, eLxr, Kali Linux, Pardus, PureOS, Trisquel and Tanglu (discontinued since 2017). Invoking those usually require acquiring their specific keyring and passing it to the {{ic|--keyring}} option, or disabling checking OpenPGP signatures of retrieved Release files with {{ic|--no-check-sig}}.
+* ''TARGET'' (required) is the directory that will contain the debootstrapped system; it will be created if it does not yet exist.
+* ''MIRROR'' (optional): the archive URL from which packages should be downloaded. For current Debian releases it can be any [https://www.debian.org/mirror/list valid mirror] such as the CDN-backed https://deb.debian.org/debian (default), and for Ubuntu any mirror from [https://launchpad.net/ubuntu/+archivemirrors] such as the reference https://archive.ubuntu.com/ubuntu (also used by default).
+:{{Note|Archived versions of Debian (as of 2025-01 this is anything before Debian 10/Buster) use the special [https://www.debian.org/distrib/archive debian-archive] mirror URL https://archive.debian.org/debian/. For Ubuntu the scripts use https://old-releases.ubuntu.com/ubuntu/. Note however that issues relating to "unknown signing key" arise for releases not included in the aforementioned keyring packages, ''e.g.'' any release older than 9 ("Stretch") for Debian[https://ftp-master.debian.org/keys.html#archivekey], making the latter the oldest release installable without fetching a different keyring or disabling signature checking as previously mentioned.}}
+
+''debootstrap'' cannot resolve dependencies on virtual package[https://forums.debian.net/viewtopic.php?t=160578], and as a consequence it does not install ''systemd'''s {{ic|dbus}} and {{ic|libpam-systemd}} recommended dependencies by default[https://github.com/systemd/mkosi/issues/15][https://github.com/systemd/mkosi/issues/3189]. As a consequence, some systemd/dbus-related functionalities (''e.g.'' [[localectl]]) as well as managing the container with [[#machinectl]] do not work out of the box.
+
+In order to get full functionality in systemd-based systems, add {{ic|1=--include=dbus,libpam-systemd}} to the ''debootstrap'' invocation or install those packages once in the container:
+
+ # debootstrap --include=dbus,libpam-systemd,libnss-systemd stable ''/path/to/machine''
+
+{{Note|Other difficulties might arise when ''booting'' (''i.e.'' using the {{ic|-b, --boot}} option) containers not using ''systemd'' as their init. It is the default init system for Debian since Debian 8 ("jessie")[https://wiki.debian.org/systemd#Introduction] and Ubuntu since 15.04 ("vivid")[https://wiki.ubuntu.com/SystemdForUpstartUsers#Support_status]. Getting a shell should work irrespective of the init system.}}
+
+Just like Arch, Debian and Ubuntu will not let you log in without a password. To set the root password, run ''systemd-nspawn'' without the {{ic|-b}} option:
+
+ # systemd-nspawn -D ''/path/to/machine''
+ # passwd
+ # logout
+
+=== Create a RHEL-derivative environment using Podman or Docker ===
+
+These instructions should be applicable to any distribution which uses {{Pkg|dnf}}. You will need [[Podman]] or [[Docker]].
+
+ # mkdir -p /var/lib/machines/my-machine
+ # podman pull centos:stream9
+ # podman run --rm -it -v /var/lib/machines/my-machine:/machine centos:stream9
+
+From within that container, you can build the root environment for your machine:
+
+{{Style|Installation/first-setup instructions should be outsourced.}}
+
+ bash-5.1# dnf update -y
+ bash-5.1# dnf --repo=baseos \
+               --releasever=9 \
+               --best \
+               --installroot=/machine \
+               install \
+               systemd-udev \
+               hostname \
+               yum \
+               dnf \
+               centos-gpg-keys \
+               centos-stream-release \
+               rootfiles \
+               shadow-utils \
+               util-linux
+ bash-5.1# sed -i 's/^root:[^:]*:/root::/' /machine/etc/shadow # remove root password for initial login
+ bash-5.1# exit
+
+From there, you should be able to boot the machine:
+
+ # systemd-nspawn --machine=my-machine --boot
+
+=== Create a Fedora or AlmaLinux environment ===
+
+Install {{Pkg|dnf}}, and edit the {{ic|/etc/dnf/dnf.conf}} file to add the required Fedora repositories.
+
+{{hc|/etc/dnf/dnf.conf|output=<nowiki>
+[fedora]
+name=Fedora $releasever - $basearch
+metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-$releasever&arch=$basearch
+gpgkey=https://fedoraproject.org/fedora.gpg
+
+[updates]
+name=Fedora $releasever - $basearch - Updates
+metalink=https://mirrors.fedoraproject.org/metalink?repo=updates-released-f$releasever&arch=$basearch
+gpgkey=https://fedoraproject.org/fedora.gpg</nowiki>
+}}
+
+The ''fedora.gpg'' file contains the GPG keys for the latest Fedora releases https://fedoraproject.org/security. To set up a minimal Fedora 42 container:
+
+ # mkdir /var/lib/machines/''container-name''
+ # dnf5 --releasever=42 --best --use-host-config --setopt=install_weak_deps=False --repo=fedora --repo=updates --installroot=/var/lib/machines/''container-name'' install dhcp-client dnf fedora-release glibc glibc-langpack-en iputils less ncurses passwd systemd systemd-networkd systemd-resolved util-linux vim-default-editor
+
+{{note| If you want to install a different Fedora release, keep in mind that different releases will have distinct [https://docs.fedoraproject.org/en-US/fedora-server/containerization/systemd-nspawn-setup/#_2_1_creating_a_container_directory_tree package requirements].
+
+If you are using btrfs filesystem create a subvolume instead of creating a directory.
+}}
+
+An Enterprise Linux derivative like AlmaLinux has three repositories enabled by default, ''BaseOS'' wich contains a core set that provides the basis for all installations, ''AppStream'' that includes additional applications, language packages, etc and ''Extras'' that contains packages not included in RHEL. So for a minimal container we only need to add the BaseOS repository to {{ic|/etc/dnf/dnf.conf}}
+
+{{hc|/etc/dnf/dnf.conf|output=<nowiki>
+[baseos]
+name=AlmaLinux $releasever - BaseOS
+mirrorlist=https://mirrors.almalinux.org/mirrorlist/$releasever/baseos
+gpgkey=https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-$releasever</nowiki>
+}}
+
+To create an AlmaLinux 9 minimal container:
+
+ # dnf --repo=baseos --releasever=9 --best --installroot=/var/lib/machines/''container-name'' --setopt=install_weak_deps=False install almalinux-release dhcp-client dnf glibc-langpack-en iproute iputils less passwd systemd vim-minimal
+
+This will install the latest minor version of AlmaLinux 9, you can choose to install a specific point release, but you will need to change the ''gpgpkey'' entry to manually point to ''RPM-GPG-KEY-AlmaLinux-9''
+
+Just like Arch, Fedora or AlmaLinux will not let you log in as root without a password. To set up the root password, run ''systemd-nspawn'' without the {{ic|-b}} option:
+
+ # systemd-nspawn -D /var/lib/machines/''container-name'' passwd
+
+=== Build and test packages ===
+
+See [[Creating packages for other distributions]] for example uses.
+
+== Management ==
+
+Containers located in {{ic|/var/lib/machines/}} can be controlled by the ''machinectl'' command, which internally controls instances of the {{ic|systemd-nspawn@.service}} unit. The subdirectories in {{ic|/var/lib/machines/}} correspond to the container names, i.e. {{ic|/var/lib/machines/''container-name''/}}.
+
+{{Note|If the container cannot be moved into {{ic|/var/lib/machines/}} for some reason, it can be symlinked. See {{man|1|machinectl|FILES AND DIRECTORIES}} for details.}}
+
+=== Default systemd-nspawn options ===
+
+Note that containers started via ''machinectl'' or {{ic|systemd-nspawn@.service}} use different default options than containers started manually by the ''systemd-nspawn'' command. The extra options used by the service are:
+
+* {{ic|-b}}/{{ic|--boot}} – Managed containers automatically search for an init program and invoke it as PID 1.
+* {{ic|--network-veth}} which implies {{ic|--private-network}} – Managed containers get a virtual network interface and are disconnected from the host network. See [[#Networking]] for details.
+* {{ic|-U}} – Managed containers use the {{man|7|user_namespaces}} feature by default if supported by the kernel. See [[#Unprivileged containers]] for implications.
+* {{ic|1=--link-journal=try-guest}}
+
+This behavior can be overridden in per-container configuration files. See [[#Configuration]] for details.
+
+=== machinectl ===
+
+{{Note|The ''machinectl'' tool requires [[systemd]] and {{Pkg|dbus}} to be installed in the container. See [https://github.com/systemd/systemd/issues/685] for detailed discussion.}}
+
+Containers can be managed by the {{ic|machinectl ''subcommand'' ''container-name''}} command. For example, to start a container:
+
+ $ machinectl start ''container-name''
+
+{{Note|''machinectl'' requires that the container-name consists of only ASCII letters, digits and hyphens so that they are valid [[hostname]]s. For example, if the container-name contains an underscore, it simply will not be recognized and running {{ic|machinectl start container_name}} will result in error {{ic|Invalid machine name container_name}}. See [https://github.com/systemd/systemd/issues/11765] and [https://github.com/systemd/systemd/commit/d65652f1f21a4b0c59711320f34266c635393c89] for more details.}}
+
+Similarly, there are subcommands such as {{ic|poweroff}}, {{ic|reboot}}, {{ic|status}} and {{ic|show}}. See {{man|1|machinectl|Machine Commands}} for detailed explanations.
+
+{{Tip|Poweroff and reboot operations can be performed from within the container using the {{ic|poweroff}} and {{ic|reboot}} commands.}}
+
+Other common commands are:
+
+* {{ic|machinectl list}} – show a list of currently running containers
+* {{ic|machinectl login ''container-name''}} – open an interactive login session in a container
+* {{ic|machinectl shell ''[username@]container-name''}} – open an interactive shell session in a container (this immediately invokes a user process without going through the login process in the container)
+* {{ic|machinectl enable ''container-name''}} and {{ic|machinectl disable ''container-name''}} – enable or disable a container to start at boot, see [[#Enable container to start at boot]] for details
+
+''machinectl'' also has subcommands for managing container (or virtual machine) images and image transfers. See {{man|1|machinectl|Image Commands}} and {{man|1|machinectl|Image Transfer Commands}} for details. As of 2023Q1, the first 3 examples at {{man|1|machinectl|EXAMPLES}} demonstrate image transfer commands. {{man|1|machinectl|FILES AND DIRECTORIES}} discusses where to find suitable images.
+
+=== systemd toolchain ===
+
+Much of the core systemd toolchain has been updated to work with containers. Tools that do usually provide a {{ic|1=-M, --machine=}} option which will take a container name as argument.
+
+Examples:
+
+See journal logs for a particular machine:
+
+ # journalctl -M ''container-name''
+
+Show control group contents:
+
+ $ systemd-cgls -M ''container-name''
+
+See startup time of container:
+
+ $ systemd-analyze -M ''container-name''
+
+For an overview of resource usage:
+
+ $ systemd-cgtop
+
+== Configuration ==
+
+=== Per-container settings ===
+
+To specify per-container settings and not global overrides, the ''.nspawn'' files can be used. See {{man|5|systemd.nspawn}} for details.
+
+{{Note|
+* ''.nspawn'' files may be removed unexpectedly from {{ic|/etc/systemd/nspawn/}} when you run {{ic|machinectl remove}}. [https://github.com/systemd/systemd/issues/15900]
+* The interaction of network options specified in the ''.nspawn'' file and on the command line does not work correctly when there is {{ic|1=--settings=override}} (which is specified in the {{ic|systemd-nspawn@.service}} file). [https://github.com/systemd/systemd/issues/12313#issuecomment-681116926] As a workaround, you need to include the option {{ic|1=VirtualEthernet=on}}, even though the service specifies {{ic|1=--network-veth}}.
+}}
+
+=== Enable container to start at boot ===
+
+When using a container frequently, you may want to start it at boot.
+
+First make sure that the {{ic|machines.target}} is [[enabled]].
+
+Containers discoverable by [[#machinectl|machinectl]] can be enabled or disabled:
+
+ $ machinectl enable ''container-name''
+
+{{Note|
+* This has the effect of enabling the {{ic|systemd-nspawn@''container-name''.service}} systemd unit.
+* As mentioned in [[#Default systemd-nspawn options]], containers started by ''machinectl'' get a virtual Ethernet interface. To disable private networking, see [[#Host networking]].
+}}
+
+=== Resource control ===
+
+You can take advantage of control groups to implement limits and resource management of your containers with {{ic|systemctl set-property}}, see {{man|5|systemd.resource-control}}. For example, you may want to limit the memory amount or CPU usage. To limit the memory consumption of your container to 2 GiB:
+
+ # systemctl set-property systemd-nspawn@''container-name''.service MemoryMax=2G
+
+Or to limit the CPU time usage to roughly the equivalent of 2 cores:
+
+ # systemctl set-property systemd-nspawn@''container-name''.service CPUQuota=200%
+
+This will create permanent files in {{ic|/etc/systemd/system.control/systemd-nspawn@''container-name''.service.d/}}.
+
+According to the documentation, {{ic|MemoryHigh}} is the preferred method to keep in check memory consumption, but it will not be hard-limited as is the case with {{ic|MemoryMax}}. You can use both options leaving {{ic|MemoryMax}} as the last line of defense. Also take in consideration that you will not limit the number of CPUs the container can see, but you will achieve similar results by limiting how much time the container will get at maximum, relative to the total CPU time.
+
+{{Tip|If you want these changes to be only temporary, you can pass the option {{ic|--runtime}}. You can check their results with ''systemd-cgtop''.}}
+
+=== Networking ===
+
+''systemd-nspawn'' containers can use either [[#Host networking|host networking]] or [[#Private networking|private networking]]:
+
+* In the host networking mode, the container has full access to the host network. This means that the container will be able to access all network services on the host and packets coming from the container will appear to the outside network as coming from the host (i.e. sharing the same IP address).
+* In the private networking mode, the container is disconnected from the host's network. This makes all network interfaces unavailable to the container, with the exception of the loopback device and those explicitly assigned to the container. There is a number of different ways to set up network interfaces for the container:
+** An existing interface can be assigned to the container (e.g. if you have multiple Ethernet devices): see [[#Use an existing interface]].
+** A virtual network interface associated with an existing interface (i.e. [[VLAN]] interface) can be created and assigned to the container: see [[#Use a "macvlan" or "ipvlan" interface]].
+** A virtual Ethernet link between the host and the container can be created: see [[#Use a virtual Ethernet link]].
+: In the latter case the container's network is fully isolated (from the outside network as well as other containers) and it is up to the administrator to configure networking between the host and the containers. This typically involves [[#Use NAT networking|using NAT networking]] between multiple interfaces or [[#Use a network bridge|using a network bridge]] to connect multiple (physical or virtual) interfaces.
+
+The host networking mode is suitable for ''application containers'' which do not run any networking software that would configure the interface assigned to the container. Host networking is the default mode when you run ''systemd-nspawn'' from the shell.
+
+On the other hand, the private networking mode is suitable for ''system containers'' that should be isolated from the host system. The creation of virtual Ethernet links is a very flexible tool allowing to create complex virtual networks. This is the default mode for containers started by ''machinectl'' or {{ic|systemd-nspawn@.service}}.
+
+The following subsections describe common scenarios. See {{man|1|systemd-nspawn|Networking Options}} for details about the available ''systemd-nspawn'' options.
+
+==== Host networking ====
+
+To disable private networking and the creation of a virtual Ethernet link used by containers started with ''machinectl'', add a ''.nspawn'' file with the following option:
+
+{{hc|/etc/systemd/nspawn/''container-name''.nspawn|2=
+[Network]
+VirtualEthernet=no
+}}
+
+This will override the {{ic|-n}}/{{ic|--network-veth}} option used in {{ic|systemd-nspawn@.service}} and the newly started containers will use the host networking mode.
+
+==== Private networking ====
+
+===== Use a virtual Ethernet link =====
+
+If a container is started with the {{ic|-n}}/{{ic|--network-veth}} option, ''systemd-nspawn'' will create a virtual Ethernet link between the host and the container. The host side of the link will be available as a network interface named {{ic|ve-''container-name''}}. The container side of the link will be named {{ic|host0}}. Note that this option implies {{ic|--private-network}}.
+
+{{Note|
+* If the container name is too long, the interface name will be shortened (e.g. {{ic|ve-long-conKQGh}} instead of {{ic|ve-long-container-name}}) to fit into the [https://stackoverflow.com/a/29398765 15-characters limit]. The full name will be set as the {{ic|altname}} property of the interface (see {{man|8|ip-link}}) and can be still used to reference the interface.
+* When examining the interfaces with {{ic|ip link}}, interface names will be shown with a suffix, such as {{ic|ve-''container-name''@if2}} and {{ic|host0@if9}}. The {{ic|@if''N''}} is not actually part of the interface name; instead, {{ic|ip link}} appends this information to indicate which "slot" the virtual Ethernet cable connects to on the other end.
+: For example, a host virtual Ethernet interface shown as {{ic|ve-''foo''@if2}} is connected to the container {{ic|''foo''}}, and inside the container to the second network interface – the one shown with index 2 when running {{ic|ip link}} inside the container. Similarly, the interface named {{ic|host0@if9}} in the container is connected to the 9th network interface on the host.
+}}
+
+When you start the container, an IP address has to be assigned to both interfaces (on the host and in the container). If you use [[systemd-networkd]] on the host as well as in the container, this is done out-of-the-box:
+
+* the {{ic|/usr/lib/systemd/network/80-container-ve.network}} file on the host matches the {{ic|ve-''container-name''}} interface and starts a DHCP server, which assigns IP addresses to the host interface as well as the container,
+* the {{ic|/usr/lib/systemd/network/80-container-host0.network}} file in the container matches the {{ic|host0}} interface and starts a DHCP client, which receives an IP address from the host.
+
+{{Tip|Simply [[starting]] {{ic|systemd-networkd}} on the host will provide the described container network auto-configuration '''without interfering with the existing network setup''', as the existing interface(s) will remain ''unmanaged'' by {{ic|systemd-networkd}} until configured otherwise. As such, it is perfectly compatible with a managed network setup e.g. with [[NetworkManager]], and [[starting]] {{ic|systemd-networkd}} is really all that is needed to get Internet connectivity inside the containers (as well as to be able to reach them from the host) without disturbing anything on the host.}}
+
+If you do not use [[systemd-networkd]], you can configure static IP addresses or start a DHCP server on the host interface and a DHCP client in the container. See [[Network configuration]] for details.
+
+====== Use NAT networking ======
+
+To give the container access to the outside network, you can configure NAT as described in [[Internet sharing#Enable NAT]]. If you use [[systemd-networkd]], this is done (partially) automatically via the {{ic|1=IPMasquerade=both}} option in {{ic|/usr/lib/systemd/network/80-container-ve.network}}. However, this automatism issues just one [[iptables]] (or [[nftables]]) rule such as:
+
+ # nft add rule ip nat POSTROUTING ip saddr 192.168.162.192/28 counter MASQUERADE
+
+The {{ic|filter}} table has to be configured manually, you can use a wildcard to match all interfaces starting with {{ic|ve-}}:
+
+ # nft add rule ip filter FORWARD iifname "ve-*" oifname "''wan_interface''" counter accept
+
+{{Note|''systemd-networkd'' and ''systemd-nspawn'' can interface with [[iptables]] (using the [https://tldp.org/HOWTO/Querying-libiptc-HOWTO/whatis.html libiptc] library) as well as with [[nftables]] [https://github.com/systemd/systemd/issues/13307][https://github.com/systemd/systemd/blob/9ca34cf5a4a20d48f829b2a36824255aac29078c/NEWS#L295-L304]. In both cases IPv4 and IPv6 NAT is supported.}}
+
+Additionally, you need to open the UDP port 67 on the {{ic|ve-+}} interfaces for incoming connections to the DHCP server (operated by ''systemd-networkd''):
+
+ # nft add rule ip filter INPUT iifname "ve-*" udp dport 67 counter accept
+
+====== Use a network bridge ======
+
+If you have configured a [[network bridge]] on the host system, you can create a virtual Ethernet link for the container and add its host side to the network bridge. This is done with the {{ic|1=--network-bridge=''bridge-name''}} option. Note that {{ic|--network-bridge}} implies {{ic|--network-veth}}, i.e. the virtual Ethernet link is created automatically. However, the host side of the link will use the {{ic|vb-}} prefix instead of {{ic|ve-}}, so the [[systemd-networkd]] options for starting the DHCP server and IP masquerading will not be applied.
+
+The bridge management is left to the administrator. For example, the bridge can connect virtual interfaces with a physical interface, or it can connect only virtual interfaces of several containers. See [[systemd-networkd#Network bridge with DHCP]] and [[systemd-networkd#Network bridge with static IP addresses]] for example configurations using [[systemd-networkd]].
+
+There is also a {{ic|1=--network-zone=''zone-name''}} option which is similar to {{ic|--network-bridge}} but the network bridge is managed automatically by ''systemd-nspawn'' and ''systemd-networkd''. The bridge interface named {{ic|vz-''zone-name''}} is automatically created when the first container configured with {{ic|1=--network-zone=''zone-name''}} is started, and is automatically removed when the last container configured with {{ic|1=--network-zone=''zone-name''}} exits. Hence, this option makes it easy to place multiple related containers on a common virtual network. Note that {{ic|vz-*}} interfaces are managed by [[systemd-networkd]] same way as {{ic|ve-*}} interfaces using the options from the {{ic|/usr/lib/systemd/network/80-container-vz.network}} file.
+
+===== Use a "macvlan" or "ipvlan" interface =====
+
+Instead of creating a virtual Ethernet link (whose host side may or may not be added to a bridge), you can create a virtual interface on an existing physical interface (i.e. [[VLAN]] interface) and add it to the container. The virtual interface will be bridged with the underlying host interface and thus the container will be exposed to the outside network, which allows it to obtain a distinct IP address via DHCP from the same LAN as the host is connected to.
+
+''systemd-nspawn'' offers 2 options:
+
+* {{ic|1=--network-macvlan=''interface''}} – the virtual interface will have a different MAC address than the underlying physical {{ic|''interface''}} and will be named {{ic|mv-''interface''}}.
+* {{ic|1=--network-ipvlan=''interface''}} – the virtual interface will have the same MAC address as the underlying physical {{ic|''interface''}} and will be named {{ic|iv-''interface''}}.
+
+Both options imply {{ic|--private-network}}.
+
+{{Note|To allow the host to communicate with the container, create a macvlan or ipvlan interface on the host attaching it to the same physical interface as the container uses and set up a network connection on it. Make sure the virtual interface name does not conflict with the virtual interface created by ''systemd-nspawn''. See [[systemd-networkd#MACVLAN bridge]] for an example using ''systemd-networkd''.}}
+
+===== Use an existing interface =====
+
+If the host system has multiple physical network interfaces, you can use the {{ic|1=--network-interface=''interface''}} to assign {{ic|''interface''}} to the container (and make it unavailable to the host while the container is started). Note that {{ic|--network-interface}} implies {{ic|--private-network}}.
+
+{{Tip|Passing wireless network interfaces to ''systemd-nspawn'' containers is supported since [https://github.com/systemd/systemd/releases/tag/v256 v256].}}
+
+=== Port mapping ===
+
+When private networking is enabled, individual ports on the host can be mapped to ports on the container using the {{ic|-p}}/{{ic|--port}} option or by using the {{ic|Port}} setting in an ''.nspawn'' file. For example, to map a TCP port 8000 on the host to the TCP port 80 in the container:
+
+{{hc|/etc/systemd/nspawn/''container-name''.nspawn|2=
+[Network]
+Port=tcp:8000:80
+}}
+
+This works by issuing [[iptables]] (or [[nftables]]) rules to the {{ic|nat}} table, but the {{ic|FORWARD}} chain in the {{ic|filter}} table needs to be configured manually as shown in [[#Use a virtual Ethernet link]]. Additionally, if you followed [[Simple stateful firewall]], run the following command to allow new connections to the host's {{ic|''wan_interface''}} on a forwarded port to be established:
+
+ # nft add rule ip filter FORWARD iifname "wan_interface" oifname "ve-*" tcp dport 8000 tcp flags syn / fin, syn, rst,ack ct state new counter accept
+
+{{Note|''systemd-nspawn'' explicitly excludes the {{ic|loopback}} interface when mapping ports. Hence, for the example above, {{ic|localhost:8000}} connects to the host and not to the container. Only connections to other interfaces are subjected to port mapping. See [https://github.com/systemd/systemd/issues/6106] for details.}}
+
+=== Domain name resolution ===
+
+[[Domain name resolution]] in the container can be configured the same way as on the host system. Additionally, ''systemd-nspawn'' provides options to manage the {{ic|/etc/resolv.conf}} file inside the container:
+
+* {{ic|--resolv-conf}} can be used on command-line
+* {{ic|1=ResolvConf=}} can be used in ''.nspawn'' files
+
+These corresponding options have many possible values which are described in {{man|1|systemd-nspawn|Integration Options}}. The default value is {{ic|auto}}, which means that:
+
+* If {{ic|--private-network}} is enabled, the {{ic|/etc/resolv.conf}} is left as it is in the container.
+* Otherwise, if [[systemd-resolved]] is running on the host, its stub {{ic|resolv.conf}} file is copied or bind-mounted into the container.
+* Otherwise, the {{ic|/etc/resolv.conf}} file is copied or bind-mounted from the host to the container.
+
+In the last two cases, the file is copied, if the container root is writeable, and bind-mounted if it is read-only.
+
+For the second case where [[systemd-resolved]] runs on the host, ''systemd-nspawn'' expects it to also run in the container, so that the container can use the stub symlink file {{ic|/etc/resolv.conf}} from the host. If not, the default value {{ic|auto}} no longer works, and you should replace the symlink by using one of the {{ic|replace-*}} options.
+
+== Tips and tricks ==
+
+=== Running non-shell/init commands ===
+
+From {{man|1|systemd-nspawn|Execution Options}}:
+:[The option] {{ic|--as-pid2}} [invokes] the shell or specified program as process ID (PID) 2 instead of PID 1 (init). [...] It is recommended to use this mode to invoke arbitrary commands in containers, unless they have been modified to run correctly as PID 1. '''Or in other words: this switch should be used for pretty much all commands''', except when the command refers to an init or shell implementation [...] This option may not be combined with {{ic|--boot}}.
+
+=== Unprivileged containers ===
+
+''systemd-nspawn'' supports unprivileged containers, though the containers need to be booted as root.
+
+{{Style|Very little of [[Linux Containers#Enable support to run unprivileged containers (optional)]] applies to systemd-nspawn.}}
+
+{{Note|This feature requires {{man|7|user_namespaces}}, for further info see [[Linux Containers#Enable support to run unprivileged containers (optional)]].}}
+
+The easiest way to do this is to let ''systemd-nspawn'' automatically choose an unused range of UIDs/GIDs by using the {{ic|-U}} option:
+
+ # systemd-nspawn -bUD ~/MyContainer
+
+If kernel supports user namespaces, the {{ic|-U}} option is equivalent to {{ic|1=--private-users=pick --private-users-ownership=auto}}. See {{man|1|systemd-nspawn|User Namespacing Options}} for details.
+
+{{Note|You can also specify the UID/GID range of the container manually, however, this is rarely useful.}}
+
+If a container has been started with a private UID/GID range using the {{ic|1=--private-users-ownership=chown}} option (or on a filesystem where {{ic|-U}} requires {{ic|1=--private-users-ownership=chown}}), you need to keep using it that way to avoid permission errors. Alternatively, it is possible to undo the effect of {{ic|1=--private-users-ownership=chown}} on the container's file system by specifying a range of IDs starting at 0:
+
+ # systemd-nspawn -D ~/MyContainer --private-users=0 --private-users-ownership=chown
+
+=== Use an X environment ===
+
+{{Accuracy|The note about the systemd version at the end of this section seems to be obsolete. For me (systemd version 239) X applications also work if {{ic|/tmp/.X11-unix}} is bound rw.|section=/tmp/.X11-unix contents have to be bind-mounted as read-only - still relevant?}}
+
+See [[Xhost]] and [[Change root#Run graphical applications from chroot]].
+
+You will need to set the {{ic|DISPLAY}} environment variable inside your container session to connect to the external X server.
+
+X stores some required files in the {{ic|/tmp}} directory. In order for your container to display anything, it needs access to those files. To do so, append the {{ic|--bind-ro<nowiki>=</nowiki>/tmp/.X11-unix}} option when starting the container.
+
+{{Note|Since systemd version 235, {{ic|/tmp/.X11-unix}} contents [https://github.com/systemd/systemd/issues/7093 have to be bind-mounted as read-only], otherwise they will disappear from the filesystem. The read-only mount flag does not prevent using {{ic|connect()}} syscall on the socket. If you binded also {{ic|/run/user/1000}} then you might want to explicitly bind {{ic|/run/user/1000/bus}} as read-only to protect the dbus socket from being deleted. }}
+
+==== Avoiding xhost ====
+
+{{ic|xhost}} only provides rather coarse access rights to the X server. More fine-grained access control is possible via the {{ic|$XAUTHORITY}} file. Unfortunately, just making the {{ic|$XAUTHORITY}} file accessible in the container will not do the job:
+your {{ic|$XAUTHORITY}} file is specific to your host, but the container is a different host.
+The following trick adapted from [https://stackoverflow.com/a/25280523 stackoverflow] can be used to make your X server accept the {{ic|$XAUTHORITY}} file from an X application run inside the container:
+
+ $ XAUTH=/tmp/container_xauth
+ $ xauth nextract - "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f "$XAUTH" nmerge -
+ # systemd-nspawn -D myContainer --bind=/tmp/.X11-unix --bind="$XAUTH" -E DISPLAY="$DISPLAY" -E XAUTHORITY="$XAUTH" --as-pid2 /usr/bin/xeyes
+
+The second line above sets the connection family to "FamilyWild", value {{ic|65535}}, which causes the entry to match every display. See {{man|7|Xsecurity}} for more information.
+
+==== Using X nesting/Xephyr ====
+
+Another simple way to run X applications and avoid the risks of a shared X desktop is using X nesting.
+The advantages here are avoiding interaction between in-container applications and non-container applications entirely and being able to run a different [[desktop environment]] or [[window manager]]. The downsides are less performance, and the lack of hardware acceleration when using [[Xephyr]].
+
+Start Xephyr outside of the container using:
+
+ # Xephyr :1 -resizeable
+
+Then start the container with the following options:
+
+ --setenv=DISPLAY=:1 --bind-ro<nowiki>=</nowiki>/tmp/.X11-unix/X1
+
+No other binds are necessary.
+
+You might still need to manually set {{ic|1=DISPLAY=:1}} in the container under some circumstances (mostly if used with {{ic|-b}}).
+
+==== Run Firefox ====
+
+ # systemd-nspawn --setenv=DISPLAY=:0 \
+               --setenv=XAUTHORITY=~/.Xauthority \
+               --bind-ro=$HOME/.Xauthority:/root/.Xauthority \
+               --bind=/tmp/.X11-unix \
+               -D ~/containers/firefox \
+               --as-pid2 \
+               firefox
+
+{{Note|As such, firefox is run as the root user which comes with its own risks if not using [[#Unprivileged containers]]. In that case, you may first opt to [[Users and groups#Example adding a user|add a user]] inside the container, and then add the {{ic|--user <username>}} option in ''systemd-nspawn'' invocation.}}
+
+Alternatively you can boot the container and let e.g. [[systemd-networkd]] set up the virtual network interface:
+
+ # systemd-nspawn --bind-ro=$HOME/.Xauthority:/root/.Xauthority \
+               --bind=/tmp/.X11-unix \
+               -D ~/containers/firefox \
+               --network-veth -b
+
+Once your container is booted, run the Xorg binary like so:
+
+ # systemd-run -M firefox --setenv=DISPLAY=:0 firefox
+
+==== 3D graphics acceleration ====
+
+{{expansion|How does [[Vulkan]], [[OpenGL]] successor for 3D acceleration, comes into the scene?}}
+
+To enable accelerated 3D graphics, it may be necessary to bind mount {{ic|/dev/dri}} to the container by adding the following line to the ''.nspawn'' file:
+
+ Bind=/dev/dri
+
+The above trick was adopted from [https://web.archive.org/web/20190925003151/https://patrickskiba.com/sysytemd-nspawn/2019/03/21/graphical-applications-in-systemd-nspawn.html patrickskiba.com]. This notably solves the problem of
+
+ libGL error: MESA-LOADER: failed to retrieve device information
+ libGL error: Version 4 or later of flush extension not found
+ libGL error: failed to load driver: i915
+
+You can confirm that it has been enabled by running {{ic|glxinfo}} or {{ic|glxgears}}.
+
+===== NVIDIA GPUs =====
+
+If you cannot install the same NVIDIA driver version on the container as on the host, you may need to also bind the driver library files. You can run {{ic|pacman -Ql nvidia-utils}} on the host to see all the files it contains. You do not need to copy everything over. The following systemd override file will bind all the necessary files over when the container is run via {{ic|machinectl start ''container-name''}}.
+
+{{Accuracy|No reason to bind from {{ic|/usr/lib/}} into {{ic|/usr/lib/x86_64-linux-gnu/}}.|section=Nvidia with private-network}}
+
+{{hc|/etc/systemd/system/systemd-nspawn@.service.d/nvidia-gpu.conf|2=
+[Service]
+ExecStart=
+ExecStart=systemd-nspawn --quiet --keep-unit --boot --link-journal=try-guest --machine=%i \
+--bind=/dev/dri \
+--bind=/dev/shm \
+--bind=/dev/nvidia0 \
+--bind=/dev/nvidiactl \
+--bind=/dev/nvidia-modeset \
+--bind=/usr/bin/nvidia-bug-report.sh:/usr/bin/nvidia-bug-report.sh \
+--bind=/usr/bin/nvidia-cuda-mps-control:/usr/bin/nvidia-cuda-mps-control \
+--bind=/usr/bin/nvidia-cuda-mps-server:/usr/bin/nvidia-cuda-mps-server \
+--bind=/usr/bin/nvidia-debugdump:/usr/bin/nvidia-debugdump \
+--bind=/usr/bin/nvidia-modprobe:/usr/bin/nvidia-modprobe \
+--bind=/usr/bin/nvidia-ngx-updater:/usr/bin/nvidia-ngx-updater \
+--bind=/usr/bin/nvidia-persistenced:/usr/bin/nvidia-persistenced \
+--bind=/usr/bin/nvidia-powerd:/usr/bin/nvidia-powerd \
+--bind=/usr/bin/nvidia-sleep.sh:/usr/bin/nvidia-sleep.sh \
+--bind=/usr/bin/nvidia-smi:/usr/bin/nvidia-smi \
+--bind=/usr/bin/nvidia-xconfig:/usr/bin/nvidia-xconfig \
+--bind=/usr/lib/gbm/nvidia-drm_gbm.so:/usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so \
+--bind=/usr/lib/libEGL_nvidia.so:/usr/lib/x86_64-linux-gnu/libEGL_nvidia.so \
+--bind=/usr/lib/libGLESv1_CM_nvidia.so:/usr/lib/x86_64-linux-gnu/libGLESv1_CM_nvidia.so \
+--bind=/usr/lib/libGLESv2_nvidia.so:/usr/lib/x86_64-linux-gnu/libGLESv2_nvidia.so \
+--bind=/usr/lib/libGLX_nvidia.so:/usr/lib/x86_64-linux-gnu/libGLX_nvidia.so \
+--bind=/usr/lib/libcuda.so:/usr/lib/x86_64-linux-gnu/libcuda.so \
+--bind=/usr/lib/libnvcuvid.so:/usr/lib/x86_64-linux-gnu/libnvcuvid.so \
+--bind=/usr/lib/libnvidia-allocator.so:/usr/lib/x86_64-linux-gnu/libnvidia-allocator.so \
+--bind=/usr/lib/libnvidia-cfg.so:/usr/lib/x86_64-linux-gnu/libnvidia-cfg.so \
+--bind=/usr/lib/libnvidia-egl-gbm.so:/usr/lib/x86_64-linux-gnu/libnvidia-egl-gbm.so \
+--bind=/usr/lib/libnvidia-eglcore.so:/usr/lib/x86_64-linux-gnu/libnvidia-eglcore.so \
+--bind=/usr/lib/libnvidia-encode.so:/usr/lib/x86_64-linux-gnu/libnvidia-encode.so \
+--bind=/usr/lib/libnvidia-fbc.so:/usr/lib/x86_64-linux-gnu/libnvidia-fbc.so \
+--bind=/usr/lib/libnvidia-glcore.so:/usr/lib/x86_64-linux-gnu/libnvidia-glcore.so \
+--bind=/usr/lib/libnvidia-glsi.so:/usr/lib/x86_64-linux-gnu/libnvidia-glsi.so \
+--bind=/usr/lib/libnvidia-glvkspirv.so:/usr/lib/x86_64-linux-gnu/libnvidia-glvkspirv.so \
+--bind=/usr/lib/libnvidia-ml.so:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so \
+--bind=/usr/lib/libnvidia-ngx.so:/usr/lib/x86_64-linux-gnu/libnvidia-ngx.so \
+--bind=/usr/lib/libnvidia-opticalflow.so:/usr/lib/x86_64-linux-gnu/libnvidia-opticalflow.so \
+--bind=/usr/lib/libnvidia-ptxjitcompiler.so:/usr/lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so \
+--bind=/usr/lib/libnvidia-rtcore.so:/usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so \
+--bind=/usr/lib/libnvidia-tls.so:/usr/lib/x86_64-linux-gnu/libnvidia-tls.so \
+--bind=/usr/lib/libnvidia-vulkan-producer.so:/usr/lib/x86_64-linux-gnu/libnvidia-vulkan-producer.so \
+--bind=/usr/lib/libnvoptix.so:/usr/lib/x86_64-linux-gnu/libnvoptix.so \
+--bind=/usr/lib/modprobe.d/nvidia-utils.conf:/usr/lib/x86_64-linux-gnu/modprobe.d/nvidia-utils.conf \
+--bind=/usr/lib/nvidia/wine/_nvngx.dll:/usr/lib/x86_64-linux-gnu/nvidia/wine/_nvngx.dll \
+--bind=/usr/lib/nvidia/wine/nvngx.dll:/usr/lib/x86_64-linux-gnu/nvidia/wine/nvngx.dll \
+--bind=/usr/lib/nvidia/xorg/libglxserver_nvidia.so:/usr/lib/x86_64-linux-gnu/nvidia/xorg/libglxserver_nvidia.so \
+--bind=/usr/lib/vdpau/libvdpau_nvidia.so:/usr/lib/x86_64-linux-gnu/vdpau/libvdpau_nvidia.so \
+--bind=/usr/lib/xorg/modules/drivers/nvidia_drv.so:/usr/lib/x86_64-linux-gnu/xorg/modules/drivers/nvidia_drv.so \
+--bind=/usr/share/X11/xorg.conf.d/10-nvidia-drm-outputclass.conf:/usr/share/X11/xorg.conf.d/10-nvidia-drm-outputclass.conf \
+--bind=/usr/share/dbus-1/system.d/nvidia-dbus.conf:/usr/share/dbus-1/system.d/nvidia-dbus.conf \
+--bind=/usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json:/usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json \
+--bind=/usr/share/glvnd/egl_vendor.d/10_nvidia.json:/usr/share/glvnd/egl_vendor.d/10_nvidia.json \
+--bind=/usr/share/licenses/nvidia-utils/LICENSE:/usr/share/licenses/nvidia-utils/LICENSE \
+--bind=/usr/share/vulkan/icd.d/nvidia_icd.json:/usr/share/vulkan/icd.d/nvidia_icd.json \
+--bind=/usr/share/vulkan/implicit_layer.d/nvidia_layers.json:/usr/share/vulkan/implicit_layer.d/nvidia_layers.json \
+DeviceAllow=/dev/dri rw
+DeviceAllow=/dev/shm rw
+DeviceAllow=/dev/nvidia0 rw
+DeviceAllow=/dev/nvidiactl rw
+DeviceAllow=/dev/nvidia-modeset rw
+}}
+
+{{Note|Whenever you upgrade your NVIDIA drivers on the host, you will need to restart the container and may need to run {{ic|ldconfig}} in it to update the libraries.}}
+
+=== Access host filesystem ===
+
+See {{ic|--bind}} and {{ic|--bind-ro}} in {{man|1|systemd-nspawn}}.
+
+If both the host and the container are Arch Linux, then one could, for example, share the pacman cache:
+
+ # systemd-nspawn --bind=/var/cache/pacman/pkg
+
+Or you can specify per-container bind using the file:
+
+{{hc|/etc/systemd/nspawn/''my-container''.nspawn|<nowiki>
+[Files]
+Bind=/var/cache/pacman/pkg
+</nowiki>}}
+
+See [[#Per-container settings]].
+
+To bind the directory to a different path within the container, add the path be separated by a colon. For example:
+
+ # systemd-nspawn --bind=''/path/to/host_dir:/path/to/container_dir''
+
+In case of [[#Unprivileged containers]], the resulting mount points will be owned by the nobody user. This can be modified with the {{ic|idmap}} mount option:
+ # systemd-nspawn --bind=''/path/to/host_dir:/path/to/container_dir'':idmap
+
+=== Run on a non-systemd system ===
+
+See [[Init#systemd-nspawn]].
+
+=== Use Btrfs subvolume as container root ===
+
+To use a [[Btrfs#Subvolumes|Btrfs subvolume]] as a template for the container's root, use the {{ic|--template}} flag. This takes a snapshot of the subvolume and populates the root directory for the container with it.
+
+{{Note|If the template path specified is not the root of a subvolume, the '''entire''' tree is copied. This will be very time consuming.}}
+
+For example, to use a snapshot located at {{ic|/.snapshots/403/snapshot}}:
+
+ # systemd-nspawn --template=/.snapshots/403/snapshot -b -D ''my-container''
+
+where {{ic|''my-container''}} is the name of the directory that will be created for the container. After powering off, the newly created subvolume is retained.
+
+=== Use temporary Btrfs snapshot of container ===
+
+One can use the {{ic|--ephemeral}} or {{ic|-x}} flag to create a temporary btrfs snapshot of the container and use it as the container root. Any changes made while booted in the container will be lost. For example:
+
+ # systemd-nspawn -D ''my-container'' -xb
+
+where ''my-container'' is the directory of an '''existing''' container or system. For example, if {{ic|/}} is a btrfs subvolume one could create an ephemeral container of the currently running host system by doing:
+
+ # systemd-nspawn -D / -xb
+
+After powering off the container, the btrfs subvolume that was created is immediately removed.
+
+=== Run docker in systemd-nspawn ===
+
+Since [[Docker]] 20.10, it is possible to run Docker containers inside an unprivileged ''systemd-nspawn'' container with ''cgroups v2'' enabled (default in Arch Linux) without undermining security measures by disabling cgroups and user namespaces. To do so, edit {{ic|/etc/systemd/nspawn/myContainer.nspawn}} (create if absent) and add the following configurations.
+
+{{hc|/etc/systemd/nspawn/myContainer.nspawn|<nowiki>
+[Exec]
+SystemCallFilter=@keyring bpf
+</nowiki>}}
+
+Then, Docker should work as-is inside the container.
+
+{{Note|The configuration above exposes the system calls ''add_key'', ''keyctl'' and ''bpf'' to the container, which are not namespaced. This could still be a security risk, even though it is much lower than disabling user namespacing entirely like what one had to do before cgroups v2.}}
+
+{{Accuracy|Bind-mounting {{ic|/proc}} and {{ic|/sys}} with read-write access into unprivileged containers is not secure.}}
+
+With recent versions of systemd, you would also need to need the following workaround:
+
+{{hc|/etc/systemd/nspawn/myContainer.nspawn|<nowiki>
+[Files]
+Bind=/proc:/run/proc
+Bind=/sys:/run/sys
+</nowiki>}}
+
+See [https://github.com/systemd/systemd/issues/27994] for more details.
+
+Since ''overlayfs'' does not work with user namespaces and is unavailable inside ''systemd-nspawn'', by default, Docker falls back to using the inefficient ''vfs'' as its storage driver, which creates a copy of the image each time a container is started. This can be worked around by using ''fuse-overlayfs'' as its storage driver. To do so, we need to first expose ''fuse'' to the container:
+
+{{hc|/etc/systemd/nspawn/myContainer.nspawn|<nowiki>
+[Files]
+Bind=/dev/fuse
+</nowiki>}}
+
+and then allow the container to read and write the device node:
+
+ # systemctl set-property systemd-nspawn@myContainer DeviceAllow='/dev/fuse rwm'
+
+Finally, install the package {{Pkg|fuse-overlayfs}} inside the container. You need to restart the container for all the configuration to take effect.
+
+=== Map a local user and bind-mount their home directory into a container ===
+
+Create a container in {{ic|/var/lib/machines/MyContainer/}} as explained in [[#Create and boot a minimal Arch Linux container]].
+
+Create a configuration file with {{ic|1=BindUser=}} to map the selected local user name into the container. Note that this requires {{ic|1=PrivateUsers=}}, see {{man|1|systemd-nspawn}} for details. Files created in the bind-mounted home directory both inside and outside the container will have the same UID and GID.
+
+{{hc|/etc/systemd/nspawn/MyContainer.nspawn|2=
+[Exec]
+User=''username''
+PrivateUsers=pick
+
+[Files]
+BindUser=''username''
+}}
+
+Having also {{ic|1=User=}} in the configuration specifies the default user used for running commands inside the container, such as the interactive shell:
+
+ # systemd-nspawn -M MyContainer bash
+
+This is helpful for testing Arch Linux packages from another Linux distribution.
+
+== Troubleshooting ==
+
+=== execv(...) failed: Permission denied ===
+
+When trying to boot the container via {{ic|systemd-nspawn -bD ''/path/to/container''}} (or executing something in the container), and the following error comes up:
+
+ execv(/usr/lib/systemd/systemd, /lib/systemd/systemd, /sbin/init) failed: Permission denied
+
+even though the permissions of the files in question (i.e. {{ic|/lib/systemd/systemd}}) are correct, this can be the result of having mounted the file system on which the container is stored as non-root user. For example, if you mount your disk manually with an entry in [[fstab]] that has the options {{ic|noauto,user,...}}, ''systemd-nspawn'' will not allow executing the files even if they are owned by root.
+
+=== Terminal type in TERM is incorrect (broken colors) ===
+
+When logging into the container via {{ic|machinectl login}}, the colors and keystrokes in the terminal within the container might be broken. This may be due to an incorrect terminal type in {{ic|TERM}} environment variable. The environment variable is not inherited from the shell on the host, but falls back to a default fixed in systemd ({{ic|vt220}}), unless explicitly configured. To configure, within the container create a configuration overlay for the {{ic|container-getty@.service}} systemd service that launches the login getty for {{ic|machinectl login}}, and set {{ic|TERM}} to the value that matches the host terminal you are logging in from:
+
+{{hc|/etc/systemd/system/container-getty@.service.d/term.conf|2=
+[Service]
+Environment=TERM=xterm-256color
+}}
+
+Alternatively use {{ic|machinectl shell}}. It properly inherits the {{ic|TERM}} environment variable from the terminal.
+
+=== Mounting a NFS share inside the container ===
+{{expansion|A section added to the discussion page have been added, claiming for a sort of partial work around (January 2023)|section=A trick way to mount a NFS share with the container}}
+
+Not possible at this time (June 2019).
+
+== See also ==
+
+* [[Getty#Nspawn console|Automatic console login]]
+* [https://lwn.net/Articles/572957/ Creating containers with systemd-nspawn]
+* [https://www.youtube.com/results?search_query=systemd-nspawn&aq=f Presentation by Lennart Poettering on systemd-nspawn]
+* [https://dabase.com/e/12009/ Running Firefox in a systemd-nspawn container]
+* [https://web.archive.org/web/20190925003151/https://patrickskiba.com/sysytemd-nspawn/2019/03/21/graphical-applications-in-systemd-nspawn.html Graphical applications in systemd-nspawn]

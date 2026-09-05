@@ -1,0 +1,783 @@
+{{Lowercase title}}
+[[Category:Init]]
+[[de:Systemd]]
+[[es:Systemd]]
+[[fi:Systemd]]
+[[fr:Systemd]]
+[[hu:Systemd]]
+[[it:Systemd]]
+[[ja:Systemd]]
+[[pt:Systemd]]
+[[ru:Systemd]]
+[[zh-hans:Systemd]]
+{{Related articles start}}
+{{Related|systemd/User}}
+{{Related|systemd/Timers}}
+{{Related|systemd/Journal}}
+{{Related|systemd/Sandboxing}}
+{{Related|systemd/FAQ}}
+{{Related|init}}
+{{Related|udev}}
+{{Related|Improving performance/Boot process}}
+{{Related|Allow users to shutdown}}
+{{Related articles end}}
+
+From the [https://systemd.io/ project web page]:
+
+:''systemd'' is a suite of basic building blocks for a Linux system. It provides a system and service manager that runs as PID 1 and starts the rest of the system. ''systemd'' provides aggressive parallelization capabilities, uses socket and [[D-Bus]] activation for starting services, offers on-demand starting of daemons, keeps track of processes using Linux [[control groups]], maintains mount and automount points, and implements an elaborate transactional dependency-based service control logic. Other parts include a logging daemon, utilities to control basic system configuration like the hostname, date, locale, maintain a list of logged-in users and running containers and virtual machines, system accounts, runtime directories and settings, and daemons to manage simple network configuration, network time synchronization, log forwarding, and name resolution.
+
+Historically, what systemd calls "service" was named [[Wikipedia:Daemon (computing)|daemon]]: any program that runs as a "background" process (without a terminal or user interface), commonly waiting for events to occur and offering services. A good example is a web server that waits for a request to deliver a page, or an ssh server waiting for someone trying to log in. While these are full featured applications, there are daemons whose work is not that visible. Daemons are for tasks like writing messages into a log file (e.g. {{ic|syslog}}, {{ic|metalog}}) or keeping your system time accurate (e.g. [[ntpd]]). For more information see {{man|7|daemon}}.
+
+{{Note|1=For a detailed explanation of why Arch moved to ''systemd'', see [https://bbs.archlinux.org/viewtopic.php?pid=1149530#p1149530 this forum post].}}
+
+== Basic systemctl usage ==
+
+The main command used to introspect and control ''systemd'' is ''systemctl''. Some of its uses are examining the system state and managing the system and services. See {{man|1|systemctl}} for more details.
+
+{{Tip|
+* You can use all of the following ''systemctl'' commands with the {{ic|-H ''user''@''host''}} switch to control a ''systemd'' instance on a remote machine. This will use [[SSH]] to connect to the remote ''systemd'' instance.
+* [[Plasma]] users can install {{Pkg|systemdgenie}} as a graphical frontend for ''systemctl''.
+}}
+
+=== Using units ===
+
+Units commonly include, but are not limited to, services (''.service''), mount points (''.mount''), devices (''.device'') and sockets (''.socket'').
+
+When using ''systemctl'', you generally have to specify the complete name of the unit file, including its suffix, for example {{ic|sshd.socket}}. There are however a few short forms when specifying the unit in the following ''systemctl'' commands:
+
+* If you do not specify the suffix, systemctl will assume ''.service''. For example, {{ic|netctl}} and {{ic|netctl.service}} are equivalent.
+* Mount points will automatically be translated into the appropriate ''.mount'' unit. For example, specifying {{ic|/home}} is equivalent to {{ic|home.mount}}.
+* Similar to mount points, devices are automatically translated into the appropriate ''.device'' unit, therefore specifying {{ic|/dev/sda2}} is equivalent to {{ic|dev-sda2.device}}.
+
+See {{man|5|systemd.unit}} for details.
+
+{{Note|Some unit names contain an {{ic|@}} sign (e.g. {{ic|name@''string''.service}}): this means that they are [https://0pointer.net/blog/projects/instances.html instances] of a ''template'' unit, whose actual file name does not contain the {{ic|''string''}} part (e.g. {{ic|name@.service}}). {{ic|''string''}} is called the ''instance identifier'', and is similar to an argument that is passed to the template unit when called with the ''systemctl'' command: in the unit file it will substitute the {{ic|%i}} specifier. To be more accurate, ''before'' trying to instantiate the {{ic|name@.''suffix''}} template unit, ''systemd'' will actually look for a unit with the exact {{ic|name@''string''.''suffix''}} file name, although by convention such a "clash" happens rarely, i.e. most unit files containing an {{ic|@}} sign are meant to be templates. Also, if a template unit is called without an instance identifier, it will generally fail (except with certain ''systemctl'' commands, like {{ic|cat}}).}}
+
+The commands in the below table operate on '''system units''' since {{ic|--system}} is the implied default for ''systemctl''. To instead operate on '''user units''' (for the ''calling user''), use [[systemctl --user]] without root privileges. See also [[systemd/User#Basic setup]] to enable/disable user units for ''all users''.
+
+{{Tip|
+* Most commands also work if multiple units are specified, see {{man|1|systemctl}} for more information.
+* The {{ic|--now}} switch can be used in conjunction with {{ic|enable}}, {{ic|disable}}, and {{ic|mask}} to start or stop the unit ''immediately'' rather than after rebooting.
+* A package may offer units for different purposes. If you just installed a package, {{ic|pacman -Qql ''package'' {{!}} grep -Fe .service -e .socket}} can be used to check and find them.
+* When available, enabling {{ic|''unit''.socket}} instead of {{ic|''unit''.service}} might be beneficial because the socket would start the service when necessary. See [[#Socket activation]] for more details.
+* A search ''pattern'' can be appended to a lot of commands, making the use of ''grep'' unnecessary. For example, you can search the manual by executing {{ic|systemctl help '<nowiki/>''dbus*''<nowiki/>'}}, or list specific units with {{ic|systemctl list-units '<nowiki/>''dbus*''<nowiki/>'}}.
+}}
+
+{| class="wikitable"
+! Action || Command || Note
+|-
+! colspan="3" | Analyzing the system state
+|-
+| '''Show system status''' || {{ic|systemctl status}} ||
+|-
+| '''List running''' units || {{ic|systemctl}} or<br>{{ic|systemctl list-units}} ||
+|-
+| '''List failed''' units || {{ic|systemctl --failed}} ||
+|-
+| '''List installed''' unit files<sup>1</sup> || {{ic|systemctl list-unit-files}} ||
+|-
+| '''Show process status''' for a PID || {{ic|systemctl status ''pid''}} || [[cgroups|cgroup slice]], memory and parent
+|-
+! colspan="3" | Checking the unit status
+|-
+| '''Show a manual page''' associated with a unit || {{ic|systemctl help ''unit''}} || as supported by the unit
+|-
+| '''Status''' of a unit || {{ic|systemctl status ''unit''}} || including whether it is running or not
+|-
+| '''Check''' whether a unit is enabled || {{ic|systemctl is-enabled ''unit''}} ||
+|-
+! colspan="3" | Starting, restarting, reloading a unit
+|-
+| '''Start''' a unit immediately || {{ic|systemctl start ''unit''}} as root ||
+|-
+| '''Stop''' a unit immediately || {{ic|systemctl stop ''unit''}} as root ||
+|-
+| '''Restart''' a unit || {{ic|systemctl restart ''unit''}} as root ||
+|-
+| '''Reload''' a unit and its configuration || {{ic|systemctl reload ''unit''}} as root ||
+|-
+| '''Reload systemd manager''' configuration<sup>2</sup> || {{ic|systemctl daemon-reload}} as root || scan for new or changed units
+|-
+! colspan="3" | Enabling a unit
+|-
+| '''Enable''' a unit to start automatically at boot || {{ic|systemctl enable ''unit''}} as root ||
+|-
+| '''Enable''' a unit to start automatically at boot and '''start''' it immediately || {{ic|systemctl enable --now ''unit''}} as root ||
+|-
+| '''Disable''' a unit to no longer start at boot || {{ic|systemctl disable ''unit''}} as root ||
+|-
+| '''Disable''' a unit to no longer start at boot and '''stop''' it immediately || {{ic|systemctl disable --now ''unit''}} as root ||
+|-
+| '''Reenable''' a unit<sup>3</sup> || {{ic|systemctl reenable ''unit''}} as root || i.e. disable and enable anew
+|-
+! colspan="3" | Masking a unit
+|-
+| '''Mask''' a unit to make it impossible to start<sup>4</sup> || {{ic|systemctl mask ''unit''}} as root ||
+|-
+| '''Unmask''' a unit || {{ic|systemctl unmask ''unit''}} as root ||
+|}
+
+# See {{man|5|systemd.unit|UNIT FILE LOAD PATH}} for the directories where available unit files can be found.
+# This does not ask the changed units to reload their own configurations (see the '''Reload''' action).
+# For example, in case its {{ic|[Install]}} section has changed since last enabling it.
+# Both manually and as a dependency, which makes masking dangerous. Check for existing masked units with: {{bc|$ systemctl list-unit-files --state{{=}}masked}}
+
+=== Power management ===
+
+[[polkit]] is necessary for power management as an unprivileged user. If you are in a local ''systemd-logind'' user session and no other session is active, the following commands will work without root privileges. If not (for example, because another user is logged into a tty), ''systemd'' will automatically ask you for the root password.
+
+{| class="wikitable"
+! Action || Command
+|-
+| Shut down and reboot the system || {{ic|systemctl reboot}}
+|-
+| Shut down and power-off the system || {{ic|systemctl poweroff}}
+|-
+| Suspend the system || {{ic|systemctl suspend}}
+|-
+| Put the system into hibernation (write RAM to disk) || {{ic|systemctl hibernate}}
+|-
+| Put the system into hybrid-sleep state (also called suspend-to-both, it saves RAM to disk and then suspends) || {{ic|systemctl hybrid-sleep}}
+|-
+| First suspend the system, then wake up after a configured time in order to just hibernate the system || {{ic|systemctl suspend-then-hibernate}}
+|-
+| Perform a reboot of the userspace-only with a [[#Soft reboot]]. || {{ic|systemctl soft-reboot}}
+|-
+|}
+
+==== Soft reboot ====
+
+Soft reboot is a special kind of a userspace-only reboot operation that does not involve the kernel. It is implemented by {{man|8|systemd-soft-reboot.service}} and can be invoked through {{ic|systemctl soft-reboot}}. As with [[kexec]], it skips firmware re-initialization, but additionally the system does not go through kernel initialization and [[initramfs]], and unlocked [[dm-crypt]] devices remain attached.
+
+When {{ic|/run/nextroot/}} contains a valid root file system hierarchy (e.g. is the root mount of another distribution or another snapshot), ''soft-reboot'' would switch the system root into it, allowing for switching to another installation without losing states managed by kernel, e.g. [[networking]].
+
+{{Tip|{{ic|/run/nextroot/}} is not necessarily a mount point or backed by physical device. For example, it can reside in the {{ic|/run/}} tmpfs. ''systemd'' will turn {{ic|/run/nextroot/}} automatically into a mount point on ''soft-reboot''.}}
+
+{{Note|Do not invoke {{ic|systemctl soft-reboot}} after package updates that involved the kernel and initramfs.}}
+
+== Writing unit files ==
+
+The syntax of ''systemd'''s unit files ({{man|5|systemd.unit}}) is inspired by [[Desktop entries|XDG Desktop Entry Specification .desktop files]], which are in turn inspired by [[Wikipedia:INI file|Microsoft Windows .ini files]]. Unit files are loaded from multiple locations (to see the full list, run {{ic|systemctl show --property{{=}}UnitPath}}), but the main ones are (listed from lowest to highest precedence):
+
+* {{ic|/usr/lib/systemd/system/}}: units provided by installed packages
+* {{ic|/run/systemd/system/}}: units installed by the system administrator, deleted on power-off (useful for [[#Editing provided units]])
+* {{ic|/etc/systemd/system/}}: units installed by the system administrator
+
+{{Note|
+* The load paths are completely different when running ''systemd'' in [[systemd/User#How it works|user mode]].
+* ''systemd'' unit names may only contain ASCII alphanumeric characters, underscores and periods. All other characters must be replaced by C-style "\x2d" escapes, or employ their predefined semantics ('@', '-'). See {{man|5|systemd.unit}} and {{man|1|systemd-escape}} for more information.
+}}
+
+Look at the units installed by your packages for examples, as well as {{man|5|systemd.service|EXAMPLES}}.
+
+{{Tip|Comments prepended with {{ic|#}} may be used in unit-files as well, but only in new lines. Do not use end-line comments after ''systemd'' parameters or the unit will fail to activate.}}
+
+To inspect or verify the work, {{man|1|systemd-analyze}} can help with the {{ic|cat-config}} or {{ic|verify}} command.
+
+=== Handling dependencies ===
+
+With ''systemd'', dependencies can be resolved by designing the unit files correctly. The most typical case is when unit ''A'' requires unit ''B'' to be running before ''A'' is started. In that case add {{ic|Requires{{=}}''B''}} and {{ic|After{{=}}''B''}} to the {{ic|[Unit]}} section of ''A''. If the dependency is optional, add {{ic|Wants{{=}}''B''}} and {{ic|After{{=}}''B''}} instead. Note that {{ic|Wants{{=}}}} and {{ic|Requires{{=}}}} do not imply {{ic|After{{=}}}}, meaning that if {{ic|After{{=}}}} is not specified, the two units will be started in parallel.
+
+Dependencies are typically placed on services and not on [[#Targets]]. For example, {{ic|network.target}} is pulled in by whatever service configures your network interfaces, therefore ordering your custom unit after it is sufficient since {{ic|network.target}} is started anyway.
+
+=== Service types ===
+
+There are several different start-up types to consider when writing a custom service file. This is set with the {{ic|Type{{=}}}} parameter in the {{ic|[Service]}} section:
+
+* {{ic|Type{{=}}simple}} (default): ''systemd'' considers the service to be started up immediately. The process must not fork. Do not use this type if other services need to be ordered on this service, unless it is socket activated.
+* {{ic|Type{{=}}forking}}: ''systemd'' considers the service started up once the process forks and the parent has exited. For classic daemons, use this type unless you know that it is not necessary. You should specify {{ic|PIDFile{{=}}}} as well so ''systemd'' can keep track of the main process.
+* {{ic|Type{{=}}oneshot}}: this is useful for scripts that do a single job and then exit. You may want to set {{ic|RemainAfterExit{{=}}yes}} as well so that ''systemd'' still considers the service as active after the process has exited. Setting {{ic|RemainAfterExit{{=}}yes}} is appropriate for the units which change the system state (e.g., mount some partition). See also [https://trstringer.com/simple-vs-oneshot-systemd-service/] for the differences of simple and oneshot.
+* {{ic|Type{{=}}notify}}: identical to {{ic|Type{{=}}simple}}, but with the stipulation that the daemon will send a signal to ''systemd'' when it is ready. The reference implementation for this notification is provided by ''libsystemd-daemon.so''.
+* {{ic|Type{{=}}dbus}}: the service is considered ready when the specified {{ic|BusName}} appears on DBus's system bus.
+* {{ic|Type{{=}}idle}}: ''systemd'' will delay execution of the service binary until all jobs are dispatched unless these take longer than 5s, where the service binary is started anyway. Other than that its behaviour is very similar to {{ic|Type{{=}}simple}}. It should never be used for service ordering and is intended for helping with console output readability.
+
+See the {{man|5|systemd.service|OPTIONS}} man page for a more detailed explanation of the {{ic|Type}} values.
+
+=== Editing provided units ===
+
+{{Expansion|We should fit "If {{ic|--runtime}} is specified, the changes will be made temporarily in {{ic|/run/}} and they will be lost on the next reboot." in here. An example would be passing debug flags to a service and not wanting to keep the changes permanently.}}
+
+To avoid conflicts with pacman, unit files provided by packages should not be directly edited. There are two safe ways to modify a unit without touching the original file: create a new unit file which [[#Replacement unit files|overrides the original unit]] or create [[#Drop-in files|drop-in snippets]] which are applied on top of the original unit. For both methods, you must reload the unit afterwards to apply your changes. This can be done either by editing the unit with {{ic|systemctl edit}} (which reloads the unit automatically) or by reloading all units with:
+
+ # systemctl daemon-reload
+
+{{Tip|
+* You can use ''systemd-delta'' to see which unit files have been overridden or extended and what exactly has been changed.
+* Use {{ic|systemctl cat ''unit''}} to view the content of a unit file and all associated drop-in snippets.
+}}
+
+==== Replacement unit files ====
+
+{{Note|The replacement units will keep on being used even if Pacman updates the original units in the future. This method makes system maintenance more difficult and therefore the next approach is preferred.}}
+
+To replace the unit file {{ic|/usr/lib/systemd/system/''unit''}}, create the file {{ic|/etc/systemd/system/''unit''}} and [[#Using units|reenable]] the unit to update the symlinks.
+
+Alternatively, run:
+
+ # systemctl edit --full ''unit''
+
+This opens {{ic|/etc/systemd/system/''unit''}} in your editor (copying the installed version if it does not exist yet) and automatically reloads it when you finish editing.
+
+==== Drop-in files ====
+
+To create drop-in files for the unit file {{ic|/usr/lib/systemd/system/''unit''}}, create the directory {{ic|/etc/systemd/system/''unit''.d/}} and place ''.conf'' files there to override or add new options. Drop-in directories must always include the full unit name, including its extension like {{ic|.service}}, {{ic|.socket}}, or {{ic|.timer}}, followed by {{ic|.d}}. ''systemd'' will parse and apply these files on top of the original unit.
+
+The easiest way to do this is to run:
+
+ # systemctl edit ''unit'' --drop-in=''drop_in_name''
+
+This opens the file {{ic|/etc/systemd/system/''unit''.d/''drop_in_name''.conf}} in your text editor (creating it if necessary) and automatically reloads the unit when you are done editing.
+Omitting the {{ic|--drop-in{{=}}}} option will result in systemd using the default file name {{ic|override.conf}} .
+
+{{Note|
+* The key must be still placed in the appropriate section in the override file.
+* Not all keys can be overridden with drop-in files. For example, for changing {{ic|Conflicts{{=}}}} a replacement file [https://lists.freedesktop.org/archives/systemd-devel/2017-June/038976.html is necessary].
+* You can use top-level drop-in files to affect all units of the same type. For example, a drop-in file in {{ic|/etc/systemd/system/service.d/}} affects all ''.service'' units. You can see an example in [[#Notifying about failed services]]
+}}
+
+==== Revert to vendor version ====
+
+To revert any changes to a unit made using {{ic|systemctl edit}} do:
+
+ # systemctl revert ''unit''
+
+==== Examples ====
+
+For example, if you simply want to add an additional dependency to a unit, you may create the following file:
+
+{{hc|/etc/systemd/system/''unit''.d/customdependency.conf|2=
+[Unit]
+Requires=''new dependency''
+After=''new dependency''
+}}
+
+As another example, in order to replace the {{ic|ExecStart}} directive, create the following file:
+
+{{hc|/etc/systemd/system/''unit''.d/customexec.conf|2=
+[Service]
+ExecStart=
+ExecStart=''new command''
+}}
+
+Note how {{ic|ExecStart}} must be cleared before being re-assigned [https://bugzilla.redhat.com/show_bug.cgi?id=756787#c9]. The same holds for every item that can be specified multiple times, e.g. {{ic|OnCalendar}} for timers.
+
+One more example to automatically restart a service:
+
+{{hc|/etc/systemd/system/''unit''.d/restart.conf|2=
+[Service]
+Restart=always
+RestartSec=30
+}}
+
+=== Service logging levels ===
+
+For services that send logs directly to journald or syslog, you can control their verbosity by setting a numeric value between 0 and 6 for the {{ic|LogLevelMax{{=}}}} parameter in the {{ic|[Service]}} section using the methods described above. For example:
+
+{{hc|/etc/systemd/system/''unit''.d/override.conf|2=
+[Service]
+LogLevelMax=3
+}}
+
+The standard log levels are identical to those used to filter the [[journal]]. Setting a lower number excludes all higher and less important log messages from your journal.
+
+==== Suppressing a service's standard output ====
+
+If a service is echoing stdout and/or stderr output, by default this will end up in the journal as well. This behavior can be suppressed by setting {{ic|StandardOutput{{=}}null}} and/or {{ic|StandardError{{=}}null}} in the {{ic|[Service]}} section. Other values than {{ic|null}} can be used to further tweak this behavior. See {{man|5|systemd.exec|LOGGING_AND_STANDARD_INPUT/OUTPUT}}.
+
+== Targets ==
+
+''systemd'' uses ''targets'' to group units together via dependencies and as standardized synchronization points. They serve a similar purpose as [[wikipedia:Runlevel|runlevels]] but act a little differently. Each ''target'' is named instead of numbered and is intended to serve a specific purpose with the possibility of having multiple ones active at the same time. Some ''target''s are implemented by inheriting all of the services of another ''target'' and adding additional services to it. There are ''systemd'' ''target''s that mimic the common SystemVinit runlevels.
+
+=== Get current targets ===
+
+The following should be used under ''systemd'' instead of running {{ic|runlevel}}:
+
+ $ systemctl list-units --type=target
+
+=== Create custom target ===
+
+The runlevels that held a defined meaning under sysvinit (i.e., 0, 1, 3, 5, and 6); have a 1:1 mapping with a specific ''systemd'' ''target''. Unfortunately, there is no good way to do the same for the user-defined runlevels like 2 and 4. If you make use of those it is suggested that you make a new named ''systemd'' ''target'' as {{ic|/etc/systemd/system/''your target''}} that takes one of the existing runlevels as a base (you can look at {{ic|/usr/lib/systemd/system/graphical.target}} as an example), make a directory {{ic|/etc/systemd/system/''your target''.wants}}, and then symlink the additional services from {{ic|/usr/lib/systemd/system/}} that you wish to enable.
+
+=== Mapping between SysV runlevels and systemd targets ===
+
+{| class="wikitable"
+! SysV Runlevel !! systemd Target !! Notes
+|-
+| 0 || poweroff.target || Halt the system.
+|-
+| 1, s, single || rescue.target || Single user mode.
+|-
+| 2, 4 || multi-user.target || User-defined/Site-specific runlevels. By default, identical to 3.
+|-
+| 3 || multi-user.target || Multi-user, non-graphical. Users can usually login via multiple consoles or via the network.
+|-
+| 5 || graphical.target || Multi-user, graphical. Usually has all the services of runlevel 3 plus a graphical login.
+|-
+| 6 || reboot.target || Reboot
+|-
+| emergency || emergency.target || Emergency shell
+|-
+|}
+
+=== Change current target ===
+
+In ''systemd'', targets are exposed via ''target units''. You can change them like this:
+
+ # systemctl isolate graphical.target
+
+This will only change the current target, and has no effect on the next boot. This is equivalent to commands such as {{ic|telinit 3}} or {{ic|telinit 5}} in Sysvinit.
+
+=== Change default target to boot into ===
+
+The standard target is {{ic|default.target}}, which is a symlink to {{ic|graphical.target}}. This roughly corresponds to the old runlevel 5.
+
+To verify the current target with ''systemctl'':
+
+ $ systemctl get-default
+
+To change the default target to boot into, change the {{ic|default.target}} symlink. With ''systemctl'':
+
+{{hc|# systemctl set-default multi-user.target|
+Removed /etc/systemd/system/default.target.
+Created symlink /etc/systemd/system/default.target -> /usr/lib/systemd/system/multi-user.target.}}
+
+Alternatively, append one of the following [[kernel parameters]] to your boot loader:
+
+* {{ic|systemd.unit{{=}}multi-user.target}} (which roughly corresponds to the old runlevel 3),
+* {{ic|systemd.unit{{=}}rescue.target}} (which roughly corresponds to the old runlevel 1).
+
+=== Default target order ===
+
+''systemd'' chooses the {{ic|default.target}} according to the following order:
+
+# Kernel parameter shown above
+# Symlink of {{ic|/etc/systemd/system/default.target}}
+# Symlink of {{ic|/usr/lib/systemd/system/default.target}}
+
+== systemd components ==
+
+Some (not exhaustive) components of ''systemd'' are:
+
+* [[kernel-install]] — to automatically move [[kernel]]s and their respective [[initramfs]] images to the boot partition;
+* {{man|1|systemd-analyze}} — may be used to determine boot-up performance,  statistics and retrieve other state and tracing information, and to verify the correctness of unit files. It is also used to access special functions useful for advanced debugging.
+* [[systemd-boot]] — simple UEFI [[boot manager]];
+* [[systemd-creds]] — to securely store and retrieve credentials used by systemd units;
+* [[systemd-cryptenroll]] — Enroll PKCS#11, FIDO2, TPM2 token/devices to LUKS2 encrypted volumes;
+* [[systemd-firstboot]] — basic system setting initialization before first boot;
+* [[systemd-homed]] — portable human-user [[Users and groups|accounts]];
+* {{man|8|systemd-logind}} — [https://dvdhrm.wordpress.com/2013/08/24/session-management-on-linux/ session management];
+* [[systemd-networkd]] — [[network configuration]] management;
+* [[systemd-nspawn]] — light-weight namespace container;
+* [[systemd-repart]] — creates partition tables, adds or grows partitions;
+* [[systemd-resolved]] — network [[Domain name resolution|name resolution]];
+* {{man|1|systemd-run}} / [[Systemd/run0|run0]] — Temporarily and interactively acquire elevated or different privileges.
+* {{man|7|systemd-stub}} — a UEFI boot stub used for creating [[unified kernel image]]s;
+* {{man|8|systemd-sysusers}} — creates system users and groups and adds users to groups at package installation or boot time;
+* [[systemd-timesyncd]] — [[system time]] synchronization across the network;
+* [[systemd/Journal]] — system logging;
+* [[systemd/Timers]] — monotonic or realtime timers for controlling ''.service'' files or events, reasonable alternative to [[cron]].
+
+=== systemd.mount - mounting ===
+
+''systemd'' is in charge of mounting the partitions and filesystems specified in {{ic|/etc/fstab}}. The {{man|8|systemd-fstab-generator}} translates all the entries in {{ic|/etc/fstab}} into ''systemd'' units; this is performed at boot time and whenever the configuration of the system manager is reloaded.
+
+''systemd'' extends the usual [[fstab]] capabilities and offers additional mount options. These affect the dependencies of the mount unit. They can, for example, ensure that a mount is performed only once the network is up or only once another partition is mounted. The full list of specific ''systemd'' mount options, typically prefixed with {{ic|x-systemd.}}, is detailed in {{man|5|systemd.mount|FSTAB}}.
+
+An example of these mount options is ''automounting'', which means mounting only when the resource is required rather than automatically at boot time. This is provided in [[fstab#Automount with systemd]].
+
+==== GPT partition automounting ====
+
+On UEFI-booted systems, GPT partitions such as {{ic|root}}, {{ic|home}}, {{ic|swap}}, etc. can be mounted automatically following the [https://uapi-group.org/specifications/specs/discoverable_partitions_specification/ Discoverable Partitions Specification]. These partitions can thus be omitted from [[fstab]], and if the root partition is automounted, then {{ic|1=root=}} can be omitted from the kernel command line. See {{man|8|systemd-gpt-auto-generator}}.
+
+The prerequisites are:
+
+* When using [[mkinitcpio]], the [[Mkinitcpio#Common hooks|systemd hook]] is required to automount the {{ic|root}} partition.
+* All automounted partitions must reside on the same physical disk as the ESP.
+* The correct GPT partition types must be set. See [[Partitioning#Partition scheme]].
+* The boot loader must set the [https://systemd.io/BOOT_LOADER_INTERFACE/ LoaderDevicePartUUID] EFI variable, so that the used EFI system partition can be identified. This is supported by [[systemd-boot]], {{man|7|systemd-stub}}, [[Limine]], [[GRUB]] (with ''grub-mkconfig'' generated {{ic|grub.cfg}}; custom {{ic|grub.cfg}} requires [[GRUB#LoaderDevicePartUUID|loading the bli module]]) and [[rEFInd#LoaderDevicePartUUID|rEFInd (not enabled by default)]]. This can be verified by running {{ic|bootctl}} and checking if there is a line with {{ic|Partition:}} under {{ic|Current Boot Loader}} or {{ic|Current Stub}} when booting via [[Unified kernel image]]s.
+
+''udev'' will create [[Persistent block device naming#by-designator and gpt-auto|symlinks to the discovered partitions]] which can be used to reference the partitions and volumes in configuration files.
+
+{{Tip|The automounting of a partition can be disabled by changing the partition's [[Wikipedia:GUID Partition Table#Partition type GUIDs|type GUID]] or setting the partition attribute bit 63 "do not automount", see [[gdisk#Prevent GPT partition automounting]].}}
+
+===== /var =====
+
+For {{ic|/var}} automounting to work, the PARTUUID must match the SHA256 HMAC hash of the partition type UUID keyed by the machine ID. The required PARTUUID can be obtained using:
+
+ $ systemd-id128 -u var-partition-uuid
+
+{{Note|{{man|1|systemd-id128}} reads the machine ID from {{ic|/etc/machine-id}}, this makes it impossible to know the needed PARTUUID before the system is installed.}}
+
+=== systemd-sysvcompat ===
+
+The primary role of {{Pkg|systemd-sysvcompat}} (required by {{Pkg|base}}) is to provide the traditional linux [[init]] binary. For ''systemd''-controlled systems, {{ic|init}} is just a symbolic link to its {{ic|systemd}} executable.
+
+In addition, it provides four convenience shortcuts that [[Wikipedia:SysVinit|SysVinit]] users might be used to. The convenience shortcuts are {{man|8|halt}}, {{man|8|poweroff}}, {{man|8|reboot}} and {{man|8|shutdown}}. Each one of those four commands is a symbolic link to {{ic|systemctl}}, and is governed by ''systemd'' behavior. Therefore, the discussion at [[#Power management]] applies.
+
+''systemd''-based systems can give up those System V compatibility methods by using the {{ic|init{{=}}}} [[Kernel parameters#Parameter list|boot parameter]] (see, for example, [https://bbs.archlinux.org/viewtopic.php?id=233387 /bin/init is in systemd-sysvcompat ?]) and ''systemd'' native {{ic|systemctl}} command arguments.
+
+=== systemd-tmpfiles - temporary files ===
+
+''systemd-tmpfiles'' creates, deletes and cleans up volatile and temporary files and directories. It reads configuration files in {{ic|/etc/tmpfiles.d/}} and {{ic|/usr/lib/tmpfiles.d/}} to discover which actions to perform. Configuration files in the former directory take precedence over those in the latter directory.
+
+Configuration files are usually provided together with service files, and they are named in the style of {{ic|/usr/lib/tmpfiles.d/''program''.conf}}. For example, the [[Samba]] daemon expects the directory {{ic|/run/samba}} to exist and to have the correct permissions. Therefore, the {{Pkg|samba}} package ships with this configuration:
+
+{{hc|/usr/lib/tmpfiles.d/samba.conf|
+D /run/samba 0755 root root
+}}
+
+Configuration files may also be used to write values into certain files on boot. For example, if you used {{ic|/etc/rc.local}} to disable wakeup from USB devices with {{ic|echo USBE > /proc/acpi/wakeup}}, you may use the following tmpfile instead:
+
+{{hc|/etc/tmpfiles.d/disable-usb-wake.conf|
+#    Path                  Mode UID  GID  Age Argument
+w!   /proc/acpi/wakeup     -    -    -    -   USBE
+}}
+
+An exclamation mark {{ic|!}} signifies that the line is only applied at boot. This will prevent re-enabling the wakeup trigger if systemd-tmpfiles is run again after boot (for example by the pacman hook).
+
+It is possible to write multiple lines to the same file, either with {{ic|\n}} in the argument or using the {{ic|w+}} type on multiple lines (including the first one) for ''appending'':
+
+{{hc|/etc/tmpfiles.d/disable-usb-wake.conf|
+#    Path                  Mode UID  GID  Age Argument
+w+!  /proc/acpi/wakeup     -    -    -    -   USBE
+w+!  /proc/acpi/wakeup     -    -    -    -   LID0
+}}
+
+See the {{man|8|systemd-tmpfiles}} and {{man|5|tmpfiles.d}} man pages for details.
+
+{{Note|This method may not work to set options in {{ic|/sys}} since the ''systemd-tmpfiles-setup'' service may run before the appropriate device modules are loaded. In this case, you could check whether the module has a parameter for the option you want to set with {{ic|modinfo ''module''}} and set this option with a [[Kernel modules#Setting module options|config file in /etc/modprobe.d]]. Otherwise, you will have to write a [[udev rule]] to set the appropriate attribute as soon as the device appears.}}
+
+=== Drop-in configuration files ===
+
+{{Accuracy|This page is about PID 1 (init), and unit drop-ins are already mentioned. Drop-in is a generic concept, plus other systemd components have their dedicated wiki pages. Therefore this section doesn't seem to belong here.|section=YHNdnzj : Configuration files in conf.d / drop-in snippets: misplaced?}}
+
+Configuration files provided by packages should not be directly edited to avoid conflicts with pacman updates. For this, many (but not all) systemd packages provide a way to modify the configuration, but without touching the original file by creation of drop-in snippets. Check the package manual to see if drop-in configuration files are supported.
+
+To create a drop-in configuration file for the unit file {{ic|/etc/systemd/''unit''.conf}}, create the directory {{ic|/etc/systemd/''unit''.conf.d/}} and place ''.conf'' files there to override or add new options. ''systemd'' will parse and apply these files on top of the original unit.
+
+Check the overall configuration:
+
+ $ systemd-analyze cat-config systemd/''unit''.conf
+
+The applied drop-in snippets file(s) and content will be listed at the end. [[Restart]] the service for the changes to take effect.
+
+== Tips and tricks ==
+
+=== Socket activation ===
+
+Some packages provide a ''.socket'' unit. For example, {{Pkg|cups}} provides a {{ic|cups.socket}} unit[https://0pointer.de/blog/projects/socket-activation2.html]. If {{ic|cups.socket}} is [[enable]]d (and {{ic|cups.service}} is left disabled), ''systemd'' will not start CUPS immediately; it will just listen to the appropriate sockets. Then, whenever a program attempts to connect to one of these CUPS sockets, ''systemd'' will start {{ic|cups.service}} and transparently hand over control of these ports to the CUPS process.
+
+=== GUI configuration tools ===
+
+* {{App|SysD Manager|A systemd GUI to manage service, timer, socket and other units.|https://github.com/plrigaux/sysd-manager|{{AUR|sysd-manager}}}}
+* {{App|systemadm|Graphical browser for ''systemd'' units. It can show the list of units, possibly filtered by type.|https://github.com/systemd/systemd-ui|{{Pkg|systemd-ui}}}}
+* {{App|systemdGenie|''systemd'' management utility based on KDE technologies.|https://apps.kde.org/systemdgenie/|{{Pkg|systemdgenie}}}}
+* {{App|isd| TUI for working with ''systemd'' units. |https://github.com/kainctl/isd|{{Pkg|isd}}}}
+
+=== Running services after the network is up ===
+
+To delay a service until after the network is up, include the following dependencies in the ''.service'' file:
+
+{{hc|/etc/systemd/system/''foo''.service|2=
+[Unit]
+...
+Wants=network-online.target
+After=network-online.target
+...
+}}
+
+The network wait service of the [[network manager]] in use must also be enabled so that {{ic|network-online.target}} properly reflects the network status.
+
+* If using [[NetworkManager]], {{ic|NetworkManager-wait-online.service}} should be enabled together with {{ic|NetworkManager.service}}. Check if this is the case with {{ic|systemctl is-enabled NetworkManager-wait-online.service}}. If it is not enabled, then [[#Using units|reenable]] {{ic|NetworkManager.service}}.
+* In the case of [[netctl]], [[#Using units|enable]] the {{ic|netctl-wait-online.service}} (unless you are using ''netctl-auto''; see {{Bug|75836}}).
+* If using [[systemd-networkd]], {{ic|systemd-networkd-wait-online.service}} should be enabled together with {{ic|systemd-networkd.service}}. Check if this is the case with {{ic|systemctl is-enabled systemd-networkd-wait-online.service}}. If it is not enabled, then [[#Using units|reenable]] {{ic|systemd-networkd.service}}.
+
+For more detailed explanations, see the discussion in the [https://systemd.io/NETWORK_ONLINE/#discussion Network configuration synchronization points].
+
+If a service needs to perform DNS queries, it should additionally be ordered after {{ic|nss-lookup.target}}:
+
+{{hc|/etc/systemd/system/''foo''.service|2=
+[Unit]
+...
+Wants=network-online.target
+After=network-online.target nss-lookup.target
+...
+}}
+
+See {{man|7|systemd.special|Special Passive System Units}}.
+
+For {{ic|nss-lookup.target}} to have any effect it needs a service that pulls it in via {{ic|Wants{{=}}nss-lookup.target}} and orders itself before it with {{ic|Before{{=}}nss-lookup.target}}. Typically this is done by local [[DNS resolver]]s.
+
+Check which active service, if any, is pulling in {{ic|nss-lookup.target}} with:
+
+ $ systemctl list-dependencies --reverse nss-lookup.target
+
+=== Enable installed units by default ===
+
+{{Expansion|How does it work with instantiated units?}}
+
+By default, Arch Linux does not make use of systemd presets, and does not enable most services on installation.
+
+If you wish for systemd presets to be honored when packages are installed, you will need to create a [[Pacman#Hooks|a pacman hook]] in order to run {{ic|systemctl preset}} or {{ic|systemctl preset-all}} whenever a new systemd unit is installed. Something like
+
+{{hc|/etc/pacman.d/hooks/40-systemd-presets.hook|<nowiki>
+[Trigger]
+Operation = Install
+Type = Path
+Target = usr/lib/systemd/system/*.service
+Target = usr/lib/systemd/system/*.timer
+Target = usr/lib/systemd/system/*.socket
+Target = usr/lib/systemd/system/*.slice
+Target = usr/lib/systemd/system/*.path
+Target = usr/lib/systemd/system/*.target
+
+[Action]
+Description = Run systemctl preset
+When = PostTransaction
+Depends = systemd
+NeedsTargets
+# Alternatively, you could just run systemd preset-all.
+# However, note that this will reset ALL services to the defaults,
+# which is probably not what you want unless you have carefully configured
+# your presets.
+Exec = /etc/pacman.d/scripts/systemd-presets-hook
+</nowiki>}}
+
+{{hc|/etc/pacman.d/scripts/systemd-presets-hook|<nowiki>
+#!/bin/sh -e
+
+while read -r f; do
+    unit="${f##*/}"
+    # alternatively, you could read all the units and pass them to systemctl preset in a single invocation
+    systemctl preset "$unit"
+done
+</nowiki>}}
+
+Arch Linux ships with {{ic|/usr/lib/systemd/system-preset/99-default.preset}} containing {{ic|disable *}}. This causes ''systemctl preset'' to disable all units by default, such that when a new package is installed, the user must manually enable the unit.
+
+To enable units by default instead, simply create a symlink from {{ic|/etc/systemd/system-preset/99-default.preset}} to {{ic|/dev/null}} or replace with a file containing {{ic|enable *}} in order to override the configuration file. This will cause ''systemctl preset'' to enable all units that get installed—regardless of unit type—unless specified in another file in one ''systemctl preset'''s configuration directories. User units are not affected. It is also possible to configure higher priority files with more specific rules on what should be enabled. See {{man|5|systemd.preset}} for more information.
+
+{{Note|Enabling all units by default may cause problems with packages that contain two or more mutually exclusive units. ''systemctl preset'' is designed to be used by distributions and spins or system administrators. In the case where two conflicting units would be enabled, you should explicitly specify which one is to be disabled in a preset configuration file as specified in the {{man|5|systemd.preset}} man page.}}
+
+=== Sandboxing application environments ===
+
+See [[systemd/Sandboxing]].
+
+=== Notifying about failed services ===
+
+In order to notify about service failures, an {{ic|OnFailure{{=}}}} directive needs to be added to the according service file, for example by using a [[#Drop-in files|drop-in configuration file]]. Adding this directive to every service unit can be achieved with a top-level drop-in configuration file. For details about top-level drop-ins, see {{man|5|systemd.unit}}.
+
+Create a top-level drop-in for services:
+
+{{hc|/etc/systemd/system/service.d/toplevel-override.conf|2=
+[Unit]
+OnFailure=failure-notification@%n.service
+}}
+
+This adds {{ic|OnFailure{{=}}failure-notification@%n.service}} to every service file. If ''some_service_unit'' fails, {{ic|failure-notification@''some_service_unit''.service}} will be started to handle the notification delivery (or whatever task it is configured to perform).
+
+Create the {{ic|failure-notification@.service}} template unit:
+
+{{hc|/etc/systemd/system/failure-notification@.service|2=
+[Unit]
+Description=Send a notification about a failed systemd unit
+
+[Service]
+Type=oneshot
+ExecStart=/''path''/''to''/failure-notification.sh %i
+# runs as a temporary user/group and enables several other security precautions
+DynamicUser=true
+}}
+
+You can create the {{ic|failure-notification.sh}} script and define what to do or how to notify. Examples include [[#Notifying with e-mail|sending e-mail]], [[Notification#Send notifications to another user|showing desktop notifications]], using gotify, XMPP, etc. The {{ic|%i}} will be the name of the failed service unit and will be passed as an argument to the script.
+
+In order to prevent a recursion for starting instances of {{ic|failure-notification@.service}} again and again if the start fails, create an empty drop-in configuration file with the same name as the top-level drop-in (the empty service-level drop-in configuration file takes precedence over the top-level drop-in and overrides the latter one):
+
+ # mkdir /etc/systemd/system/failure-notification@.service.d
+ # touch /etc/systemd/system/failure-notification@.service.d/toplevel-override.conf
+
+=== Notifying with e-mail ===
+
+You can set up systemd to send an e-mail when a unit fails. Cron sends mail to {{ic|MAILTO}} if the job outputs to stdout or stderr, but many jobs are setup to only output on error. First you need two files: an executable for sending the mail and a ''.service'' for starting the executable. For this example, the executable is just a shell script using {{ic|sendmail}}, which is in packages that provide {{ic|smtp-forwarder}}.
+
+{{hc|/usr/local/bin/systemd-email|<nowiki>
+#!/bin/sh
+
+/usr/bin/sendmail -t <<ERRMAIL
+To: $1
+From: systemd <root@$HOSTNAME>
+Subject: $2
+Content-Transfer-Encoding: 8bit
+Content-Type: text/plain; charset=UTF-8
+
+$(systemctl status --full "$2")
+ERRMAIL
+</nowiki>}}
+
+Whatever executable you use, it should probably take at least two arguments as this shell script does: the address to send to and the unit file to get the status of. The ''.service'' we create will pass these arguments:
+
+{{hc|/etc/systemd/system/status_email_''user''@.service|2=
+[Unit]
+Description=status email for %i to ''user''
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/systemd-email ''address'' %i
+User=nobody
+Group=systemd-journal
+}}
+
+Where {{ic|''user''}} is the user being emailed and {{ic|''address''}} is that user's email address. Although the recipient is hard-coded, the unit file to report on is passed as an instance parameter, so this one service can send email for many other units. At this point you can [[start]] {{ic|status_email_''user''@dbus.service}} to verify that you can receive the emails.
+
+Then simply [[edit]] the service you want emails for and add {{ic|OnFailure{{=}}status_email_''user''@%n.service}} to the {{ic|[Unit]}} section. {{ic|%n}} passes the unit's name to the template.
+
+{{Note|
+* If you set up sSMTP security according to [[sSMTP#Security]] the user {{ic|nobody}} will not have access to {{ic|/etc/ssmtp/ssmtp.conf}}, and the {{ic|systemctl start status_email_''user''@dbus.service}} command will fail. One solution is to use {{ic|root}} as the User in the {{ic|status_email_''user''@.service}} unit.
+* If you try to use {{ic|mail -s somelogs ''address''}} in your email script, {{ic|mail}} will fork and systemd will kill the mail process when it sees your script exit. Make the mail non-forking by doing {{ic|mail -Ssendwait -s somelogs ''address''}}.
+}}
+
+{{Tip|Newer versions of systemd recommend using {{ic|1=DynamicUser=true}} as a replacement for {{ic|1=User=nobody}} which is now discouraged. See [https://github.com/v2fly/v2ray-core/issues/428 GitHub issue 428] for more details.}}
+
+=== Automatically turn off an external HDD at shutdown ===
+
+See [[udisks#Automatically turn off an external HDD at shutdown]].
+
+
+=== Index of configuration directives ===
+
+An alphabetical index of configuration directives for various components of systemd can be found in {{man|7|systemd.directives}}.
+
+=== Control user unit as root ===
+
+To control a [[systemd/User]] unit from root account:
+
+ # systemctl --user --machine=<user>@.host <command> <service>
+
+e.g. stop {{ic|mpd.service}} from user ''john'' on {{ic|localhost}}:
+
+ # systemctl --user --machine=''john''@ stop mpd.service
+
+== Troubleshooting ==
+
+=== Investigating failed services ===
+
+To find the ''systemd'' services which failed to start:
+
+ $ systemctl --failed
+
+To find out why they failed, examine their log output. See [[systemd/Journal#Filtering output]] for details.
+
+{{Tip|
+It is possible to clear the "failed" status of units, removing them from the output of {{ic|systemctl --failed}}:
+
+ # systemctl reset-failed ''unit''
+
+Note that this usually unloads the unit (see {{ic|CollectMode}} documentation within {{man|5|systemd.unit}}), which notably makes {{ic|systemctl status}} no longer report their failed status or logs.
+}}
+
+=== Diagnosing boot problems ===
+
+''systemd'' has several options for diagnosing problems with the boot process. See [[boot debugging]] for more general instructions and options to capture boot messages before ''systemd'' takes over the [[boot process]]. Also see [https://systemd.io/DEBUGGING/ systemd debugging documentation].
+
+=== Diagnosing a systemd-provided service ===
+
+If some service [[#systemd components|provided by systemd itself]] misbehaves, or you want to get more information about what it is doing, set the {{ic|SYSTEMD_LOG_LEVEL}} [[environment variable]] to {{ic|debug}}.
+
+For example, to run the ''systemd-networkd'' daemon in debug mode, [[#Editing provided units|edit the service temporarily]] using {{ic|systemctl edit --runtime}} and add the two lines:
+
+{{bc|1=
+[Service]
+Environment=SYSTEMD_LOG_LEVEL=debug
+}}
+
+Then, start watching the journal for the service with {{man|1|journalctl}}'s {{ic|-f}}/{{ic|--follow}} option, and [[restart]] ''systemd-networkd''.
+
+{{Note|Some "core" services, such as ''systemd-logind'', cannot be restarted without breaking e.g. screen and/or session management.}}
+
+=== Shutdown/reboot takes terribly long ===
+
+If the shutdown process takes a very long time (or seems to freeze), most likely a service not exiting is to blame. ''systemd'' waits some time for each service to exit before trying to kill it. To find out whether you are affected, see [https://systemd.io/DEBUGGING/#shutdown-completes-eventually Shutdown completes eventually] in the ''systemd'' documentation.
+
+A common problem is a stalled shutdown or suspend process. To verify whether that is the case, you could run either of these commands and check the outputs
+
+{{hc
+|# systemctl poweroff
+|Failed to power off system via logind: There's already a shutdown or sleep operation in progress
+}}
+
+{{hc
+|# systemctl list-jobs
+|  JOB UNIT                    TYPE  STATE
+...
+21593 systemd-suspend.service start running
+21592 suspend.target          start waiting
+..
+}}
+
+The [https://unix.stackexchange.com/a/579531 solution] to this would be to cancel these jobs by running
+
+ # systemctl cancel
+ # systemctl stop systemd-suspend.service
+
+and then trying shutdown or reboot again.
+
+=== Short lived processes do not seem to log any output ===
+
+If running {{ic|journalctl -u foounit}} as root does not show any output for a short lived service, look at the PID instead. For example, if {{ic|systemd-modules-load.service}} fails, and {{ic|systemctl status systemd-modules-load}} shows that it ran as PID 123, then you might be able to see output in the journal for that PID, i.e. by running {{ic|journalctl -b _PID{{=}}123}} as root. Metadata fields for the journal such as {{ic|_SYSTEMD_UNIT}} and {{ic|_COMM}} are collected asynchronously and rely on the {{ic|/proc}} directory for the process existing. Fixing this requires fixing the kernel to provide this data via a socket connection, similar to {{ic|SCM_CREDENTIALS}}. In short, it is a [https://github.com/systemd/systemd/issues/2913 bug]. Keep in mind that immediately failed services might not print anything to the journal as per design of ''systemd''.
+
+=== Boot time increasing over time ===
+
+{{Accuracy|NetworkManager issues are not ''systemd''<nowiki/>'s fault, the alleged reports are missing. Slow {{ic|systemctl status}} or {{ic|journalctl}} do not affect boot time.}}
+
+After using {{ic|systemd-analyze}} a number of users have noticed that their boot time has increased significantly in comparison with what it used to be. After using {{ic|systemd-analyze blame}} [[NetworkManager]] is being reported as taking an unusually large amount of time to start.
+
+The problem for some users has been due to {{ic|/var/log/journal}} becoming too large. This may have other impacts on performance, such as for {{ic|systemctl status}} or {{ic|journalctl}}. As such the solution is to remove every file within the folder (ideally making a backup of it somewhere, at least temporarily) and then setting a journal file size limit as described in [[systemd/Journal#Journal size limit]].
+
+=== systemd-tmpfiles-setup.service fails to start at boot ===
+
+Starting with ''systemd'' 219, {{ic|/usr/lib/tmpfiles.d/systemd.conf}} specifies ACL attributes for directories under {{ic|/var/log/journal}} and, therefore, requires ACL support to be enabled for the filesystem the journal resides on.
+
+See [[Access Control Lists#Enable ACL]] for instructions on how to enable ACL on the filesystem that houses {{ic|/var/log/journal}}.
+
+=== Disable emergency mode on remote machine ===
+
+You may want to disable emergency mode on a remote machine, for example, a virtual machine hosted at Azure or Google Cloud. It is because if emergency mode is triggered, the machine will be blocked from connecting to network.
+
+To disable it, [[#Using units|mask]] {{ic|emergency.service}} and {{ic|emergency.target}}.
+
+=== Error "Unit xxx.service not found", but service does exist ===
+
+You may be trying to start or enable a user unit as a system unit. {{man|5|systemd.unit}} indicates, which units reside where. By default ''systemctl'' operates on system services.
+
+See [[systemd/User]] for more details.
+
+=== Manually renewing LoaderDevicePartUUID after changing EFI partition UUID ===
+
+{{Merge|EFI system partition|Not related to systemd (or even [[systemd-boot]]) if it states "some boot loaders".}}
+
+Some boot loaders only set the {{ic|LoaderDevicePartUUID}} variable when it is empty. Consequently, even if the UUID of the EFI partition changes, the bootloader will not update {{ic|LoaderDevicePartUUID}}. By deleting the EFI variable with the commands below, the bootloader will then repopulate it with the new UUID.
+
+ # chattr -i /sys/firmware/efi/efivars/LoaderDevicePartUUID-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+ # rm /sys/firmware/efi/efivars/LoaderDevicePartUUID-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+
+== See also ==
+
+* [[Wikipedia:systemd]]
+* [https://systemd.io/ Official web site]
+** [https://systemd.io/OPTIMIZATIONS/ systemd optimizations]
+** [https://systemd.io/FAQ/ systemd FAQ]
+** [https://systemd.io/TIPS_AND_TRICKS/ systemd Tips and tricks]
+* {{man|1|systemd}}
+* Other distributions
+** [[Gentoo:systemd]]
+** [[Fedora:systemd]]
+** [[Fedora:How to debug Systemd problems]]
+** [[Fedora:SysVinit to Systemd Cheatsheet]]
+** [[Debian:systemd]]
+* [http://0pointer.de/blog/projects/systemd.html Lennart's blog story], [http://0pointer.de/blog/projects/systemd-update.html update 1], [http://0pointer.de/blog/projects/systemd-update-2.html update 2], [http://0pointer.de/blog/projects/systemd-update-3.html update 3], [http://0pointer.de/blog/projects/why.html summary]
+* [https://containersolutions.github.io/runbooks/posts/linux/debug-systemd-service-units Debug Systemd Services]
+* [http://0pointer.de/public/systemd-ebook-psankar.pdf systemd for Administrators (PDF)]
+* [https://www.digitalocean.com/community/tutorials/how-to-use-systemctl-to-manage-systemd-services-and-units How To Use Systemctl to Manage Systemd Services and Units ]
+* [https://dvdhrm.wordpress.com/2013/08/24/session-management-on-linux/ Session management with systemd-logind]
+* [[Emacs#Syntax highlighting for systemd files]]
+* [https://www.h-online.com/open/features/Control-Centre-The-systemd-Linux-init-system-1565543.html Two] [https://www.h-online.com/open/features/Booting-up-Tools-and-tips-for-systemd-1570630.html part] introductory article in ''The H Open'' magazine.

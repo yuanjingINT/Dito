@@ -1,0 +1,694 @@
+[[Category:Graphics]]
+[[Category:X server]]
+[[de:Intel]]
+[[es:Intel graphics]]
+[[ja:Intel graphics]]
+[[ru:Intel graphics]]
+[[zh-hans:Intel graphics]]
+{{Related articles start}}
+{{Related|Xorg}}
+{{Related|Kernel mode setting}}
+{{Related|Xrandr}}
+{{Related|Hybrid graphics}}
+{{Related|Vulkan}}
+{{Related|General-purpose computing on graphics processing units}}
+{{Related articles end}}
+
+Since Intel provides and supports open source drivers, Intel graphics are essentially plug-and-play.
+
+For a comprehensive list of Intel GPU models and corresponding chipsets and CPUs, see [[Wikipedia:Intel Graphics Technology]] and [[Gentoo:Intel#Feature support]].
+
+{{Note|
+* PowerVR-based graphics (GMA 3600 series) are not supported by open source drivers.
+* Intel's Gen ''N'' hardware does not refer to the generation of the CPU, it refers to the [[Wikipedia:List of Intel graphics processing units|generation of the GPU]], which is different from the generation of the CPU. 
+* See [[Graphics processing unit#Installation]] to identify your card. 
+}}
+
+== Installation ==
+
+* [[Install]] one of the following packages, which provide the [[wikipedia:Direct Rendering Infrastructure|DRI]] driver for 3D acceleration.
+** {{Pkg|mesa}} is the up-to-date [[Mesa]] package which includes the modern Gallium3D drivers for Gen 3 hardware and later. This is the recommended choice.
+** {{Pkg|mesa-amber}} is the legacy Mesa package which includes the classic (non-Gallium3D) drivers from Gen 2 to Gen 11 hardware. This driver might have better performance or stability for Gen 7 and older hardware, but is unmaintained.
+* For 32-bit application support, also install the {{Pkg|lib32-mesa}} or {{Pkg|lib32-mesa-amber}} package from the [[multilib]] repository.
+* For the [[wikipedia:X.Org_Server#DDX|DDX]] driver which provides 2D acceleration in [[Xorg]], use one of the following drivers:
+** The ''modesetting'' driver included in the {{Pkg|xorg-server}} package is the recommended choice for Gen 3 hardware and later. It uses the DRI driver for acceleration via ''glamor''.
+** The {{Pkg|xf86-video-intel}} package provides the legacy intel DDX driver from Gen 2 to Gen 9 hardware. This package is generally not recommended, see note below.
+* For [[Vulkan]] support (Broadwell and newer; support for earlier chips is [https://gitlab.freedesktop.org/mesa/mesa/-/issues/8249#note_1758622 incomplete or missing]), install the {{Pkg|vulkan-intel}} package. For 32-bit [[Vulkan]] support, install the {{Pkg|lib32-vulkan-intel}} package.
+
+Also see [[Hardware video acceleration]].
+
+{{Note|1=<nowiki/>
+* Some ([https://www.phoronix.com/scan.php?page=news_item&px=Ubuntu-Debian-Abandon-Intel-DDX Debian & Ubuntu], [https://www.phoronix.com/scan.php?page=news_item&px=Fedora-Xorg-Intel-DDX-Switch Fedora], [https://community.kde.org/Plasma/5.9_Errata#Intel_GPUs KDE], [https://bugzilla.mozilla.org/show_bug.cgi?id=1710400 Mozilla]) recommend not installing the {{Pkg|xf86-video-intel}} driver, and instead falling back on the modesetting driver. See [https://web.archive.org/web/20160714232204/https://www.reddit.com/r/archlinux/comments/4cojj9/it_is_probably_time_to_ditch_xf86videointel/], [https://www.phoronix.com/scan.php?page=article&item=intel-modesetting-2017&num=1], [[Xorg#Installation]], and {{man|4|modesetting}}. However, the modesetting driver can cause problems such as [https://gitlab.freedesktop.org/xorg/xserver/-/issues/1364 screen tearing and mouse jittering on XFCE], [https://bugs.chromium.org/p/chromium/issues/detail?id=370022 artifacts when switching virtual desktops in Chromium], and [https://gitlab.freedesktop.org/xorg/xserver/-/issues/928 vsync jitter/video stutter in mpv].
+* The {{Pkg|xf86-video-intel}} driver does not have proper support for Gen 11 and newer hardware, causing lack of acceleration and rendering issues that make Plasma Desktop almost unusable. See [https://gitlab.freedesktop.org/xorg/driver/xf86-video-intel/-/commit/7181c5a41c3f00eaf996caa156523c708a18081e].
+* There have been a couple of reports [https://bbs.archlinux.org/viewtopic.php?id=263323] [https://github.com/qutebrowser/qutebrowser/issues/4641] where the whole graphics stack hard freezes when {{Pkg|xf86-video-intel}} is installed, not even switching to a different virtual console works (by pressing {{ic|Ctrl+Alt+F''n''}}), only killing the user processes with [[SysRq]] works.
+}}
+
+== Loading ==
+
+The Intel kernel module should load fine automatically on system boot.
+
+If it does not happen, then:
+
+* Make sure you do '''not''' have {{ic|nomodeset}} as a [[kernel parameter]], since Intel requires kernel mode-setting.
+* Also, check that you have not disabled Intel by using any modprobe blacklisting within {{ic|/etc/modprobe.d/}} or {{ic|/usr/lib/modprobe.d/}}.
+
+=== Early KMS ===
+
+[[Kernel mode setting]] (KMS) is supported by the {{ic|i915}} and {{ic|xe}} drivers, and is enabled early since [[mkinitcpio]] v32, as the {{ic|kms}} [[Mkinitcpio#Common hooks|hook]] is included by default. For other setups, see [[Kernel mode setting#Early KMS start]] for instructions on how to enable KMS as soon as possible at the boot process.
+
+=== Enable GuC / HuC firmware loading ===
+
+Starting with Gen 9 (Skylake and onwards), Intel GPUs include a ''Graphics micro (μ) Controller'' (GuC) which provides the following functionality:
+* Offloading some media decoding functionality from the CPU to the ''HEVC/H.265 micro (µ) Controller'' (HuC). Only applicable if using {{Pkg|intel-media-driver}} for [[hardware video acceleration]]. Introduced with Gen 9.
+* Using the GuC for scheduling, context submission, and power management. Introduced with Alder Lake-P (Mobile), within Gen 12.
+
+To use this functionality, first ensure that {{Pkg|linux-firmware-intel}} is [[install]]ed, as it provides the GuC and HuC firmware files.
+
+Next, the GuC firmware must be loaded. With regards to HuC support, some video features (e.g. CBR rate control on SKL low-power encoding mode) require loading the HuC firmware as well [https://github.com/intel/media-driver#known-issues-and-limitations].
+
+The [[#Testing the new experimental Xe driver|new experimental]] {{ic|xe}} driver enables Guc and Huc functionality by default.
+
+For the {{ic|i915}} driver, GuC functionality is controlled by the {{ic|enable_guc}} [[kernel module parameter]]. Its usage is as follows:
+
+{{Accuracy|Despite Intel's documentation, Tiger Lake and Rocket Lake GPUs may actually support {{ic|1=enable_guc=3}}, and have a default of {{ic|1=enable_guc=1}}.|Talk:Intel graphics#TGL/RKL GuC Submission}}
+
+{| class="wikitable"
+! enable_guc value !! GuC Submission !! HuC Firmware Loading !! Default for platforms !! Supported on platforms
+|-
+|0 || {{No}} || {{No}} || Tiger Lake, Rocket Lake, and pre-Gen 12 [https://github.com/torvalds/linux/blob/b3454ce0b2c8a56e760e6baa88ed10278585072b/drivers/gpu/drm/i915/gt/uc/intel_uc.c#L26-L36] || All
+|-
+|1 || {{Yes}} || {{No}} || {{-}} || Alder Lake-P (Mobile) and newer
+|-
+|2 || {{No}} || {{Yes}} || Alder Lake-S (Desktop) [https://github.com/torvalds/linux/blob/b3454ce0b2c8a56e760e6baa88ed10278585072b/drivers/gpu/drm/i915/gt/uc/intel_uc.c#L38-L42] [https://lore.kernel.org/all/87ee6wit2r.fsf@intel.com/T/] || Gen 9 and newer
+|-
+|3 || {{Yes}} || {{Yes}} || Alder Lake-P (Mobile) and newer || Gen 9.5 and newer (better for some)
+|}
+
+If GuC submission or HuC firmware loading is not enabled by default for your GPU, you can manually enable it.
+
+{{Warning|1=Manually enabling GuC / HuC firmware loading taints the kernel [https://bugs.freedesktop.org/show_bug.cgi?id=111918 even when the feature is not supported]. Moreover, enabling GuC/HuC firmware loading can cause issues on some systems; disable it if you experience freezing (for example, after resuming from hibernation).}}
+
+Set the {{ic|1=enable_guc=}} [[kernel module parameter]]. For example, with:
+
+{{hc|/etc/modprobe.d/i915.conf|2=
+options i915 enable_guc=3
+}}
+
+[[Regenerate the initramfs]], on next boot you can verify both GuC and HuC are enabled by using [[dmesg]]:
+
+{{hc|# dmesg {{!}} grep -i -e 'huc' -e 'guc'|2=
+[30130.586970] i915 0000:00:02.0: [drm] GuC firmware i915/icl_guc_33.0.0.bin version 33.0 submission:disabled
+[30130.586973] i915 0000:00:02.0: [drm] HuC firmware i915/icl_huc_9.0.0.bin version 9.0 authenticated:yes
+}}
+
+If they are not supported by your graphics adapter you will see:
+
+{{hc|# dmesg {{!}} grep -i -e 'huc' -e 'guc'|2=
+[    0.571339] i915 0000:00:02.0: [drm] Incompatible option enable_guc=2 - GuC is not supported!
+[    0.571340] i915 0000:00:02.0: [drm] Incompatible option enable_guc=2 - HuC is not supported!
+}}
+
+Alternatively, check using:
+
+ # less /sys/kernel/debug/dri/*/gt0/uc/guc_info
+ # less /sys/kernel/debug/dri/*/gt0/uc/huc_info
+
+{{Note|1=Using [[Intel GVT-g|GVT-g graphics virtualization]] by setting {{ic|1=enable_gvt=1}} is not supported as of Linux 4.20.11 when GuC/HuC is also enabled. The i915 module would fail to initialize as shown in system journal.
+
+{{hc|# journalctl|
+... kernel: [drm:intel_gvt_init [i915]] *ERROR* i915 GVT-g loading failed due to Graphics virtualization is not yet supported with GuC submission
+... kernel: i915 0000:00:02.0: [drm:i915_driver_load [i915]] Device initialization failed (-5)
+... kernel: i915: probe of 0000:00:02.0 failed with error -5
+... kernel: snd_hda_intel 0000:00:1f.3: failed to add i915 component master (-19)
+}}
+
+Note that the related warning  is not fatal, as explained in [https://github.com/intel/gvt-linux/issues/77#issuecomment-707541069]:
+
+{{hc|# journalctl -b |
+... kernel: i915 0000:00:02.0: Direct firmware load for i915/gvt/vid_0x8086_did_0x5916_rid_0x02.golden_hw_state failed with error -2
+}}
+}}
+
+== Xorg configuration ==
+
+There is generally no need for any configuration to run [[Xorg]].
+
+However, to take advantage of some driver options or if [[Xorg]] does not start, you can create an Xorg configuration file.
+
+=== With the modesetting driver ===
+
+If you have installed {{Pkg|xf86-video-intel}} but want to load the modesetting driver explicitly instead of letting the DDX driver take priority, for example when trying to compare them:
+
+{{hc|/etc/X11/xorg.conf.d/20-intel.conf|
+Section "Device"
+  Identifier "Intel Graphics"
+  Driver "modesetting"
+EndSection
+}}
+
+=== With the Intel driver ===
+
+{{Note|The following requires {{Pkg|xf86-video-intel}}.}}
+
+Create an Xorg configuration file similar to the one below:
+
+{{hc|/etc/X11/xorg.conf.d/20-intel.conf|
+Section "Device"
+  Identifier "Intel Graphics"
+  Driver "intel"
+EndSection
+}}
+
+Additional options are added by the user on new lines below {{ic|Driver}}.
+For the full list of options, see the {{man|4|intel}} man page.
+
+{{Note|You might need to add more device sections than the one listed above. This will be indicated where necessary.}}
+
+==== AccelMethod ====
+
+You may need to indicate {{ic|Option "AccelMethod"}} when creating a configuration file, the classical options are {{ic|UXA}}, {{ic|SNA}} (default) and {{ic|BLT}}.
+
+If you experience issues with default {{ic|SNA}} (e.g. pixelated graphics, corrupt text, etc.), try using {{ic|UXA}} instead, which can be done by adding the following line to your [[#Xorg configuration|configuration file]]:
+
+ Option      "AccelMethod"  "uxa"
+
+See the "AccelMethod" option under {{man|4|intel|CONFIGURATION DETAILS}}.
+
+==== Using Intel DDX driver with recent GPUs ====
+
+For Intel GPUs starting from Gen 8 (Broadwell), the Iris Mesa driver is needed:
+
+ Option      "DRI"  "iris"
+
+==== Disabling TearFree, TripleBuffer, SwapbuffersWait ====
+
+If you use a compositor (the default in modern desktop environment like GNOME, KDE Plasma, Xfce, etc.), then TearFree, TripleBuffer and SwapbuffersWait can usually be disabled to improve performance and decrease power consumption.
+
+ Option      "TearFree"        "false"
+ Option      "TripleBuffer"    "false"
+ Option      "SwapbuffersWait" "false"
+
+== Module-based options ==
+
+The {{ic|i915}} kernel module allows for configuration via [[Kernel modules#Setting module options|module options]]. Some of the module options impact power saving.
+
+A list of all options along with short descriptions and default values can be generated with the following command:
+
+ $ modinfo -p i915
+
+To check which options are currently enabled, run
+
+ # systool -m i915 -av
+
+You will note that many options default to -1, resulting in per-chip powersaving defaults. It is however possible to configure more aggressive powersaving by using [[Kernel modules#Setting module options|module options]].
+
+{{Note|1=Diverting from the defaults will mark the kernel as [https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=fc9740cebc3ab7c65f3c5f6ce0caf3e4969013ca tainted] from Linux 3.18 onwards. This basically implies using other options than the per-chip defaults is considered experimental and not supported by the developers. }}
+
+=== Framebuffer compression (enable_fbc) ===
+
+Framebuffer compression (FBC) is a feature that can reduce power consumption and memory bandwidth during screen refreshes.
+
+The feature will be automatically enabled if supported by the hardware. You can use the command below to verify whether it is enabled:
+
+{{hc|$ modinfo i915 {{!}} grep enable_fbc|
+parm:           enable_fbc:Enable frame buffer compression for power savings (default: -1 (use per-chip default)) (int)
+}}
+
+If the parm is set to {{ic|-1}}, you do not need to do anything. Otherwise, to force-enable FBC, use {{ic|1=i915.enable_fbc=1}} as [[kernel parameter]] or set in {{ic|/etc/modprobe.d/i915.conf}}:
+
+{{hc|/etc/modprobe.d/i915.conf|2=
+options i915 enable_fbc=1
+}}
+
+{{Note|
+Framebuffer compression may be unreliable or unavailable before Gen 6 (Sandy Bridge). Having it enabled results in endless error messages:
+
+ [drm] not enough stolen space for compressed buffer (need 4325376 bytes), disabling
+ [drm] hint: you may be able to increase stolen memory size in the BIOS to avoid this
+
+The solution is to disable frame buffer compression (which will increase power consumption by around 0.06 W) with the {{ic|1=i915.enable_fbc=0}} [[kernel parameter]]. [https://web.archive.org/web/20200228230053/https://kernel.ubuntu.com/~cking/power-benchmarking/background-colour-and-framebuffer-compression/]
+}}
+
+=== Fastboot ===
+
+{{Note|1=This parameter is enabled by default for Skylake and newer[https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=3d6535cbed4a4b029602ff83efb2adec7cb8d28b] as well as Bay- and Cherry-Trail (VLV/CHV)[https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=7360c9f6b857e22a48e545f4e99c79630994e932] since Linux 5.1[https://kernelnewbies.org/Linux_5.1#Graphics],
+has subsequently been removed completely since Linux 6.7[https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=58883680a8416661b48a800e5530e2efcea64a4a], and fastboot has finally been enabled for all GPU generations (including those older than Skylake) since Linux 6.9.[https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=1b923307a1b0067a302b394e73311aeaebc06f65]}}
+
+The goal of Intel Fastboot is to preserve the frame-buffer as setup by the BIOS or [[boot loader]] to avoid any flickering until [[Xorg]] has started.[https://lists.freedesktop.org/archives/intel-gfx/2012-May/017653.html][https://www.phoronix.com/scan.php?page=news_item&px=MTEwNzc]
+
+To force enable fastboot on platforms where it is not the default already, set {{ic|1=i915.fastboot=1}} as [[kernel parameter]] or set in {{ic|/etc/modprobe.d/i915.conf}}:
+
+{{hc|/etc/modprobe.d/i915.conf|2=
+options i915 fastboot=1
+}}
+
+=== Intel GVT-g graphics virtualization support ===
+
+See [[Intel GVT-g]] for details.
+
+=== Enable performance support ===
+
+Starting with Gen 6 (Sandy Bridge and onwards), Intel GPUs provide performance counters used for exposing internal performance data to drivers. The drivers and hardware registers refer to this infrastructure as the ''Observation Architecture'' (internally "OA") [https://www.phoronix.com/scan.php?page=news_item&px=Intel-HSW-Observation-Arch], but Intel's documentation also more generally refers to this functionality as providing ''Observability Performance Counters'' [https://web.archive.org/web/20230321005155/https://01.org/sites/default/files/documentation/observability_performance_counters_haswell.pdf] [https://web.archive.org/web/20230321005143/https://01.org/sites/default/files/documentation/intel-gfx-prm-osrc-skl-vol14-observability.pdf].
+
+By default, only programs running with the [https://lwn.net/Articles/486306/ CAP_SYS_ADMIN] (equivalent to root) or [https://lwn.net/Articles/812719/ CAP_PERFMON] [[capabilities]] can utilize the observation architecture [https://github.com/torvalds/linux/blob/b14ffae378aa1db993e62b01392e70d1e585fb23/drivers/gpu/drm/i915/i915_perf.c#L267] [https://github.com/torvalds/linux/blob/b14ffae378aa1db993e62b01392e70d1e585fb23/drivers/gpu/drm/i915/i915_perf.c#L3481-L3484]. Most applications will be running without either of these, resulting in the following warning:
+
+ MESA-INTEL: warning: Performance support disabled, consider sysctl dev.i915.perf_stream_paranoid=0
+
+To enable performance support without using the capabilities (or root), set the kernel parameter as described in [[sysctl]].
+
+{{Warning|The restrictive defaults of the {{ic|perf_event_paranoid}} family of options exists because there is risk associated with allowing applications to access performance data [https://docs.kernel.org/admin-guide/perf-security.html]. With this being said, {{ic|dev.i915.perf_stream_paranoid}} only influences access to GPU performance counters, which carry less risk than e.g. CPU architectural execution context registers.}}
+
+=== Panel Self Refresh ===
+
+[[Wikipedia:DisplayPort#eDP|Panel Self-Refresh]] (PSR) and Panel Self Refresh-Selectively Updated (PSR-SU or PSR2) are designed to [https://hansdegoede.livejournal.com/18653.html decrease the power consumption of the GPU]. The possible values are 0 to force disabling it, 1 enabling up to PSR1 and 2 enabling up to PSR2:
+
+{{hc|/etc/modprobe.d/i915.conf|2=
+options i915 enable_psr=2
+}}
+
+Diverging from the default may cause [[#Screen flickering|screen flickering]] to total screen freezes, the later possibly requiring [[chroot]]ing from a [[USB flash installation medium|rescue USB]] to fix.
+
+== Tips and tricks ==
+
+=== Setting scaling mode ===
+
+This can be useful for some full screen applications:
+
+ $ xrandr --output LVDS1 --set PANEL_FITTING ''param''
+
+where {{ic|''param''}} can be:
+
+* {{ic|center}}: resolution will be kept exactly as defined, no scaling will be made,
+* {{ic|full}}: scale the resolution so it uses the entire screen or
+* {{ic|full_aspect}}: scale the resolution to the maximum possible but keep the aspect ratio.
+
+If it does not work, try:
+
+ $ xrandr --output LVDS1 --set "scaling mode" ''param''
+
+where {{ic|''param''}} is one of {{ic|"Full"}}, {{ic|"Center"}} or {{ic|"Full aspect"}}.
+
+{{Note|1=This option currently does not work for external displays (e.g. VGA, DVI, HDMI, DP). [https://bugs.freedesktop.org/show_bug.cgi?id=90989]}}
+
+=== Overriding reported OpenGL version ===
+
+The {{ic|MESA_GL_VERSION_OVERRIDE}} [[environment variable]] can be used to override the reported OpenGL version to any application. For example, setting {{ic|1=MESA_GL_VERSION_OVERRIDE=4.5}} will report OpenGL 4.5.
+
+{{Note|You can use this variable to report any known OpenGL version, even if it is not supported by the GPU. Some applications might no longer crash, some may start crashing - you probably do not want to set this variable globally.}}
+
+=== Monitoring ===
+
+See [[Hardware video acceleration#Verification]].
+
+=== Setting brightness and gamma ===
+
+See [[Backlight]].
+
+=== Using the Xe driver on first-generation Xe graphics platforms ===
+
+{{Warning|1=The {{ic|xe}} driver is considered ''experimental'' for these GPUs. There is no guaranteed stability or feature parity. Make sure you have an alternative solution to boot in order to revert if necessary.}}
+
+First-generation Intel Arc GPUs (Alchemist Arc A-series discrete GPUs) and Xe-based integrated GPUs in Tiger Lake, Rocket Lake, and Alder Lake processors are officially supported by the {{ic|i915}} driver, but can also be run with the newer experimental [https://docs.kernel.org/gpu/xe/index.html Xe driver].
+
+To switch to the {{ic|xe}} driver note your PCI device ID with:
+
+{{hc|$ lspci -nnd ::03xx|
+00:02.0 VGA compatible controller [0300]: Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics] [8086:'''9a49'''] (rev 01)
+}}
+
+Then add the following to your [[kernel parameter]]s with the appropriate PCI device ID:
+
+ i915.force_probe=!'''9a49''' xe.force_probe='''9a49'''
+
+or set in
+
+{{hc|/etc/modprobe.d/intel_xe.conf|2=
+options i915 force_probe=!'''9a49'''
+options xe   force_probe='''9a49'''
+}}
+
+== Troubleshooting ==
+
+=== Tearing ===
+
+==== With the Intel driver ====
+
+The SNA acceleration method causes tearing on some machines. To fix this, enable the {{ic|TearFree}} option in the {{Pkg|xf86-video-intel}} driver by adding the following line to your [[#Xorg configuration|configuration file]]:
+
+{{hc|/etc/X11/xorg.conf.d/20-intel.conf|
+Section "Device"
+  Identifier "Intel Graphics"
+  Driver "intel"
+  Option "TearFree" "true"
+EndSection}}
+
+See the [https://bugs.freedesktop.org/show_bug.cgi?id=37686 original bug report] for more info.
+
+{{Note|1=<nowiki/>
+* This option may not work when {{ic|SwapbuffersWait}} is {{ic|false}}.
+* This option may increase memory allocation considerably and reduce performance. [https://bugs.freedesktop.org/show_bug.cgi?id=37686#c123]
+* This option is problematic for applications that are very picky about vsync timing, like [[Wikipedia:Super Meat Boy|Super Meat Boy]].
+* This option does not work with UXA acceleration method, only with SNA.
+* For Intel UHD 620 or 630 you will need to add {{ic|Option "TripleBuffer" "true"}} in order for {{ic|TearFree}} to work.
+* It might be necessary to disable DRI3 by adding {{ic|Option "DRI" "2"}}, otherwise any full screen app (such as video playback) can break TearFree. [https://bugs.freedesktop.org/show_bug.cgi?id=96847#c7]
+}}
+
+==== With the modesetting driver ====
+
+TearFree support [https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/1006 was added] to the modesetting driver [https://www.phoronix.com/news/xf86-video-modesetting-TearFree][https://www.phoronix.com/news/Modesetting-TearFree-Merged]. As the last release for the non-XWayland servers was the 21.1 release in 2021, this patch has not reached a stable release, so you will need {{AUR|xorg-server-git}} until then.
+
+{{hc|/etc/X11/xorg.conf.d/20-intel.conf|
+Section "Device"
+  Identifier "Intel Graphics"
+  Driver "modesetting"
+  Option "TearFree" "true"
+EndSection}}
+
+=== Disable Vertical Synchronization (VSYNC) ===
+
+Useful when:
+
+* Chromium/Chrome has lags and slow performance due to GPU and runs smoothly with --disable-gpu switch
+* glxgears test does not show desired performance
+
+The intel-driver uses [https://www.intel.com/content/www/us/en/support/articles/000006930/graphics.html Triple Buffering] for vertical synchronization; this allows for full performance and avoids tearing. To turn vertical synchronization off (e.g. for benchmarking) use this {{ic|.drirc}} in your home directory:
+
+{{hc|~/.drirc|2=
+<device screen="0" driver="dri2">
+	<application name="Default">
+		<option name="vblank_mode" value="0"/>
+	</application>
+</device>
+}}
+
+=== DRI3 issues ===
+
+''DRI3'' is the default DRI version in {{Pkg|xf86-video-intel}}. On some systems this can cause issues such as [https://bugs.chromium.org/p/chromium/issues/detail?id=370022 this]. To switch back to ''DRI2'' add the following line to your [[#Xorg configuration|configuration file]]:
+
+ Option "DRI" "2"
+
+For the {{ic|modesetting}} driver, this method of disabling DRI3 does not work.  Instead, one can set the environment variable {{ic|1=LIBGL_DRI3_DISABLE=1}}.
+
+=== Missing glyphs in GTK applications ===
+
+Should you experience missing font glyphs in GTK applications, the following workaround might help. [[textedit|Edit]] {{ic|/etc/environment}} to add the following line:
+
+{{hc|/etc/environment|output=
+COGL_ATLAS_DEFAULT_BLIT_MODE=framebuffer
+}}
+
+See also [https://bugs.freedesktop.org/show_bug.cgi?id=88584 FreeDesktop bug 88584].
+
+=== Corrupted and frozen graphics ===
+If you experience corrupted and/or frozen graphics in some applications (such as random colors filling the application window, extreme unreasonable blurriness, an application failing to update its graphics at all while performing other tasks without lag, etc), try running the application with [[OpenGL]] instead of [[Vulkan]]. This has occurred on some configurations with Intel Arc GPUs.
+
+=== X freeze/crash with intel driver ===
+
+Some issues with X crashing, GPU hanging, or problems with X freezing, can be fixed by disabling the GPU usage with the {{ic|NoAccel}} option - add the following lines to your [[#Xorg configuration|configuration file]]:
+
+   Option "NoAccel" "True"
+
+Alternatively, try to disable the 3D acceleration only with the {{ic|DRI}} option:
+
+   Option "DRI" "False"
+
+=== Adding undetected resolutions ===
+
+This issue is covered on the [[Xrandr#Adding undetected resolutions|Xrandr page]].
+
+=== Backlight is not adjustable ===
+
+If after resuming from suspend, the hotkeys for changing the screen brightness do not take effect, check your configuration against the [[Backlight]] article.
+
+If the problem persists, try one of the following [[kernel parameters]]:
+
+ acpi_osi=Linux
+ acpi_osi="!Windows 2012"
+ acpi_osi=
+
+Also make sure you are not using fastboot mode ({{ic|i915.fastboot}} kernel parameter), it is [https://www.phoronix.com/forums/forum/software/mobile-linux/1066447-arch-linux-users-with-intel-graphics-can-begin-enjoying-a-flicker-free-boot known] for breaking backlight controls.
+
+=== Corruption or unresponsiveness in Chromium and Firefox ===
+
+If you experience corruption, unresponsiveness, lags or slow performance in Chromium and/or Firefox some possible solutions are:
+
+* [[#AccelMethod|Set the AccelMethod to "uxa"]]
+* [[#Disable Vertical Synchronization (VSYNC)|Disable VSYNC]]
+* [[#Tearing|Enable the TearFree option]]
+* Disable "DRI" and acceleration method (tested on Gen 10): {{bc|<nowiki>
+Option "NoAccel" "True"
+Option "DRI" "False"
+</nowiki>}}
+
+=== Kernel crashing w/kernels 4.0+ on Broadwell/Core-M chips ===
+
+A few seconds after X/Wayland loads the machine will freeze and [[journalctl]] will log a kernel crash referencing the Intel graphics as below:
+
+ Jun 16 17:54:03 hostname kernel: BUG: unable to handle kernel NULL pointer dereference at           (null)
+ Jun 16 17:54:03 hostname kernel: IP: [<          (null)>]           (null)
+ ...
+ Jun 16 17:54:03 hostname kernel: CPU: 0 PID: 733 Comm: gnome-shell Tainted: G     U     O    4.0.5-1-ARCH #1
+ ...
+ Jun 16 17:54:03 hostname kernel: Call Trace:
+ Jun 16 17:54:03 hostname kernel:  [<ffffffffa055cc27>] ? i915_gem_object_sync+0xe7/0x190 [i915]
+ Jun 16 17:54:03 hostname kernel:  [<ffffffffa0579634>] intel_execlists_submission+0x294/0x4c0 [i915]
+ Jun 16 17:54:03 hostname kernel:  [<ffffffffa05539fc>] i915_gem_do_execbuffer.isra.12+0xabc/0x1230 [i915]
+ Jun 16 17:54:03 hostname kernel:  [<ffffffffa055d349>] ? i915_gem_object_set_to_cpu_domain+0xa9/0x1f0 [i915]
+ Jun 16 17:54:03 hostname kernel:  [<ffffffff811ba2ae>] ? __kmalloc+0x2e/0x2a0
+ Jun 16 17:54:03 hostname kernel:  [<ffffffffa0555471>] i915_gem_execbuffer2+0x141/0x2b0 [i915]
+ Jun 16 17:54:03 hostname kernel:  [<ffffffffa042fcab>] drm_ioctl+0x1db/0x640 [drm]
+ Jun 16 17:54:03 hostname kernel:  [<ffffffffa0555330>] ? i915_gem_execbuffer+0x450/0x450 [i915]
+ Jun 16 17:54:03 hostname kernel:  [<ffffffff8122339b>] ? eventfd_ctx_read+0x16b/0x200
+ Jun 16 17:54:03 hostname kernel:  [<ffffffff811ebc36>] do_vfs_ioctl+0x2c6/0x4d0
+ Jun 16 17:54:03 hostname kernel:  [<ffffffff811f6452>] ? __fget+0x72/0xb0
+ Jun 16 17:54:03 hostname kernel:  [<ffffffff811ebec1>] SyS_ioctl+0x81/0xa0
+ Jun 16 17:54:03 hostname kernel:  [<ffffffff8157a589>] system_call_fastpath+0x12/0x17
+ Jun 16 17:54:03 hostname kernel: Code:  Bad RIP value.
+ Jun 16 17:54:03 hostname kernel: RIP  [<          (null)>]           (null)
+
+This can be fixed by disabling execlist support which was changed to default on with kernel 4.0. Add the following [[kernel parameter]]:
+
+ i915.enable_execlists=0
+
+This is known to be broken to at least kernel 4.0.5.
+
+=== Lag in Windows guests ===
+
+The video output of a Windows guest in VirtualBox sometimes hangs until the host forces a screen update (e.g. by moving the mouse cursor). Removing the {{ic|1=enable_fbc=1}} option fixes this issue.
+
+=== Screen flickering ===
+
+''P''anel ''S''elf ''R''efresh (a power saving feature) is known to cause flickering in some instances {{Bug|49628}} {{Bug|49371}} {{Bug|50605}}. A temporary solution is to disable this feature using the [[kernel parameter]] {{ic|1=i915.enable_psr=0}} or {{ic|1=xe.enable_psr=0}}.
+
+This can solve error messages like {{ic|[i915] *ERROR* CPU pipe A FIFO underrun}}.
+
+=== OpenGL 2.1 with i915 driver ===
+
+The classic mesa driver for Gen 3 GPUs included in the {{Pkg|mesa-amber}} package reports OpenGL 2.0 by default, because the hardware is not fully compatible with OpenGL 2.1.[https://www.phoronix.com/scan.php?page=news_item&px=Mesa-i915-OpenGL-2-Drop] OpenGL 2.1 support can be enabled manually by setting {{ic|/etc/drirc}} or {{ic|~/.drirc}} options like:
+
+{{hc|/etc/drirc|output=
+<driconf>
+...
+    <device driver="i915">
+        <application name="Default">
+            <option name="'''stub_occlusion_query'''" value="'''true'''" />
+            <option name="'''fragment_shader'''" value="'''true'''" />
+        </application>
+    </device>
+...
+</driconf>
+}}
+
+{{Note|
+* The reason of this step back was Chromium and other applications' bad experience. If needed, you might edit the drirc file in a "app-specific" style, see [https://dri.freedesktop.org/wiki/ConfigurationInfrastructure/ here], to disable OpenGL 2.1 on executable {{ic|chromium}} for instance.
+* The new Gallium based i915 driver included in {{Pkg|mesa}} package always reports OpenGL 2.1, so this setting is not needed for that driver.}}
+
+=== KMS Issue: console is limited to small area ===
+
+One of the low-resolution video ports may be enabled on boot which is causing the terminal to utilize a small area of the screen. To fix, explicitly disable the port with an i915 module setting with {{ic|1=video=SVIDEO-1:d}} in the kernel command line parameter in the boot loader. See [[Kernel parameters]] for more info.
+
+If that does not work, try disabling TV1 or VGA1 instead of SVIDEO-1. Video port names can be listed with [[xrandr]].
+
+=== No sound through HDMI on a Haswell CPU ===
+
+According to a [https://bugzilla.kernel.org/show_bug.cgi?id=60769 Linux kernel issue], sound will not be output through HDMI if {{ic|1=intel_iommu=on}}. To fix this problem, use the following [[kernel parameter]]:
+
+ intel_iommu=on,igfx_off
+
+Or alternatively, disable IOMMU:
+
+ intel_iommu=off
+
+=== Crash/freeze on low power Intel CPUs ===
+
+{{Accuracy|{{ic|1=enable_dc=0}} may not impede on power management to the extent claimed here.|section=Incorrect statements regarding power usage penalty of enable_dc=0}}
+
+Low-powered Intel processors and/or laptop processors have a tendency to randomly hang or crash due to the problems with the power management features found in low-power Intel chips. If such a crash happens, you will not see any logs reporting this problem. Adding the following [[Kernel parameters]] may help to resolve the problem.
+
+{{Note|It is not advised to use all three of the below kernel parameters together.}}
+
+ intel_idle.max_cstate=1 i915.enable_dc=0 ahci.mobile_lpm_policy=1
+
+{{ic|1=ahci.mobile_lpm_policy=1}} fixes a hang on several Lenovo laptops and some Acer notebooks due to problematic SATA controller power management. That workaround is strictly not related to Intel graphics but it does solve related issues. Adding this kernel parameter sets the ''l''ink ''p''ower ''m''anagement from firmware default to maximum performance and will also solve hangs when you change display brightness on certain Lenovo machines but increases idle power consumption by 1-1.5 W on modern ultrabooks. For further information, especially about the other states, see the [https://lore.kernel.org/lkml/20171211165216.5604-1-hdegoede@redhat.com/ Linux kernel mailing list] and [https://access.redhat.com/documentation/en-en/red_hat_enterprise_linux/6/html/power_management_guide/alpm Red Hat documentation].
+
+{{ic|1=i915.enable_dc=0}} disables GPU power management. This does solve random hangs on certain Intel systems, notably Goldmount and Kaby Lake Refresh chips. Using this parameter does result in higher power use and shorter battery life on laptops/notebooks.  If this helps, you can try finer-grained DC limitations as documented in {{ic|1=modinfo i915 {{!}} grep enable_dc}}.
+
+{{ic|1=intel_idle.max_cstate=1}} limits the processors sleep states, it prevents the processor from going into deep sleep states. That is absolutely not ideal and does result in higher power use and lower battery life. However, it does solve random hangs on many Intel systems. Use this if you have a Intel Baytrail or a Kaby Lake Refresh chip. Intel "Baytrail" chips were known to randomly hang without this kernel parameter due to a [https://bugzilla.kernel.org/show_bug.cgi?id=109051#c752 hardware flaw], theoretically fixed [https://gitlab.freedesktop.org/drm/i915/kernel/-/commit/a75d035fedbdecf83f86767aa2e4d05c8c4ffd95 2019-04-26].
+More information about the max_cstate parameter can be found in the [https://docs.kernel.org/admin-guide/pm/intel_idle.html#kernel-command-line-options-and-module-parameters kernel documentation] and about the cstates in general on a [https://gist.github.com/wmealing/2dd2b543c4d3cff6cab7 writeup on GitHub].
+
+If you try adding {{ic|1=intel_idle.max_cstate=1 i915.enable_dc=0 ahci.mobile_lpm_policy=1}} in the hope of fixing frequent hangs and that solves the issue you should later remove one by one to see which of them actually helped you solve the issue. Running with cstates and display power management disabled is not advisable if the actual problem is related to SATA power management and {{ic|1=ahci.mobile_lpm_policy=1}} is the one that actually solves it.
+
+Check [https://linuxreviews.org/Intel_graphics#Kernel_Parameters Linux Reviews] for more details.
+
+==== Higher C-states prevent wakeup from S3 ====
+In case you infrequently wake up to a black screen, but the system otherwise properly resumes with {{ic|CPU pipe A FIFO underrun}} messages in the journal and limiting {{ic|1=intel_idle.max_cstate=1}} reliably prevents that, [https://bbs.archlinux.org/viewtopic.php?pid=2175597#p2175597 you can] use [[Suspend and hibernate#Sleep hooks]] and {{man|1|cpupower-idle-set}} to effectively control the C-state around the suspend cycle with {{ic|-D0}} and {{ic|-E}} to not permanently run the CPU in the lowest C-state.
+
+=== Add support for 165Hz monitor ===
+
+{{Merge|Kernel mode setting#Forcing modes and EDID|This technique does not appear to be specific to i915. Before merging, one should verify that the install script is necessary, and that there is not an easier way to add the EDID BIN to the initramfs.}}
+
+For some 165Hz monitors, ''xrandr'' might not display the 165Hz option, and the fix in [[#Adding undetected resolutions]] does not solve this. In this case, see [https://unix.stackexchange.com/questions/680356/i915-driver-stuck-at-40hz-on-165hz-screen i915-driver-stuck-at-40hz-on-165hz-screen].
+
+{{Note|Other than creating {{ic|/etc/initramfs-tools/hooks/edid}}, a [[mkinitcpio]] hook should be made:
+
+{{hc|/etc/initcpio/install/edid|
+#!/bin/bash
+
+build() {
+    add_file /usr/lib/firmware/edid/edid.bin
+}
+
+help() {
+    cat <<HELPEOF
+This hook add support for 165Hz
+HELPEOF
+}
+}}
+
+Then append ''edid'' in HOOKS of {{ic|/etc/mkinitcpio.conf}}, Just like this:
+
+{{hc|/etc/mkinitcpio.conf|2=
+HOOKS=(... fsck edid)
+}}
+
+Then [[regenerate the initramfs]]. 
+}}
+
+=== Freeze after wake from sleep/suspend with Raptor Lake and Alder Lake-P ===
+
+Users with Raptor Lake and Alder Lake-P 12th gen mobile processor laptops from various vendors experienced freeze and black-screen after waking up from suspending. It is because many laptop vendors ship an incorrect VBT (Video BIOS Table), as described in freedesktop issues [https://gitlab.freedesktop.org/drm/intel/-/issues/5531 5531] [https://gitlab.freedesktop.org/drm/intel/-/issues/6401 6401], that wrongly describe the actual ports connected to the iGPU. In this case, all of the documented cases concern duplicate eDP entries. 
+
+Considering most vendors [https://gitlab.freedesktop.org/drm/i915/kernel/-/issues/7402 will not] publish a BIOS update for a laptop with a properly working Windows OS, Linux users could only address the issue on the kernel side. The preferred way to prevent this, is [https://gitlab.freedesktop.org/drm/i915/kernel/-/issues/7709 loading a modified VBT]. The idea is to remove duplicate eDP entries from the VBT, including a modified VBT in the intramfs and passing it to the i915 driver as a kernel parameter.
+
+The duplicate eDP entry needs to be identified by analyzing the output of:
+
+{{hc|# intel_vbt_decode /sys/kernel/debug/dri/1/i915_vbt|
+ Child device info:
+        Device handle: 0x0008 (LFP 1 (eDP))
+        Device type: 0x1806 (unknown)
+ ...
+ Child device info:
+        Device handle: 0x0080 (LFP 2 (eDP))
+        Device type: 0x1806 (unknown)
+}}
+
+This works by copying the VBT and editing it with a hex editor and changing the device type corresponding with the duplicate device handle to {{ic|00 00}}: 
+
+ $ cat /sys/kernel/debug/dri/0/i915_vbt > vbt
+
+ --- vbt
+ +++ modified_vbt
+ @@ -22,10 +22,10 @@
+  00000150  00 08 00 20 00 08 00 10  00 08 00 02 00 08 00 01  |... ............|
+  00000160  00 08 00 00 01 08 00 00  00 04 00 00 00 40 00 00  |.............@..|
+  00000170  00 20 00 00 00 10 00 00  00 02 00 00 00 01 00 00  |. ..............|
+ -00000180  00 00 01 00 00 02 8b 01  02 04 00 00 27 08 00 06  |............'...|
+ -00000190  18 00 00 00 00 00 00 00  00 00 00 00 00 0a 00 00  |................|
+ +00000180  00 00 01 00 00 02 8b 01  02 04 00 00 27 08 00 00  |............'...|
+ +00000190  00 00 00 00 00 00 00 00  00 00 00 00 00 0a 00 00  |................|
+  000001a0  03 00 00 00 c0 00 40 00  20 00 00 00 00 00 00 00  |......@. .......|
+ -000001b0  00 00 20 00 80 00 06 18  00 00 00 00 00 00 00 00  |.. .............|
+ +000001b0  00 00 20 00 80 00 00 00  00 00 00 00 00 00 00 00  |.. .............|
+  000001c0  00 00 00 00 07 00 00 00  00 00 00 c0 00 10 00 20  |............... |
+  000001d0  00 00 00 00 00 00 00 00  00 20 00 04 00 d2 60 00  |......... ....`.|
+  000001e0  10 10 00 23 21 10 00 00  00 00 00 07 00 00 02 00  |...#!...........|
+
+The modified VBT can then be loaded by copying it to {{ic|/usr/lib/firmware/i915/modified_vbt}} and including the file in the initramfs. For [[mkinitcpio]], the {{ic|FILES}} field in {{ic|/etc/mkinitcpio.conf}} can be used:
+
+ FILES=(/usr/lib/firmware/i195/modified_vbt)
+
+[[regenerate the initramfs]], and pass the new table to the i915 as a kernel parameter: {{ic|i915.vbt_firmware{{=}}i915/modified_vbt}}.
+
+===Washed out colors===
+
+By default some monitors might not be recognized properly by the Intel GPU and have washed out colors because it's not in full-range RGB mode.
+
+==== Fix colors for Wayland ====
+
+{{hc|/etc/udev/rules.d/80-i915.rules|
+ACTION{{=}}{{=}}"add", SUBSYSTEM{{=}}{{=}}"module", KERNEL{{=}}{{=}}"i915", RUN+{{=}}"/usr/local/bin/intel-wayland-fix-full-color"
+}}
+
+{{hc|/usr/local/bin/intel-wayland-fix-full-color|<nowiki>
+#!/bin/bash
+
+readarray -t proptest_result <<<"$(/usr/bin/proptest -M i915 -D /dev/dri/card0 | grep -E 'Broadcast|Connector')"
+
+for ((i = 0; i < ${#proptest_result[*]}; i += 2)); do
+    connector=$(echo ${proptest_result[i]} | awk '{print $2}')
+    connector_id=$(echo ${proptest_result[i + 1]} | awk '{print $1}')
+
+    /usr/bin/proptest -M i915 $connector connector $connector_id 1
+done
+</nowiki>}}
+
+If you are using [[GNOME]], [https://gitlab.gnome.org/GNOME/mutter/-/issues/1871#note_2090262 an alternative] is to add {{ic|<rgbrange>full</rgbrange>}} to the {{ic|~/.config/monitors.xml}} configuration. For example:
+
+{{hc|~/.config/monitors.xml|<nowiki>
+<monitors version="2">
+  <configuration>
+    <layoutmode>logical</layoutmode>
+    <logicalmonitor>
+      <x>0</x>
+      <y>0</y>
+      <primary>yes</primary>
+      <monitor>
+        <monitorspec>
+          <connector>HDMI-1</connector>
+          <vendor>MetaProduct&apos;s Inc.</vendor>
+          <product>MetaMonitor</product>
+          <serial>0x123456</serial>
+        </monitorspec>
+        <mode>
+          <width>1920</width>
+          <height>1080</height>
+          <rate>60.000</rate>
+        </mode>
+        <rgbrange>full</rgbrange>
+      </monitor>
+    </logicalmonitor>
+  </configuration>
+</monitors>
+</nowiki>}}
+
+{{Note|
+* If displays are rearranged or display settings changed in any other way, a new layout might be added to {{ic|monitors.xml}} file without the {{ic|<rgbrange>full</rgbrange>}} tag. To ensure the RGB range is consistently set across different layouts, consider adding the tag to every duplicated entry of the logical monitor.
+* If GDM login screen is not using full RGB range, copy user's {{ic|monitors.xml}} to gdm's home directory. See [[GDM#Setup default monitor settings]]
+}}
+
+====Fix colors for X11/Xorg====
+
+ # xrandr --output NAME_OF_YOUR_OUTPUT --set "Broadcast RGB" "Full"
+
+=== Unable to run some programs, "bus error" with B580 ===
+
+When getting an error like this when running some programs (eg. vainfo, falkon, mpv...):
+
+ 1234 bus error : vaapi
+
+The probable cause could be disabled ReBar (Resizable BAR) in BIOS/UEFI. Some motherboards may allow to enable ReBar only when UEFI mode is active, without legacy support.
+
+== See also ==
+
+* [https://www.intel.com/content/www/us/en/support/articles/000005520/graphics.html?wapkw=linux%20graphics linux graphics] (includes a list of 106 related products)
+* [https://www.intel.com/content/www/us/en/developer/articles/guide/intel-graphics-developers-guides.html?wapkw=linux%20graphics Intel® Processor Graphics] (includes a table of processor series, former code name, launch date and graphics technology)

@@ -1,0 +1,277 @@
+{
+  "FAQ": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=FAQ&action=raw",
+    "size": 0
+  },
+  "Secure Boot": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Secure+Boot&action=raw",
+    "size": 63
+  },
+  "5-level paging": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=5-level+paging&action=raw",
+    "size": 0
+  },
+  "Input acceleration": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Input+acceleration&action=raw",
+    "size": 0
+  },
+  "further": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=further&action=raw",
+    "size": 0
+  },
+  "Localization (简体中文)": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Localization+%28%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87%29&action=raw",
+    "size": 0
+  },
+  "Wireless": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=Wireless&action=raw",
+    "size": 0
+  },
+  "Firewall": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=Firewall&action=raw",
+    "size": 0
+  },
+  "DNS": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=DNS&action=raw",
+    "size": 0
+  },
+  "DHCP": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=DHCP&action=raw",
+    "size": 52
+  },
+  "Hostnames": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Hostnames&action=raw",
+    "size": 0
+  },
+  "systemd/Services": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=systemd%2FServices&action=raw",
+    "size": 0
+  },
+  "daemons": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=daemons&action=raw",
+    "size": 0
+  },
+  "Enhancing systemd": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Enhancing+systemd&action=raw",
+    "size": 0
+  },
+  "LXC": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=LXC&action=raw",
+    "size": 0
+  },
+  "Proton": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=Proton&action=raw",
+    "size": 0
+  },
+  "Steam": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Steam&action=raw",
+    "size": 32067
+  },
+  "Gaming": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Gaming&action=raw",
+    "size": 44843
+  },
+  "Bubblewrap": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Bubblewrap&action=raw",
+    "size": 16597
+  },
+  "Firejail": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Firejail&action=raw",
+    "size": 24306
+  },
+  "Security": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Security&action=raw",
+    "size": 79524
+  },
+  "AppArmor": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=AppArmor&action=raw",
+    "size": 16550
+  },
+  "SELinux": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=SELinux&action=raw",
+    "size": 23614
+  },
+  "Power management": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Power+management&action=raw",
+    "size": 32558
+  },
+  "CPU frequency scaling": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=CPU+frequency+scaling&action=raw",
+    "size": 30282
+  },
+  "TLP": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=TLP&action=raw",
+    "size": 6557
+  },
+  "Thermald": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=Thermald&action=raw",
+    "size": 0
+  },
+  "fan speed control": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=fan+speed+control&action=raw",
+    "size": 31019
+  },
+  "Laptop": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Laptop&action=raw",
+    "size": 14198
+  },
+  "Solid state drive": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Solid+state+drive&action=raw",
+    "size": 30555
+  },
+  "NVMe": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=NVMe&action=raw",
+    "size": 0
+  },
+  "hdparm": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=hdparm&action=raw",
+    "size": 12209
+  },
+  "Udev": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Udev&action=raw",
+    "size": 46939
+  },
+  "Backup and recovery": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Backup+and+recovery&action=raw",
+    "size": 0
+  },
+  "Synchronization and backup programs": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Synchronization+and+backup+programs&action=raw",
+    "size": 26478
+  },
+  "Rsync": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Rsync&action=raw",
+    "size": 25516
+  },
+  "List of applications": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=List+of+applications&action=raw",
+    "size": 5190
+  },
+  "Common applications": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Common+applications&action=raw",
+    "size": 0
+  },
+  "Bash": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Bash&action=raw",
+    "size": 15675
+  },
+  "Zsh": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Zsh&action=raw",
+    "size": 40445
+  },
+  "Fish": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Fish&action=raw",
+    "size": 15542
+  },
+  "Git": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Git&action=raw",
+    "size": 25985
+  },
+  "Vim": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Vim&action=raw",
+    "size": 28329
+  },
+  "Neovim": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Neovim&action=raw",
+    "size": 10813
+  },
+  "Tmux": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Tmux&action=raw",
+    "size": 33119
+  },
+  "GNU nano": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=GNU+nano&action=raw",
+    "size": 0
+  },
+  "OpenRC": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=OpenRC&action=raw",
+    "size": 8738
+  },
+  "Curl": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=Curl&action=raw",
+    "size": 0
+  },
+  "Wget": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Wget&action=raw",
+    "size": 4009
+  },
+  "Htop": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Htop&action=raw",
+    "size": 60
+  },
+  "Neofetch": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Neofetch&action=raw",
+    "size": 0
+  },
+  "Fastfetch": {
+    "status": "notfound",
+    "url": "https://wiki.archlinux.org/index.php?title=Fastfetch&action=raw",
+    "size": 0
+  },
+  "Reflector": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Reflector&action=raw",
+    "size": 3444
+  },
+  "Paccache": {
+    "status": "error",
+    "url": "https://wiki.archlinux.org/index.php?title=Paccache&action=raw",
+    "size": 0
+  },
+  "Pkgfile": {
+    "status": "ok",
+    "url": "https://wiki.archlinux.org/index.php?title=Pkgfile&action=raw",
+    "size": 1816
+  }
+}

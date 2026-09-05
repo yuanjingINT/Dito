@@ -1,0 +1,837 @@
+[[Category:Command-line shells]]
+[[de:Zsh]]
+[[es:Zsh]]
+[[hu:Zsh]]
+[[ja:Zsh]]
+[[pt:Zsh]]
+[[ru:Zsh]]
+[[zh-hans:Zsh]]
+[https://www.zsh.org/ Zsh] is a powerful [[shell]] that operates as both an interactive shell and as a scripting language interpreter. While being compatible with the POSIX sh (not by default, only if issuing {{ic|emulate sh}}), it offers advantages such as improved [https://zsh.sourceforge.io/Guide/zshguide06.html tab completion] and [https://zsh.sourceforge.io/Doc/Release/Expansion.html globbing].
+
+The [https://zsh.sourceforge.io/FAQ/zshfaq01.html#l4 Zsh FAQ] offers more reasons to use Zsh.
+
+== Installation ==
+
+Before starting, users may want to see what shell is currently being used:
+
+ $ echo $SHELL
+
+[[Install]] the {{Pkg|zsh}} package. For additional completion definitions, install the {{pkg|zsh-completions}} package as well.
+
+=== Initial configuration ===
+
+Make sure that Zsh has been installed correctly by running the following in a terminal:
+
+ $ zsh
+
+You should now see ''zsh-newuser-install'', which will walk you through some basic configuration. If you want to skip this, press {{ic|q}}. If you did not see it, you can invoke it manually with:
+
+ $ autoload -Uz zsh-newuser-install
+ $ zsh-newuser-install -f
+
+{{Note|Make sure your terminal's size is at least 72×15 otherwise ''zsh-newuser-install'' will not run.}}
+
+=== Making Zsh your default shell ===
+
+Change your shell to {{ic|/usr/bin/zsh}}. See [[Command-line shell#Changing your default shell]].
+
+{{Tip|If replacing {{Pkg|bash}}, users may want to move some code from {{ic|~/.bashrc}} to {{ic|~/.zshrc}} (e.g. the prompt and the [[Bash#Aliases|aliases]]) and from {{ic|~/.bash_profile}} to {{ic|~/.zprofile}} (e.g. [[xinit#Autostart X at login|the code that starts the X Window System]]).}}
+
+== Startup/Shutdown files ==
+
+{{Tip|See [https://zsh.sourceforge.io/Guide/zshguide02.html A User's Guide to the Z-Shell] for explanation on interactive and login shells, and what to put in your startup files.
+}}
+
+{{Note|
+* If {{ic|$ZDOTDIR}} is not set, {{ic|$HOME}} is used instead.
+* If option {{ic|RCS}} is unset in any of the files, no configuration files will be read after that file.
+* If option {{ic|GLOBAL_RCS}} is unset in any of the files, no global configuration files ({{ic|/etc/zsh/*}}) will be read after that file.
+}}
+
+When starting, Zsh will read commands from the following files in this order by default, provided they exist. 
+
+* {{ic|/etc/zsh/zshenv}} Used for setting [[environment variables]] for all users; it should not contain commands that produce output or assume the shell is attached to a TTY. When this file exists it will '''''always''''' be read, this cannot be overridden.
+* {{ic|$ZDOTDIR/.zshenv}} Used for setting user's environment variables; it should not contain commands that produce output or assume the shell is attached to a TTY. When this file exists it will '''''always''''' be read.
+* {{ic|/etc/zsh/zprofile}} Used for executing commands at start for all users, will be read when starting as a '''''login shell'''''. Please note that on Arch Linux, by default it contains [https://gitlab.archlinux.org/archlinux/packaging/packages/zsh/-/blob/main/zprofile one line] which sources {{ic|/etc/profile}}. See warning below before wanting to remove that!
+** {{ic|/etc/profile}} This file should be sourced by all POSIX sh-compatible shells upon login: it sets up {{ic|$PATH}} and other environment variables and application-specific ({{ic|/etc/profile.d/*.sh}}) settings upon login.
+* {{ic|$ZDOTDIR/.zprofile}} Used for executing user's commands at start, will be read when starting as a '''''login shell'''''. Typically used to autostart graphical sessions and to set session-wide environment variables.
+* {{ic|/etc/zsh/zshrc}} Used for setting interactive shell configuration and executing commands for all users, will be read when starting as an '''''interactive shell'''''.
+* {{ic|$ZDOTDIR/.zshrc}} Used for setting user's interactive shell configuration and executing commands, will be read when starting as an '''''interactive shell'''''.
+* {{ic|/etc/zsh/zlogin}} Used for executing commands for all users at ending of initial progress, will be read when starting as a '''''login shell'''''.
+* {{ic|$ZDOTDIR/.zlogin}} Used for executing user's commands at ending of initial progress, will be read when starting as a '''''login shell'''''. Typically used to autostart command line utilities. Should not be used to autostart graphical sessions, as at this point the session might contain configuration meant only for an interactive shell.
+* {{ic|$ZDOTDIR/.zlogout}} Used for executing commands when a '''''login shell''''' '''exits'''.
+* {{ic|/etc/zsh/zlogout}} Used for executing commands for all users when a '''''login shell''''' '''exits'''.
+
+See [https://web.archive.org/web/20241008050626/https://blog.flowblok.id.au/2013-02/shell-startup-scripts.html#implementation the graphic representation].
+
+{{Note|{{ic|$HOME/.profile}} is not a part of the Zsh startup files and '''is not sourced''' by Zsh unless Zsh is invoked as {{ic|sh}} or {{ic|ksh}} and started as a login shell. For more details about the sh and [[ksh]] compatibility modes refer to {{man|1|zsh|COMPATIBILITY}}.}}
+
+{{Warning|Do not remove the default [https://gitlab.archlinux.org/archlinux/packaging/packages/zsh/-/blob/main/zprofile one line] in {{ic|/etc/zsh/zprofile}}, otherwise it will break the integrity of other packages which provide some scripts in {{ic|/etc/profile.d/}}.}}
+
+== Configure Zsh ==
+
+Although Zsh is usable out of the box, it is almost certainly not set up the way most users would like to use it. But due to the sheer amount of customization available in Zsh, configuring Zsh can be a daunting and time-consuming experience. For automatic configuration, see [[#Third-party extensions]].
+
+=== Simple .zshrc ===
+
+Included below is a sample configuration file. It provides a decent set of default options as well as giving examples of many ways that Zsh can be customized. In order to use this configuration save it as a file named {{ic|.zshrc}}.
+
+{{Tip|Apply the changes without needing to logout and then back in by running {{ic|source ~/.zshrc}}.}}
+
+Here is a simple {{ic|.zshrc}}:
+
+{{hc|~/.zshrc|
+autoload -Uz compinit promptinit
+compinit
+promptinit
+
+# This will set the default prompt to the walters theme
+prompt walters
+}}
+
+See [[#Prompt themes]] for more details about the prompt theme system.
+
+=== Configuring $PATH ===
+
+Zsh ties the {{ic|PATH}} variable to a {{ic|path}} array. This allows you to manipulate {{ic|PATH}} by simply modifying the {{ic|path}} array. See [https://zsh.sourceforge.io/Guide/zshguide02.html#l24 A User's Guide to the Z-Shell] for details.
+
+To add {{ic|~/.local/bin/}} to the {{ic|PATH}}:
+
+{{hc|~/.zshenv|2=
+typeset -U path PATH
+path=(~/.local/bin $path)
+export PATH
+}}
+
+=== Command completion ===
+
+Perhaps the most compelling feature of Zsh is its advanced autocompletion abilities. At the very least, enable autocompletion in {{ic|.zshrc}}. To enable autocompletion, add the following to your {{ic|~/.zshrc}}:
+
+{{hc|~/.zshrc|
+autoload -Uz compinit
+compinit
+}}
+
+The above configuration includes ssh/scp/sftp hostnames completion but in order for this feature to work, users must not enable ssh's hostname hashing (i.e. option {{ic|HashKnownHosts}} in ssh client configuration).
+
+For autocompletion with an arrow-key driven interface, add the following to:
+
+{{hc|~/.zshrc|
+zstyle ':completion:*' menu select
+}}
+
+To activate the menu, press {{ic|Tab}} twice.
+
+For enabling autocompletion of privileged environments in privileged commands (e.g. if you complete a command starting with [[sudo]], completion scripts will also try to determine your completions with sudo), include:
+
+{{hc|~/.zshrc|
+zstyle ':completion::complete:*' gain-privileges 1
+}}
+
+{{Warning|This will let Zsh completion scripts run commands with sudo privileges. You should not enable this if you use untrusted autocompletion scripts.}}
+
+{{Note|This special kind of context-aware completion is only available for a small number of commands.}}
+
+==== Custom completion ====
+
+You can write custom completions on your own. Should you do so, you can refer to the {{man|1|zshcompsys}} man page.
+
+Note that the official documentation can be hard to read. You can consider trying the simpler [https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org zsh-completion-howto] tutorial for an easy start.
+
+=== Key bindings ===
+
+Zsh does not use [[readline]], instead it uses its own and more powerful Zsh Line Editor (ZLE). It does not read {{ic|/etc/inputrc}} or {{ic|~/.inputrc}}. Read [https://sgeb.io/posts/2014/04/zsh-zle-custom-widgets/ A closer look at the zsh line editor and creating custom widgets] for an introduction to ZLE configuration.
+
+ZLE has an [[Emacs]] mode and a [[vi]] mode. If one of the {{ic|VISUAL}} or {{ic|EDITOR}} [[environment variables]] contain the string {{ic|vi}} then vi mode will be used; otherwise, it will default to Emacs mode. Set the mode explicitly with {{ic|bindkey -e}} or {{ic|bindkey -v}} respectively for Emacs mode or vi mode. The delay of pressing Esc key in vi mode is 0.4s by default, and you can make it shorter (0.05s) with {{ic|export KEYTIMEOUT{{=}}5}}.
+
+Key bindings are assigned by mapping an escape sequence matching a keypress to a ZLE widget. The available widgets, with descriptions of their actions and their default keybindings, are listed in {{man|1|zshzle|STANDARD WIDGETS}} and {{man|1|zshcontrib|ZLE FUNCTIONS}}.
+
+The recommended way to set key bindings in Zsh is by using string capabilities from {{man|5|terminfo}}. For example[https://web.archive.org/web/20180704181216/http://zshwiki.org/home/zle/bindkeys][https://www.zsh.org/mla/users/2010/msg00065.html]:
+
+{{hc|~/.zshrc|2=
+# create a zkbd compatible hash;
+# to add other keys to this hash, see: man 5 terminfo
+typeset -g -A key
+
+key[Home]="${terminfo[khome]}"
+key[End]="${terminfo[kend]}"
+key[Insert]="${terminfo[kich1]}"
+key[Backspace]="${terminfo[kbs]}"
+key[Delete]="${terminfo[kdch1]}"
+key[Up]="${terminfo[kcuu1]}"
+key[Down]="${terminfo[kcud1]}"
+key[Left]="${terminfo[kcub1]}"
+key[Right]="${terminfo[kcuf1]}"
+key[PageUp]="${terminfo[kpp]}"
+key[PageDown]="${terminfo[knp]}"
+key[Shift-Tab]="${terminfo[kcbt]}"
+
+# setup key accordingly
+[[ -n "${key[Home]}"      ]] && bindkey -- "${key[Home]}"       beginning-of-line
+[[ -n "${key[End]}"       ]] && bindkey -- "${key[End]}"        end-of-line
+[[ -n "${key[Insert]}"    ]] && bindkey -- "${key[Insert]}"     overwrite-mode
+[[ -n "${key[Backspace]}" ]] && bindkey -- "${key[Backspace]}"  backward-delete-char
+[[ -n "${key[Delete]}"    ]] && bindkey -- "${key[Delete]}"     delete-char
+[[ -n "${key[Up]}"        ]] && bindkey -- "${key[Up]}"         up-line-or-history
+[[ -n "${key[Down]}"      ]] && bindkey -- "${key[Down]}"       down-line-or-history
+[[ -n "${key[Left]}"      ]] && bindkey -- "${key[Left]}"       backward-char
+[[ -n "${key[Right]}"     ]] && bindkey -- "${key[Right]}"      forward-char
+[[ -n "${key[PageUp]}"    ]] && bindkey -- "${key[PageUp]}"     beginning-of-buffer-or-history
+[[ -n "${key[PageDown]}"  ]] && bindkey -- "${key[PageDown]}"   end-of-buffer-or-history
+[[ -n "${key[Shift-Tab]}" ]] && bindkey -- "${key[Shift-Tab]}"  reverse-menu-complete
+
+# Finally, make sure the terminal is in application mode, when zle is
+# active. Only then are the values from $terminfo valid.
+if (( ${+terminfo[smkx]} && ${+terminfo[rmkx]} )); then
+    autoload -Uz add-zle-hook-widget
+    function zle_application_mode_start { echoti smkx }
+    function zle_application_mode_stop { echoti rmkx }
+    add-zle-hook-widget -Uz zle-line-init zle_application_mode_start
+    add-zle-hook-widget -Uz zle-line-finish zle_application_mode_stop
+fi
+}}
+
+==== Shift, Alt, Ctrl and Meta modifiers ====
+
+xterm-compatible terminals can use extended key-definitions from {{man|5|user_caps}}. Those are combinations of {{ic|Shift}}, {{ic|Alt}}, {{ic|Ctrl}} and {{ic|Meta}} together with {{ic|Up}}, {{ic|Down}}, {{ic|Left}}, {{ic|Right}}, {{ic|PageUp}}, {{ic|PageDown}}, {{ic|Home}}, {{ic|End}} or {{ic|Del}}. Refer to the [https://sourceforge.net/p/zsh/code/ci/master/tree/Functions/Misc/zkbd zkbd source] for a list of recommended names for the modifier keys and key combinations.
+
+For example, for {{ic|Ctrl+Left}} to move to the beginning of the previous word and {{ic|Ctrl+Right}} to move to the beginning of the next word:
+
+{{hc|~/.zshrc|2=
+key[Control-Left]="${terminfo[kLFT5]}"
+key[Control-Right]="${terminfo[kRIT5]}"
+
+[[ -n "${key[Control-Left]}"  ]] && bindkey -- "${key[Control-Left]}"  backward-word
+[[ -n "${key[Control-Right]}" ]] && bindkey -- "${key[Control-Right]}" forward-word
+}}
+
+=== History ===
+
+To have the history list ignore commands that start with a blank space, issue {{ic|setopt HIST_IGNORE}}, either in the command prompt, or in {{ic|.zshrc}}. Though even with {{ic|setopt HIST_IGNORE}}, the last command can be repeated, for example by pressing the {{ic|Up}} key, until another command takes its place as the last command. {{ic|unsetopt ''OPT''}} to undo a {{ic|setopt ''OPT''}} command.
+
+By default, history will be with {{ic|HISTSIZE}} of 30, separate for each terminal, without the ability to delete entries from the list, and not saved between sessions. One of the consequences of setting {{ic|HISTFILE}} is to have the history list saved between sessions.
+
+==== History search ====
+
+You need to set up the {{ic|key}} array and make sure that ZLE enters application mode to use the following instructions; see [[#Key bindings]].
+
+To enable history search add these lines to {{ic|.zshrc}} file:
+
+{{hc|~/.zshrc|
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+
+[[ -n "${key[Up]}"   ]] && bindkey -- "${key[Up]}"   up-line-or-beginning-search
+[[ -n "${key[Down]}" ]] && bindkey -- "${key[Down]}" down-line-or-beginning-search
+}}
+
+By doing this, only the past commands matching the current line up to the current cursor position will be shown when {{ic|Up}} or {{ic|Down}} keys are pressed.
+
+=== Prompts ===
+
+Zsh offers the options of using a prompt theme or, for users who are dissatisfied with the themes (or want to expand their usefulness), the possibility to build a custom prompt.
+
+==== Prompt themes ====
+
+Prompt themes are a quick and easy way to set up a colored prompt in Zsh. See {{man|1|zshcontrib|PROMPT THEMES}} for information about prompt themes and how to write your own theme.
+
+To use a theme, make sure that prompt theme system is set to autoload in {{ic|.zshrc}}. This can be done by adding these lines to:
+
+{{hc|~/.zshrc|
+autoload -Uz promptinit
+promptinit
+}}
+
+Available prompt themes are listed by running the command:
+
+ $ prompt -l
+
+For example, to use the {{ic|walters}} theme, enter:
+
+ $ prompt walters
+
+To preview all available themes, use this command:
+
+ $ prompt -p
+
+===== Manually installing prompt themes =====
+
+It is possible to install themes manually, without external configuration manager tools. For a local installation, first create a folder and add it to the {{ic|fpath}} array, eg:
+
+ $ mkdir ~/.zprompts
+ $ fpath=("$HOME/.zprompts" "$fpath[@]")
+
+Now create a symbolic link of your theme file in this folder:
+
+ $ ln -s mytheme.zsh ~/.zprompts/prompt_mytheme_setup
+
+If instead you wish to install a theme globally, do:
+
+ # ln -s mytheme.zsh /usr/share/zsh/functions/Prompts/prompt_mytheme_setup
+
+Now you should be able to activate it using:
+
+ $ prompt mytheme
+
+If everything works, you can edit your {{ic|.zshrc}} accordingly.
+
+===== Adding prompt themes without a separate file for each one =====
+
+In addition to adding a prompt theme through its own file, it is possible to add themes from within another file (like your {{ic|.zshrc}}), eg:
+
+{{hc|~/.zshrc|2=
+# Load promptinit
+autoload -Uz promptinit && promptinit
+
+# Define the theme
+prompt_mytheme_setup() {
+    PS1="%~%# "
+}
+
+# Add the theme to promptsys
+prompt_themes+=( mytheme )
+
+# Load the theme
+prompt mytheme
+}}
+
+==== Customized prompt ====
+
+Additionally to a primary left-sided prompt {{ic|PS1}} ({{ic|PROMPT}}, {{ic|prompt}}) that is common to all shells, Zsh also supports a right-sided prompt {{ic|RPS1}} ({{ic|RPROMPT}}). These two variables are the ones you will want to set to a custom value.
+
+Other special purpose prompts, such as {{ic|PS2}} ({{ic|PROMPT2}}), {{ic|PS3}} ({{ic|PROMPT3}}), {{ic|PS4}} ({{ic|PROMPT4}}), {{ic|RPS1}} ({{ic|RPROMPT}}), {{ic|RPS2}} ({{ic|RPROMPT2}}) and {{ic|SPROMPT}}, are explained in {{man|1|zshparam|PARAMETERS USED BY THE SHELL}}.
+
+All prompts can be customized with prompt escapes. The available prompt escapes are listed in {{man|1|zshmisc|EXPANSION OF PROMPT SEQUENCES}}.
+
+===== Colors =====
+
+Zsh sets colors differently than [[Bash/Prompt customization|Bash]]; you do not need to use profuse ANSI escape sequences or terminal capabilities from {{man|5|terminfo}}. Zsh provides convenient prompt escapes to set the foreground color, background color and other visual effects; see {{man|1|zshmisc|Visual effects}} for a list of them and their descriptions.
+
+[https://zsh.sourceforge.io/FAQ/zshfaq03.html#l42 Colors] can be specified using a decimal integer, the name of one of the eight most widely-supported colors or as a # followed by an RGB triplet in hexadecimal format. See the description of fg=colour in {{man|1|zshzle|CHARACTER HIGHLIGHTING}} for more details.
+
+Most terminals support the following colors by name:
+
+{| class="wikitable"
+|-
+! Name !! Number
+|-
+| {{ic|black}} || {{ic|0}}
+|-
+| {{ic|red}} || {{ic|1}}
+|-
+| {{ic|green}} || {{ic|2}}
+|-
+| {{ic|yellow}} || {{ic|3}}
+|-
+| {{ic|blue}} || {{ic|4}}
+|-
+| {{ic|magenta}} || {{ic|5}}
+|-
+| {{ic|cyan}} || {{ic|6}}
+|-
+| {{ic|white}} || {{ic|7}}
+|}
+
+Color numbers 0–255 for terminal emulators compatible with xterm 256 colors can be found in the [https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg xterm-256color chart].
+
+With a correctly set TERM environment variable, the terminal's supported maximum number of colors can be found from the {{man|5|terminfo}} database using {{ic|echoti colors}}. In the case of [https://github.com/termstandard/colors/blob/master/README.md 24-bit colors], also check the COLORTERM environment variable with {{ic|print $COLORTERM}}. If it returns {{ic|24bit}} or {{ic|truecolor}} then your terminal supports 16777216 (2<sup>24</sup>) colors even if terminfo shows a smaller number.
+
+{{Note|
+* The colors 0–15 may differ between terminal emulators and their used color schemes.
+* Many terminal emulators display bold with a brighter color.
+}}
+
+{{Tip|
+* Prompt escapes can be tested with command {{ic|print -P ''"prompt escapes"''}}, for example: {{bc|$ print -P '%B%F{red}co%F{green}lo%F{blue}rs%f%b'}}
+* If you use 24-bit colors, you might want to load the {{ic|zsh/nearcolor}} module in terminals that do not support them. E.g.: {{bc|<nowiki>[[ "$COLORTERM" == (24bit|truecolor) || "${terminfo[colors]}" -eq '16777216' ]] || zmodload zsh/nearcolor</nowiki>}} See {{man|1|zshmodules|THE ZSH/NEARCOLOR MODULE}} for details about the {{ic|zsh/nearcolor}} module.
+}}
+
+===== Example =====
+
+An example of a simple colorless prompt:
+
+ PROMPT='%n@%m %~ %# '
+
+How it will be displayed:
+
+<div class="mw-no-invert" style="font-family: monospace, monospace; white-space: pre; padding: 1em; background-color: #000; border: 1px solid #bcd; color: #c0c0c0; overflow:hidden;"><span style="float:left;">username@host ~ % </span></div>
+
+This is an example of a two-sided prompt with color:
+
+ PROMPT='%F{green}%n%f@%F{magenta}%m%f %F{blue}%B%~%b%f %# '
+ RPROMPT='[%F{yellow}%?%f]'
+
+And here is how it will be displayed:
+
+<div class="mw-no-invert" style="font-family: monospace, monospace; white-space: pre; padding: 1em; background-color: #000; border: 1px solid #bcd; color: #c0c0c0; overflow: hidden;"><span style="float:left;"><span style="color: #008000;">username</span>@<span style="color: #800080;">host</span> <span style="color: #0000ff;">~</span> % </span><span style="float:right;">[<span style="color: #808000;">0</span>]</span></div>
+
+To use colors from the 16-255 range and 24-bit true color, you can use the number from 0 to 255 assigned to the wanted color and its hexadecimal color code, respectively:
+
+ PROMPT='%F{2}%n%f@%F{5}%m%f %F{4}%B%~%b%f %# '
+ RPROMPT='[%F{3}%?%f]'
+
+ PROMPT='%F{#c0c0c0}%n%f@%F{#008000}%m%f %F{#800080}%B%~%b%f %# '
+ RPROMPT='[%F{#0000ff}%?%f]'
+
+=== Sample .zshrc files ===
+
+* To get the same setup as the [https://archlinux.org/download/ monthly ISO releases] (which use Zsh by default), install {{Pkg|grml-zsh-config}}. It includes the many tweaks and advanced optimizations from [https://grml.org/zsh/ grml].
+* https://github.com/MrElendig/dotfiles-alice/blob/master/.zshrc - basic setup, with dynamic prompt and window title/hardinfo.
+
+See [[dotfiles#User repositories]] for more.
+
+== Tips and tricks ==
+
+=== Autostart X at login ===
+
+See [[xinit#Autostart X at login]].
+
+=== Restore terminal settings after a program exits abnormally ===
+
+Many programs change the terminal state, and often do not restore terminal settings on exiting abnormally (e.g. when crashing or encountering SIGINT). 
+
+This can typically be solved by executing {{man|1|reset}}:
+
+ $ reset
+
+The following sections describe ways to avoid the need to manually reset the terminal.
+
+==== The ttyctl command ====
+
+The [https://zsh.sourceforge.io/Doc/Release/Shell-Builtin-Commands.html#index-tty_002c-freezing ttyctl] command can be used to "freeze/unfreeze" the terminal. To freeze the interactive shell on launch, use the following:
+
+{{hc|~/.zshrc|
+ttyctl -f
+}}
+
+==== Resetting the terminal with escape sequences ====
+
+[https://www.in-ulm.de/~mascheck/various/alternate_charset/ Alternate linedrawing character set] can screw up the terminal in a way which ttyctl cannot prevent.
+
+A simple solution is to output the escape sequences that reset the terminal from the {{ic|precmd}} hook function, so that they are executed every time before the prompt is drawn. For example, using [https://www.in-ulm.de/~mascheck/various/alternate_charset/#solution the escape sequence] {{ic|\e[0m\e(B\e)0\017\e[?5l\e7\e[0;0r\e8}}:
+
+{{hc|~/.zshrc|2=
+
+autoload -Uz add-zsh-hook
+
+function reset_broken_terminal () {
+    printf '%b' '\e[0m\e(B\e)0\017\e[?5l\e7\e[0;0r\e8'
+}
+
+add-zsh-hook -Uz precmd reset_broken_terminal
+}}
+
+To test if it works, run: 
+
+ $ print '\e(0\e)B'
+
+=== Remembering recent directories ===
+
+==== Dirstack ====
+
+Zsh can be configured to remember the DIRSTACKSIZE last visited folders. This can then be used to ''cd'' them very quickly. You need to add some lines to your configuration file:
+
+{{hc|~/.zshrc|<nowiki>
+autoload -Uz add-zsh-hook
+
+DIRSTACKFILE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/dirs"
+if [[ -f "$DIRSTACKFILE" ]] && (( ${#dirstack} == 0 )); then
+    dirstack=("${(@f)"$(< "$DIRSTACKFILE")"}")
+    [[ -d "${dirstack[1]}" ]] && cd -- "${dirstack[1]}"
+fi
+chpwd_dirstack() {
+    print -l -- "$PWD" "${(u)dirstack[@]}" > "$DIRSTACKFILE"
+}
+add-zsh-hook -Uz chpwd chpwd_dirstack
+
+DIRSTACKSIZE='20'
+
+setopt AUTO_PUSHD PUSHD_SILENT PUSHD_TO_HOME
+
+## Remove duplicate entries
+setopt PUSHD_IGNORE_DUPS
+
+## This reverts the +/- operators.
+setopt PUSHD_MINUS
+</nowiki>}}
+
+Now use
+
+ $ dirs -v
+
+to print the dirstack. Use {{ic|cd -<NUM>}} to go back to a visited folder. Use autocompletion after the dash. This proves very handy if using the autocompletion menu.
+
+{{Note|
+* This will not work if you have more than one ''zsh'' session open, and attempt to {{ic|cd}}, due to a conflict in both sessions writing to the same file.
+* You might need to create {{ic|$HOME/.cache/zsh}} directory not to get {{ic|no such file or directory}} error.
+}}
+
+==== cdr ====
+
+cdr allows you to change the working directory to a previous working directory from an automatically maintained list. It stores all entries in files that are maintained across sessions and (by default) between terminal emulators in the current session.
+
+See {{man|1|zshcontrib|REMEMBERING RECENT DIRECTORIES}} for setup instructions.
+
+==== zoxide ====
+
+{{Pkg|zoxide}} is a smarter ''cd'' command that lets you navigate anywhere in just a few keystrokes. It remembers your frequently used directories and uses a scoring mechanism to guess where you want to go.
+
+See [https://github.com/ajeetdsouza/zoxide] or {{man|1|zoxide}} for more details.
+
+=== Help command ===
+
+Unlike [[Bash]], Zsh does not enable a built in {{ic|help}} command, instead it provides {{ic|run-help}}. By default {{ic|run-help}} is an alias to {{ic|man}}, it can be either executed manually by prepending it to a command or it can be invoked for the currently typed command with the keyboard shortcuts {{ic|Alt+h}} or {{ic|Esc}} {{ic|h}}.
+
+Since by default it is just an alias to [[man]], it will only work on external commands. To improve its functionality, so that it works on shell builtins and other shell features, you need to use the {{ic|run-help}} function. See {{man|1|zshcontrib}} for more information on the {{ic|run-help}} and its assistant functions.
+
+First load the {{ic|run-help}} function and then remove the existing {{ic|run-help}} alias. For convenience {{ic|help}} can be aliased to {{ic|run-help}}. For example, add following to your {{ic|zshrc}}:
+
+ autoload -Uz run-help
+ (( ${+aliases[run-help]} )) && unalias run-help
+ alias help=run-help
+{{Accuracy|Does the example of {{ic|run-help git commit}} demonstrates what it assumed to demonstrates?|section=The Help command section accuracy is disputed}}
+Assistant functions have to be enabled separately:
+
+ autoload -Uz run-help-git run-help-ip run-help-openssl run-help-p4 run-help-sudo run-help-svk run-help-svn
+
+For example, {{ic|run-help git commit}} command will now open the [[man page]] {{man|1|git-commit}} instead of {{man|1|git}}.
+
+=== Persistent rehash ===
+
+Typically, {{ic|compinit}} from {{man|1|zshcompsys|Use of compinit}} will not automatically find new executables in the {{ic|$PATH}}. For example, after you install a new package, the files in {{ic|/usr/bin/}} would not be immediately or automatically included in the completion. Thus, to have these new executables included, one would run:
+
+ $ rehash
+
+This 'rehash' can be set to happen automatically.[https://github.com/robbyrussell/oh-my-zsh/issues/3440] Simply include the following in your {{ic|zshrc}}:
+
+{{hc|~/.zshrc|
+zstyle ':completion:*' rehash true
+}}
+
+==== On-demand rehash ====
+
+As above, however [[pacman]] can be configured with [[hooks]] to automatically request a {{ic|rehash}}, which does not incur the performance penalty of constant rehashing as above. To enable this, create the {{ic|/etc/pacman.d/hooks}} directory, and a {{ic|/var/cache/zsh}} directory, then create a hook file:
+
+{{hc|head=/etc/pacman.d/hooks/zsh-rehash.hook|output=
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/bin/*
+
+[Action]
+Description=Rehash executables
+Depends = zsh
+When = PostTransaction
+Exec = /usr/bin/install -Dm644 /dev/null /var/cache/zsh/pacman
+}}
+
+This keeps the modification date of the file {{ic|/var/cache/zsh/pacman}} consistent with the last time a package was installed, upgraded or removed. Then, {{ic|zsh}} must be coaxed into rehashing its own command cache when it goes out of date, by adding to your {{ic|~/.zshrc}}:
+
+{{hc|~/.zshrc|<nowiki>
+zshcache_time="$(date +%s%N)"
+
+autoload -Uz add-zsh-hook
+
+rehash_precmd() {
+    if [[ -a /var/cache/zsh/pacman ]]; then
+        local paccache_time="$(date -r /var/cache/zsh/pacman +%s%N)"
+        if (( zshcache_time < paccache_time )); then
+            rehash
+            zshcache_time="$paccache_time"
+        fi
+    fi
+}
+
+add-zsh-hook -Uz precmd rehash_precmd
+</nowiki>}}
+
+If the {{ic|precmd}} hook is triggered before {{ic|/var/cache/zsh/pacman}} is updated, completion may not work until a new prompt is initiated. Running an empty command, e.g. pressing {{ic|enter}}, should be sufficient.
+
+==== Alternative on-demand rehash using SIGUSR1 ====
+
+As above, however the hook file looks like this:
+
+{{hc|/etc/pacman.d/hooks/zsh-rehash.hook|output=
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/bin/*
+
+[Action]
+Description=Rehash executables
+Depends = zsh
+Depends = procps-ng
+When = PostTransaction
+Exec = /usr/bin/pkill zsh --signal=USR1
+}}
+
+{{Warning|This sends SIGUSR1 to all running {{ic|zsh}} instances. Note that the default behavior for SIGUSR1 is terminate so when you first configure this all running {{ic|zsh}} instances of all users (including login shells) will terminate if they have not sourced the trap below.}}
+
+{{hc|~/.zshrc|
+TRAPUSR1() { rehash }
+}}
+
+The ''function trap'' above can be replaced with a ''list trap'' {{ic|trap 'rehash' USR1}}. See {{man|1|zshmisc|Trap Functions}} for differences between types of traps.
+
+This method will instantly {{ic|rehash}} all {{ic|zsh}} instances, removing the need to press enter to trigger {{ic|precmd}}.
+
+=== Bind key to ncurses application ===
+
+Bind a ncurses application to a keystroke, but it will not accept interaction. Use {{ic|BUFFER}} variable to make it work. The following example lets users open [[ncmpcpp]] using {{ic|Alt+\}}:
+
+{{hc|~/.zshrc|2=
+ncmpcppShow() {
+    BUFFER="ncmpcpp"
+    zle accept-line
+}
+zle -N ncmpcppShow
+bindkey '^[\' ncmpcppShow
+}}
+
+An alternate method, that will keep everything you entered in the line before calling application:
+
+{{hc|~/.zshrc|2=
+ncmpcppShow() {
+    ncmpcpp <$TTY
+    zle redisplay
+}
+zle -N ncmpcppShow
+bindkey '^[\' ncmpcppShow
+}}
+
+=== File manager key binds ===
+
+Key binds like those used in graphic file managers may come handy. The first comes back in directory history ({{ic|Alt+Left}}), the second let the user go to the parent directory ({{ic|Alt+Up}}). They also display the directory content.
+
+{{hc|~/.zshrc|<nowiki>
+cdUndoKey() {
+    popd
+    zle reset-prompt
+    print
+    ls
+    zle reset-prompt
+}
+
+cdParentKey() {
+    pushd ..
+    zle reset-prompt
+    print
+    ls
+    zle reset-prompt
+}
+
+zle -N cdParentKey
+zle -N cdUndoKey
+bindkey '^[[1;3A' cdParentKey
+bindkey '^[[1;3D' cdUndoKey
+</nowiki>}}
+
+=== xterm title ===
+
+If your terminal emulator supports it, you can set its title from Zsh. This allows dynamically changing the title to display relevant information about the shell state, for example showing the user name and current directory or the currently executing command.
+
+The xterm title is set with the [https://www.tldp.org/HOWTO/Xterm-Title-3.html#ss3.1 xterm control sequence operating system command] {{ic|\e]2;}}{{ic|\a}} or {{ic|\e]2;}}{{ic|\e\\}}. For example:
+
+ $ print -n '\e]2;My xterm title\a'
+
+will set the title to
+
+ My xterm title
+
+A simple way to have a dynamic title is to set the title in the {{ic|precmd}} and {{ic|preexec}} hook functions. See {{man|1|zshmisc|Hook Functions}} for a list of available hook functions and their descriptions.
+
+By using {{ic|print -P}} you can additionally take advantage of Zsh's prompt escapes.
+
+{{Tip|
+* Title printing can be split up in multiple commands as long as they are sequential.
+* [[GNU Screen]] sends the xterm title to the hardstatus ({{ic|%h}}). If you want to use Screen's [https://www.gnu.org/software/screen/manual/html_node/String-Escapes.html string escapes] (e.g. for colors) you should set the hardstatus with the {{ic|\e_}}{{ic|\e\\}} escape sequence. Otherwise, if string escapes are used in {{ic|\e]2;}}{{ic|\a}}, the terminal emulator will get a garbled title due to it being incapable of interpreting Screen's string escapes.
+}}
+
+{{Note|
+* Do not use the {{ic|-P}} option of {{ic|print}} when printing variables to prevent them from being parsed as prompt escapes.
+* Use the {{ic|q}} [https://zsh.sourceforge.io/Doc/Release/Expansion.html#Parameter-Expansion-Flags parameter expansion flag] when printing variables to prevent them from being parsed as escape sequences.
+}}
+
+{{hc|~/.zshrc|<nowiki>
+autoload -Uz add-zsh-hook
+
+function xterm_title_precmd () {
+    print -Pn -- '\e]2;%n@%m %~\a'
+    [[ "$TERM" == 'screen'* ]] && print -Pn -- '\e_\005{2}%n\005{-}@\005{5}%m\005{-} \005{+b 4}%~\005{-}\e\\'
+}
+
+function xterm_title_preexec () {
+    print -Pn -- '\e]2;%n@%m %~ %# ' && print -n -- "${(q)1}\a"
+    [[ "$TERM" == 'screen'* ]] && { print -Pn -- '\e_\005{2}%n\005{-}@\005{5}%m\005{-} \005{+b 4}%~\005{-} %# ' && print -n -- "${(q)1}\e\\"; }
+}
+
+if [[ "$TERM" == (Eterm*|alacritty*|aterm*|foot*|gnome*|konsole*|kterm*|putty*|rxvt*|screen*|wezterm*|tmux*|xterm*) ]]; then
+    add-zsh-hook -Uz precmd xterm_title_precmd
+    add-zsh-hook -Uz preexec xterm_title_preexec
+fi
+</nowiki>}}
+
+==== Terminal emulator tab title ====
+
+Some terminal emulators and multiplexers support setting the title of the tab. The escape sequences depend on the terminal:
+
+{| class="wikitable sortable"
+! Terminal
+! Escape sequences
+! Description
+|-
+! [[GNU Screen]]
+| {{ic|\ek}}{{ic|\e\\}}
+| Screen's window title ({{ic|%t}}).
+|-
+! [[Konsole]]
+| {{ic|\e]30;}}{{ic|\a}}
+| Konsole's tab title.
+|}
+
+=== Shell environment detection ===
+
+See [[Environment variables#Shell environment detection]].
+
+=== /dev/tcp equivalent: ztcp ===
+
+Use the {{ic|zsh/net/tcp}} module:
+
+ $ zmodload zsh/net/tcp
+
+You can now establish TCP connections:
+
+ $ ztcp example.com 80
+
+More details are available in {{man|1|zshmodules|THE_ZSH/NET/TCP_MODULE}} and {{man|1|zshtcpsys}}.
+
+=== Shortcut to exit shell on partial command line ===
+
+By default, {{ic|Ctrl+d}} will not close your shell if the command line is filled, this fixes it:
+
+{{hc|.zshrc|
+exit_zsh() { exit }
+zle -N exit_zsh
+bindkey '^D' exit_zsh
+}}
+
+=== pacman -F "command not found" handler ===
+
+[[pacman]] includes functionality to search for packages containing a file. The following command-not-found handler will use pacman directly to search for matching packages when an unknown command is executed.
+
+{{hc|1=~/.zshrc|2=
+...
+function command_not_found_handler {
+    local purple='\e[1;35m' bright='\e[0;1m' green='\e[1;32m' reset='\e[0m'
+    printf 'zsh: command not found: %s\n' "$1"
+    local entries=(
+        ${(f)"$(/usr/bin/pacman -F --machinereadable -- "/usr/bin/$1")"}
+    )
+    if (( ${#entries[@]} ))
+    then
+        printf "${bright}$1${reset} may be found in the following packages:\n"
+        local pkg
+        for entry in "${entries[@]}"
+        do
+            # (repo package version file)
+            local fields=(
+                ${(0)entry}
+            )
+            if [[ "$pkg" != "${fields[2]}" ]]
+            then
+                printf "${purple}%s/${bright}%s ${green}%s${reset}\n" "${fields[1]}" "${fields[2]}" "${fields[3]}"
+            fi
+            printf '    /%s\n' "${fields[4]}"
+            pkg="${fields[2]}"
+        done
+    fi
+    return 127
+}
+...
+}}
+
+{{Note|The files database of pacman is separate from the normal sync database and it needs to be fetched using {{ic|pacman -Fy}}. See [[pacman#Querying package databases]] for details.}}
+
+For an alternative using [[pkgfile]], see [[#pkgfile "command not found" handler]].
+
+=== Clear the backbuffer using a key binding ===
+
+By default, the clear screen keybinding will not clear the backbuffer (the part you need to scroll up for to see it) on most terminal emulators. A possible solution to this problem is the following.
+
+{{hc|~/.zshrc|2=
+...
+function clear-screen-and-scrollback() {
+    printf '\x1Bc'
+    zle clear-screen
+}
+
+zle -N clear-screen-and-scrollback
+bindkey '^L' clear-screen-and-scrollback
+...
+}}
+
+== Third-party extensions ==
+
+=== Configuration frameworks ===
+
+{{Note|Frameworks introduce a level of abstraction and complexity. They can, and often do, introduce undefined behavior. In case of shell breakage, the ''first'' debugging step should be to revert to the plain shell.}}
+
+* {{App|oh-my-posh|Oh My Posh is a custom prompt engine for any shell that has the ability to adjust the prompt string with a function or variable.|https://github.com/JanDeDobbeleer/oh-my-posh|{{AUR|oh-my-posh}}}}
+* {{App|oh-my-zsh|A popular, community-driven framework for managing your Zsh configuration. It comes bundled with a ton of helpful functions, helpers, plugins, themes.|https://github.com/ohmyzsh/ohmyzsh|{{AUR|oh-my-zsh-git}}}}
+* {{App|Prezto|A configuration framework for Zsh. It comes with modules, enriching the command line interface environment with sane defaults, aliases, functions, auto completion, and prompt themes.|https://github.com/sorin-ionescu/prezto|{{AUR|prezto-git}}}}
+* {{App|ZIM|A configuration framework with blazing speed and modular extensions. Zim is very easy to customize, and comes with a rich set of modules and features without compromising on speed or functionality.|https://github.com/zimfw/zimfw|{{AUR|zsh-zim-git}}}}
+
+=== Plugin managers ===
+
+* {{App|Antidote|A feature complete Zsh implementation of the legacy Antibody plugin manager.|https://github.com/mattmc3/antidote|{{AUR|zsh-antidote}}}}
+* {{App|zinit (previously "zplugin")|Flexible Zsh plugin manager with clean fpath, reports, completion management, turbo mode [https://github.com/zdharma-continuum/I_WANT_TO_HELP REVIVED]|https://github.com/zdharma-continuum/zinit|{{AUR|zinit}}}}
+* {{App|zi (previously "zplugin")|Alternative fork of zplugin aiming to expand on the original project, instead of preservation and maintenance of the original project like zinit. |https://github.com/z-shell/zi}}
+* {{App|sheldon|Fast, configurable, shell plugin manager, written in Rust [https://github.com/rossmacarthur/sheldon]|https://github.com/rossmacarthur/sheldon|{{Pkg|sheldon}}}}
+* {{App|Antigen|A plugin manager for Zsh, inspired by oh-my-zsh and vundle. [https://github.com/zsh-users/antigen/issues/673 ABANDONED]|https://github.com/zsh-users/antigen|{{AUR|antigen-git}}}}
+* {{App|zgen|A lightweight and simple plugin manager for Zsh. [https://github.com/tarjoilija/zgen/issues/123 ABANDONED]|https://github.com/tarjoilija/zgen|{{AUR|zgen-git}}}}
+* {{App|zplug|A next-generation plugin manager for Zsh. [https://github.com/zplug/zplug/issues/403#issuecomment-477520784 ABANDONED]|https://github.com/zplug/zplug|{{AUR|zplug}}}}
+
+=== Fish-like syntax highlighting and autosuggestions ===
+
+[[Fish]] provides very powerful shell syntax highlighting and autosuggestions. To use both in Zsh, you can install {{pkg|zsh-syntax-highlighting}}, {{pkg|zsh-autosuggestions}}, and finally [[source]] one or both of the provided scripts from the end of your zshrc, ensuring that {{pkg|zsh-syntax-highlighting}} is sourced after {{pkg|zsh-autosuggestions}} [https://github.com/zsh-users/zsh-syntax-highlighting#why-must-zsh-syntax-highlightingzsh-be-sourced-at-the-end-of-the-zshrc-file]:
+
+{{hc|1=~/.zshrc|2=
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+}}
+
+=== pkgfile "command not found" handler ===
+
+[[pkgfile]] includes a Zsh script file that provides a {{ic|command_not_found_handler}} function that will automatically search the pkgfile database when entering an unrecognized command.
+
+You need to [[source]] the script to enable it. For example:
+
+{{hc|1=~/.zshrc|2=
+source /usr/share/doc/pkgfile/command-not-found.zsh
+}}
+
+{{Note|The pkgfile database may need to be updated before this will work. See [[pkgfile#Installation]] for details.}}
+
+For an alternative using pacman's native functionality, see [[#pacman -F "command not found" handler]].
+
+== Troubleshooting ==
+
+=== IOT instruction ===
+
+{{ic|IOT instruction}} message just means that an application exited with signal 6 (SIGABRT, Signal Abort). The [https://zsh.org/workers/51602 patch] is already in upstream (i.e. you can use {{AUR|zsh-git}}) and it will be applied in 5.10. For more information, see [https://stackoverflow.com/questions/75842144/can-anyone-explain-what-iot-instruction-core-dumped-refers-to/75844316#75844316], [https://zsh.org/workers/51601] and {{man|7|signal|Standard signals}}.
+
+== See also ==
+
+* [[Wikipedia:Zsh]]
+* [https://zsh.sourceforge.io/Intro/intro_toc.html An Introduction to the Z Shell]
+* [https://zsh.sourceforge.io/Guide/zshguide.html A User's Guide to ZSH]
+* [https://zsh.sourceforge.io/Doc/Release/index-frame.html The Z Shell Manual] (different format available [https://zsh.sourceforge.io/Doc/ here])
+* [https://zsh.sourceforge.io/FAQ/zshfaq01.html Zsh FAQ]
+* {{man|1|zsh-lovers}} (available as {{pkg|zsh-lovers}} package)
+* [[Gentoo: Zsh/Guide]]
+* [https://www.bash2zsh.com/zsh_refcard/refcard.pdf Bash2Zsh Reference Card]

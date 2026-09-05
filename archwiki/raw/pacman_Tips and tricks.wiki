@@ -1,0 +1,653 @@
+{{Lowercase title}}
+[[Category:Package manager]]
+[[de:Pacman-Tipps]]
+[[es:Pacman (Español)/Tips and tricks]]
+[[fr:Pacman (Français)/Tips and tricks]]
+[[hu:Pacman (Magyar)/Tips and tricks]]
+[[ja:Pacman ヒント]]
+[[pt:Pacman (Português)/Tips and tricks]]
+[[uk:Pacman (Українська)/Tips and tricks]]
+[[ru:Pacman (Русский)/Tips and tricks]]
+[[zh-hans:Pacman/Tips and tricks]]
+{{Related articles start}}
+{{Related|Mirrors}}
+{{Related|Creating packages}}
+{{Related articles end}}
+
+For general methods to improve the flexibility of the provided tips or ''pacman'' itself, see [[Core utilities]] and [[Bash]].
+
+== Maintenance ==
+
+{{Note|Instead of using ''comm'' (which requires sorted input with ''sort'') in the sections below, you may also use {{ic|grep -Fxf}} or {{ic|grep -Fxvf}}.}}
+
+See also [[System maintenance]].
+
+=== Listing packages ===
+
+==== In unused repositories ====
+
+By default, repositories listed in {{ic|pacman.conf}} are used for syncing, searching, installing and upgrading from them. This can be changed for more versatility, for example by using some repositories only for searching in them[http://allanmcrae.com/2014/12/pacman-4-2-released/]:
+
+{{hc|/etc/pacman.conf|2=
+...
+[multilib]
+Usage = Sync Search
+...
+}}
+
+See {{man|5|pacman.conf|REPOSITORY SECTIONS}}.
+
+==== With version ====
+
+You may want to get the list of installed packages with their version, which is useful when reporting bugs or discussing installed packages.
+
+* List all explicitly installed packages: {{ic|pacman -Qe}}
+* List all packages in the [[package group]] named {{ic|''group''}}: {{ic|pacman -Sg ''group''}}
+* List all foreign packages (typically manually downloaded and installed or packages removed from the repositories): {{ic|pacman -Qm}}
+* List all native packages (installed from the sync database): {{ic|pacman -Qn}}
+* List all explicitly installed native packages (i.e. present in the sync database) that are not direct or optional dependencies: {{ic|pacman -Qent}}
+* List packages by regex: {{ic|pacman -Qs ''regex''}}
+* List packages by regex with custom output format (needs {{Pkg|expac}}): {{ic|expac -s "%-30n %v" ''regex''}}
+
+==== With size ====
+
+Figuring out which packages are largest can be useful when trying to free space on your hard drive. There are two options here: get the size of individual packages, or get the size of packages and their dependencies.
+
+===== Individual packages =====
+
+The following command will list all installed packages and their individual sizes:
+
+ $ LC_ALL=C.UTF-8 pacman -Qi | awk '/^Name/{name=$3} /^Installed Size/{print $4$5, name}' | LC_ALL=C.UTF-8 sort -h
+
+===== Packages and dependencies =====
+
+To list package sizes with their dependencies,
+
+* Install {{Pkg|expac}} and run {{ic|expac -H M '%m\t%n' {{!}} sort -h}}.
+* Run {{AUR|pacgraph}} with the {{ic|-c}} option.
+
+To list the download size of several packages (leave {{ic|''packages''}} blank to list all packages):
+
+ $ expac -S -H M '%k\t%n' ''packages''
+
+To list explicitly installed packages not in the [[meta package]] {{Pkg|base}} nor [[package group]] {{Grp|xorg}} with size and description:
+
+ $ expac -H M "%011m\t%-20n\t%10d" $(comm -23 <(pacman -Qqen | sort) <({ pacman -Qqg xorg; expac -l '\n' '%E' base; } | sort -u)) | sort -n
+
+To list the packages marked for upgrade with their download size:
+
+ $ expac -S -H M '%k\t%n' $(pacman -Qqu) | sort -sh
+
+To list optional dependencies only:
+
+ $ expac -S "%o" ''package''
+
+==== By date ====
+
+To list the 20 last installed packages with {{Pkg|expac}}, run:
+
+ $ expac --timefmt='%Y-%m-%d %T' '%l\t%n' | sort | tail -n 20
+
+or, with seconds since the epoch (1970-01-01 UTC):
+
+ $ expac --timefmt=%s '%l\t%n' | sort -n | tail -n 20
+
+==== Not in a specified group, repository or meta package ====
+
+{{Note|To get a list of packages installed as dependencies but no longer required by any installed package, see [[#Removing unused packages (orphans)]].
+}}
+
+List explicitly installed packages not in the {{Pkg|base}} [[meta package]]:
+
+ $ comm -23 <(pacman -Qqe | sort) <(expac -l '\n' '%E' base | sort)
+
+List explicitly installed packages not in the {{Pkg|base}} meta package or {{Grp|xorg}} [[package group]]:
+
+ $ comm -23 <(pacman -Qqe | sort) <({ pacman -Qqg xorg; expac -l '\n' '%E' base; } | sort -u)
+
+List all installed packages unrequired by other packages, and which are not in the {{Pkg|base}} meta package or {{Grp|xorg}} package group:
+
+ $ comm -23 <(pacman -Qqt | sort) <({ pacman -Qqg xorg; echo base; } | sort -u)
+
+As above, but with descriptions:
+
+ $ expac -H M '%-20n\t%10d' $(comm -23 <(pacman -Qqt | sort) <({ pacman -Qqg xorg; echo base; } | sort -u))
+
+List all installed packages that are ''not'' in the specified repository ''repo_name'' (multiple repositories can be checked at once):
+
+ $ comm -23 <(pacman -Qq | sort) <(pacman -Sql ''repo_name'' | sort)
+
+List all installed packages that are in the ''repo_name'' repository (multiple repositories can be checked at once):
+
+ $ comm -12 <(pacman -Qq | sort) <(pacman -Sql ''repo_name'' | sort)
+
+List all packages on the Arch Linux ISO that are not in the {{Pkg|base}} meta package:
+
+ <nowiki>$ comm -23 <(curl https://gitlab.archlinux.org/archlinux/archiso/-/raw/master/configs/releng/packages.x86_64) <(expac -l '\n' '%E' base | sort)</nowiki>
+
+{{Tip|Alternatively, use {{ic|combine}} (instead of {{ic|comm}}) from the {{Pkg|moreutils}} package which has a syntax that is easier to remember. See {{man|1|combine}}.}}
+
+==== Development packages ====
+
+To list all development/unstable packages, run:
+
+ $ pacman -Qq | grep -Ee '-(bzr|cvs|darcs|git|hg|svn)$'
+
+==== Dependencies of a package ====
+
+To obtain the list of the dependencies of a package, the simplest solution is reading the output of:
+
+ $ pacman -Qi ''package''
+
+For automation, instead of the error-prone method of parsing pacman output, use {{Pkg|expac}}:
+
+ $ expac -S '%D' ''package''
+
+==== With optional dependencies ====
+
+To list explicitly-installed packages with their optional dependencies, run:
+
+ $ LC_ALL=C.UTF-8 pacman -Qei | sed '/^[^NO ]/d;/None$/d' | awk 'BEGIN{RS=ORS="\n\n";FS=OFS="\n\\S"} /Optional Deps/ {print $1"\nO"$2}'
+
+Alternatively, with {{Pkg|expac}}:
+
+ $ expac -d '\n\n' -l '\n\t' -Q '%n\n\t%O' $(pacman -Qeq)
+
+To list them while omitting optional dependencies you have already installed, run:
+
+ $ LC_ALL=C.UTF-8 pacman -Qei | sed '/^[^NO ]/d;/None$/d' | awk 'BEGIN{RS=ORS="\n\n";FS=OFS="\n\\S"} /Optional Deps/ {print $1"\nO"$2}' | sed 's/^Optional Deps   ://;/\[installed\]$/d;s/\s\+/ /'
+
+=== Browsing packages ===
+
+To browse all installed packages with an instant preview of each package:
+
+ $ pacman -Qq | fzf --preview 'pacman -Qil {}' --layout=reverse --bind 'enter:execute(pacman -Qil {} | less)'
+
+This uses [[fzf]] to present a two-pane view listing all packages with package info shown on the right.
+
+Enter letters to filter the list of packages; use arrow keys (or {{ic|Ctrl-j}}/{{ic|Ctrl-k}}) to navigate; press {{ic|Enter}} to see package info under ''less''.
+
+To browse all packages currently known to ''pacman'' (both installed and not yet installed) in a similar way, using fzf, use:
+
+ $ pacman -Slq | fzf --preview 'pacman -Si {}' --layout=reverse
+
+The navigational keybindings are the same, although {{ic|Enter}} will not work in the same way.
+
+=== Listing files owned by a package with size ===
+
+This one might come in handy if you have found that a specific package uses a huge amount of space and you want to find out which files make up the most of that.
+
+ $ pacman -Qlq ''package'' | grep -v '/$' | xargs -r du -h | sort -h
+
+=== Identify files not owned by any package ===
+
+If your system has stray files not owned by any package (a common case if you do not [[Enhance system stability#Use the package manager to install software|use the package manager to install software]]), you may want to find such files in order to clean them up.
+
+One method is to list all files of interest and check them against ''pacman'':
+
+ # (export LC_ALL=C.UTF-8; comm -13 <(pacman -Qlq | sed 's,/$,,' | sort) <(find /etc /usr /opt -path /usr/lib/modules -prune -o -print | sort))
+
+{{Tip|The {{Pkg|lostfiles}} script performs similar steps, but also includes an extensive blacklist to remove common false positives from the output.}}
+
+=== Tracking unowned files created by packages ===
+
+Most systems will slowly collect several [http://ftp.rpm.org/max-rpm/s1-rpm-inside-files-list-directives.html#S3-RPM-INSIDE-FLIST-GHOST-DIRECTIVE ghost] files such as state files, logs, indexes, etc. through the course of usual operation.
+
+{{ic|pacreport}} from {{Pkg|pacutils}} can be used to track these files and their associations via {{ic|/etc/pacreport.conf}} (see {{man|1|pacreport|FILES}}).
+
+An example may look something like this (abridged):
+
+{{hc|/etc/pacreport.conf|2=
+[Options]
+IgnoreUnowned = usr/share/applications/mimeinfo.cache
+
+[PkgIgnoreUnowned]
+alsa-utils = var/lib/alsa/asound.state
+bluez = var/lib/bluetooth
+ca-certificates = etc/ca-certificates/trust-source/*
+dbus = var/lib/dbus/machine-id
+glibc = etc/ld.so.cache
+grub = boot/grub/*
+linux = boot/initramfs-linux.img
+pacman = var/lib/pacman/local
+update-mime-database = usr/share/mime/magic
+}}
+
+Then, when using {{ic|pacreport --unowned-files}} as the root user, any unowned files will be listed if the associated package is no longer installed (or if any new files have been created).
+
+Additionally, [https://github.com/CyberShadow/aconfmgr aconfmgr] ({{AUR|aconfmgr-git}}) allows tracking modified and orphaned files using a configuration script.
+
+=== Removing unused packages (orphans) ===
+
+Orphans are packages that were installed as a dependency and are no longer required by any package.
+
+They can accumulate on your system over time either due to uninstalling packages using {{ic|pacman -R ''package''}} instead of {{ic|pacman -Rs ''package''}}, installing packages as [[makedepends]], or packages removing dependencies in newer versions.
+
+For recursively removing orphans and their configuration files:
+
+ # pacman -Qdtq | pacman -Rns -
+
+If no orphans were found, the output is {{ic|error: argument '-' specified with empty stdin}}. This is expected as no arguments were passed to {{ic|pacman -Rns}}. The error can be avoided by prefixing the second command with {{man|1|ifne}} from the {{Pkg|moreutils}} package.
+
+If there is a package listed that you do not want to remove, it can be excluded from the list of orphans by marking it as explicitly installed:
+
+ # pacman -D --asexplicit ''package''
+
+{{Note|The arguments {{ic|-Qdt}} list only true orphans. To include packages which are ''optionally'' required by another package, pass the {{ic|-t}} flag twice (''i.e.'', {{ic|-Qdtt}}).}}
+
+{{Note|The command {{ic|<nowiki>pacman -Qdtq | pacman -Rns -</nowiki>}} may remove packages that are optional dependencies of packages that are not being removed. To avoid this, do not include the {{ic|-s}} flag (i.e., run {{ic|<nowiki>pacman -Qdtq | pacman -Rn -</nowiki>}}). However, without {{ic|-s}}, the command will not remove dependencies of the orphans you are removing, so it must be run several times or within a loop to remove new orphans that result from the initial removals.}}
+
+{{Tip|Add the {{ic|pacman -Qdt}} command to a ''pacman'' post-transaction [[Pacman#Hooks|hook]] to be notified if a transaction orphaned a package. This can be useful for being notified when a package has been dropped from a repository, since any dropped package will also be orphaned on a local installation (unless it was explicitly installed). To avoid any {{ic|failed to execute command}} errors when no orphans are found, use the following command for {{ic|Exec}} in your hook: {{ic|<nowiki>/usr/bin/bash -c "/usr/bin/pacman -Qdt || /usr/bin/echo '=> None found.'"</nowiki>}} The package {{AUR|pacman-log-orphans-hook}} provides such hook with a more verbose instructions.}}
+
+=== Detecting more unneeded packages ===
+
+In some cases the method above will not detect all possible unneeded packages. E.g. dependency cycles (also known as "circular dependencies"), excessive dependencies (fulfilled more than once), some non-explicit optionals etc.
+
+To detect such packages:
+
+ $ pacman -Qqd | pacman -Rsu --print -
+
+If you want to remove all packages in the list at once, run the command without {{ic|--print}} argument.
+
+Sometimes there may be multiple packages providing the same item. For example, there may be multiple packages which provide ttf-font. You may not want all such packages depending on your preference.
+
+To detect packages which provide same item:
+
+ $ awk '/%(NAME|PROVIDES)%/{flag=1;next}/^$/{flag=0}flag{ printf "%s\t%s\n", FILENAME, $0}' /var/lib/pacman/local/*/desc  | sed 's%/var/lib/pacman/local/\(.*\)/desc%\1%g' | sort -k2 | uniq -Df1 | column -etN Package,Provides
+
+Check the output and [[Pacman#Removing packages|carefully remove]] redundant package which you do not require.
+
+=== Removing everything but essential packages ===
+
+If it is ever necessary to remove all packages except the essentials packages, one method is to set the installation reason of the non-essential ones as dependency and then remove all unnecessary dependencies.
+
+First, for all the packages "explicitly installed", change their installation reason to "installed as a dependency":
+
+ # pacman -D --asdeps $(pacman -Qqe)
+
+Then, change the installation reason to "explicitly installed" of only the essential packages, those you '''do not''' want to remove, in order to avoid targeting them:
+
+ # pacman -D --asexplicit base linux linux-firmware
+
+{{Note|
+* Additional packages can be added to the above command in order to avoid being removed. See [[Installation guide#Install essential packages]] for more info on other packages that may be necessary for a fully functional base system.
+* This will also select the [[boot loader]] package for removal. The system should still be bootable, but the boot parameters might not be changeable without it.
+}}
+
+Finally, follow the instructions in [[#Removing unused packages (orphans)]] to remove all packages that are "installed as a dependency".
+
+=== Getting the dependencies list of several packages ===
+
+Dependencies are alphabetically sorted and doubles are removed.
+
+{{Note|To only show the tree of local installed packages, use {{ic|pacman -Qi}}.}}
+
+ $ LC_ALL=C.UTF-8 pacman -Si ''packages'' | awk -F'[:<=>]' '/^Depends/ {print $2}' | xargs -n1 | sort -u
+
+Alternatively, with {{Pkg|expac}}:
+
+ $ expac -l '\n' %E -S ''packages'' | sort -u
+
+=== Listing changed backup files ===
+
+To list configuration files tracked by ''pacman'' as [[Pacnew and Pacsave files#Package backup files|susceptible of containing user changes]] (i.e. files listed in the [[PKGBUILD#backup|PKGBUILD backup array]]) and having received user modifications, use the following command:
+
+ # pacman -Qii | awk '/\[modified\]/ {print $(NF - 1)}'
+
+Running this command with root permissions will ensure that files readable only by root (such as {{ic|/etc/sudoers}}) are included in the output.
+
+This can be used when doing a selective system backup or when trying to replicate a system configuration from one machine to another.
+
+{{Tip|
+* See [[#Listing all changed files from packages]] to list all changed files ''pacman'' knows about, not only backup files.
+* See [[#Identify files not owned by any package]] to list all files in the system that are not tracked by ''pacman''.
+}}
+
+=== Back up the pacman database ===
+
+The following command can be used to back up the local ''pacman'' database:
+
+ $ tar -cjf pacman_database.tar.bz2 /var/lib/pacman/local
+
+Store the backup ''pacman'' database file on one or more offline media, such as a USB stick, external hard drive, or CD-R.
+
+The database can be restored by moving the {{ic|pacman_database.tar.bz2}} file into the {{ic|/}} directory and executing the following command:
+
+ # tar -xjvf pacman_database.tar.bz2
+
+{{Note|If the ''pacman'' database files are corrupted, and there is no backup file available, there exists some hope of rebuilding the ''pacman'' database. Consult [[#Restore pacman's local database]].}}
+
+{{Tip|The {{AUR|pakbak-git}} package provides a script and a [[systemd]] service to automate the task. Configuration is possible in {{ic|/etc/pakbak.conf}}.}}
+
+=== Check changelogs easily ===
+
+When maintainers update packages, commits are often commented in a useful fashion. Users can quickly check these from the command line by installing {{AUR|pacolog}}. This utility lists recent commit messages for packages from the official repositories or the AUR, by using {{ic|pacolog ''package''}}.
+
+== Installation and recovery ==
+
+Alternative ways of getting and restoring packages.
+
+=== Installing packages from a CD/DVD or USB stick ===
+
+{{Merge|#Custom local repository|Use as an example and avoid duplication}}
+
+To download packages, or groups of packages:
+
+ # cd ~/Packages
+ # pacman -Syw --cachedir "$PWD" base base-devel grub-bios xorg gimp
+ # repo-add ./custom.db.tar.zst ./*.pkg.tar.zst
+
+Pacman, which will reference the host installation by default, will not properly resolve and download existing dependencies. In cases where all packages and dependencies are wanted, it is recommended to create a temporary blank DB and reference it with {{ic|--dbpath}}:
+
+ # mkdir /tmp/blankdb
+ # pacman -Syw --cachedir "$PWD" --dbpath /tmp/blankdb base base-devel grub-bios xorg gimp
+ # repo-add ./custom.db.tar.zst ./*.pkg.tar.zst
+
+Then you can burn the "Packages" directory to an optical disc (e.g. CD, DVD) or transfer it to a USB flash drive, external HDD, etc.
+
+To install:
+
+'''1.''' Mount the media:
+
+For an optical disc drive:
+
+ # mount --mkdir /dev/sr0 /mnt/repo
+
+For a USB flash drive, hard disk drive, etc.:
+
+ # mount --mkdir /dev/sd''xY'' /mnt/repo
+
+'''2.''' Edit {{ic|pacman.conf}} and add this repository ''before'' the other ones (e.g. extra, core, etc.). This is important. Do not just uncomment the one on the bottom. This way it ensures that the files from the CD/DVD/USB take precedence over those in the standard repositories:
+
+{{hc|/etc/pacman.conf|2=
+[custom]
+SigLevel = PackageRequired
+Server = file:///mnt/repo/Packages}}
+
+'''3.''' Finally, synchronize the ''pacman'' database to be able to use the new repository:
+ # pacman -Syu
+
+=== Custom local repository ===
+
+Use the ''repo-add'' script included with ''pacman'' to generate a database for a personal repository. Use {{ic|repo-add --help}} for more details on its usage.
+A package database is a tar file, optionally compressed. Valid extensions are ''.db'' or ''.files'' followed by an archive extension of ''.tar'', ''.tar.gz'', ''.tar.bz2'', ''.tar.xz'', ''.tar.zst'', or ''.tar.Z''. The file does not need to exist, but all parent directories must exist.
+
+To add a new package to the database, or to replace the old version of an existing package in the database, run:
+
+ $ repo-add ''/path/to/repo.db.tar.zst /path/to/package-1.0-1-x86_64.pkg.tar.zst''
+
+The database and the packages do not need to be in the same directory when using ''repo-add'', but keep in mind that when using ''pacman'' with that database, they should be together. Storing all the built packages to be included in the repository in one directory also allows to use shell glob expansion to add or update multiple packages at once:
+
+ $ repo-add ''/path/to/repo.db.tar.zst /path/to/*.pkg.tar.zst''
+
+{{Warning|''repo-add'' adds the entries into the database in the same order as passed on the command line. If multiple versions of the same package are involved, care must be taken to ensure that the correct version is added last. In particular, note that lexical order used by the shell depends on the locale and differs from the {{man|8|vercmp}} ordering used by ''pacman''.}}
+
+If you are looking to support multiple architectures, then precautions should be taken to prevent errors from occurring. Each architecture should have its own directory tree:
+
+{{hc|$ tree ~/customrepo/ {{!}} sed "s/$(uname -m)/''arch''/g"|
+/home/archie/customrepo/
+└── ''arch''
+    ├── customrepo.db -> customrepo.db.tar.zst
+    ├── customrepo.db.tar.zst
+    ├── customrepo.files -> customrepo.files.tar.zst
+    ├── customrepo.files.tar.zst
+    └── personal-website-git-b99cce0-1-''arch''.pkg.tar.zst
+
+1 directory, 5 files
+}}
+
+The ''repo-add'' executable checks whether the package is appropriate. If this is not the case, you will be running into error messages similar to this:
+
+ ==> ERROR: '/home/archie/customrepo/''arch''/foo-''arch''.pkg.tar.zst' does not have a valid database archive extension.
+
+''repo-remove'' is used to remove packages from the package database, except that only package names are specified on the command line.
+
+ $ repo-remove ''/path/to/repo.db.tar.zst pkgname''
+
+Once the local repository database has been created, add the repository to {{ic|/etc/pacman.conf}} of each system that is to use the repository. An example of a custom repository is in {{ic|/etc/pacman.conf}}. The repository's name is the database filename with the file extension omitted. In the example above the repository's name simply is ''repo''. Reference the repository's location using a {{ic|file://}} URL, or via HTTP using {{ic|<nowiki>http://localhost/path/to/directory</nowiki>}}.
+
+If willing, add the custom repository to the [[Unofficial user repositories|list of unofficial user repositories]], so that the community can benefit from it.
+
+=== Network shared pacman cache ===
+
+See [[Package proxy cache]].
+
+=== Recreate a package from the file system ===
+
+To recreate a package from the file system, use {{AUR|fakepkg}}. Files from the system are taken as they are, hence any modifications will be present in the assembled package. Distributing the recreated package is therefore discouraged; see [[ABS]] and [[Arch Linux Archive]] for alternatives.
+
+=== List of installed packages ===
+
+Keeping a list of all explicitly installed packages can be useful to backup a system or quicken the installation of a new one:
+
+ $ pacman -Qqe > pkglist.txt
+
+{{Note|
+* With option {{ic|-t}}, the packages already required by other explicitly installed packages are not mentioned. If reinstalling from this list they will be installed but as dependencies only.
+* With option {{ic|-n}}, foreign packages (e.g. from [[AUR]]) would be omitted from the list.
+* Use {{ic|comm -13 <(pacman -Qqdt {{!}} sort) <(pacman -Qqdtt {{!}} sort) > optdeplist.txt}} to also create a list of the installed optional dependencies which can be reinstalled with {{ic|--asdeps}}.
+* Use {{ic|pacman -Qqem > foreignpkglist.txt}} to create the list of AUR and other foreign packages that have been explicitly installed.}}
+
+To keep an up-to-date list of explicitly installed packages (e.g. in combination with a versioned {{ic|/etc/}}), you can set up a [[Pacman#Hooks|hook]]. Example:
+
+ [Trigger]
+ Operation = Install
+ Operation = Remove
+ Type = Package
+ Target = *
+ 
+ [Action]
+ When = PostTransaction
+ Exec = /bin/sh -c '/usr/bin/pacman -Qqe > /etc/pkglist.txt'
+
+=== Install packages from a list ===
+
+To install packages from a previously saved list of packages, while not reinstalling previously installed packages that are already up-to-date, run:
+
+ # pacman -S --needed - < pkglist.txt
+
+However, it is likely foreign packages such as from the AUR or installed locally are present in the list. To filter out from the list the foreign packages, the previous command line can be enriched as follows:
+
+ # pacman -S --needed $(comm -12 <(pacman -Slq | sort) <(sort pkglist.txt))
+
+Eventually, to make sure the installed packages of your system match the list and remove all the packages that are not mentioned in it:
+
+ # pacman -Rsu $(comm -23 <(pacman -Qq | sort) <(sort pkglist.txt))
+
+{{Tip|These tasks can be automated. See {{AUR|bacpac}}, {{AUR|packup}}, {{AUR|pacmanity}}, and {{AUR|pug}} for examples.}}
+
+=== Listing all changed files from packages ===
+
+If you are suspecting file corruption (e.g. by software/hardware failure), but are unsure if files were corrupted, you might want to compare with the hash sums in the packages. This can be done with {{Pkg|pacutils}}:
+
+ # paccheck --sha256sum --quiet
+
+For recovery of the database see [[#Restore pacman's local database]]. The {{ic|mtree}} files can also be [[#Viewing files inside remote .pkg files|extracted as .MTREE from the respective package files]].
+
+{{Note|This should '''not''' be used as is when suspecting malicious changes! In this case security precautions such as using a live medium and an independent source for the hash sums are advised.}}
+
+=== Reinstalling all packages ===
+
+To reinstall all native packages, use:
+
+ # pacman -Qqn | pacman -S -
+
+Foreign (AUR) packages must be reinstalled separately; you can list them with {{ic|pacman -Qqm}}.
+
+Pacman preserves the [[installation reason]] by default.
+
+{{Warning|To force all packages to be overwritten, use {{ic|1=--overwrite=*}}, though this should be an absolute last resort. See [[System maintenance#Avoid certain pacman commands]].}}
+
+=== Restore pacman's local database ===
+
+See [[pacman/Restore local database]].
+
+=== Recovering broken install from existing install ===
+
+If you have managed to mess up an Arch install with broken packages, it is possible to re-install all the packages and hopefully get it back up and working again (assuming the root of the broken install is mounted in {{ic|/brokenArch}})
+
+ # pacman -S $(pacman -Qq --dbpath /brokenArch/var/lib/pacman) --root /brokenArch --dbpath /brokenArch/var/lib/pacman
+
+=== Viewing files inside remote .pkg files ===
+
+{{Pkg|paccat}} is a small utility that finds which package contains a given file, downloads it and then prints the contents. This can be used to read specific files, restore changed files back to their initial state, and extract files without installing the package.
+
+For example, if you want to see the contents of {{ic|/etc/systemd/logind.conf}} supplied within the {{Pkg|systemd}} package:
+
+ $ paccat systemd etc/systemd/logind.conf
+
+Or if you want to see the contents of {{ic|archive.h}} supplied by any package:
+
+ $ paccat -F archive.h
+
+{{ic|bsdtar}} can also be used to show the contents:
+
+ $ bsdtar -xOf /var/cache/pacman/pkg/systemd-250.4-2-x86_64.pkg.tar.zst etc/systemd/logind.conf
+
+Or you can use {{Pkg|vim}} to browse the archive:
+
+ $ vim /var/cache/pacman/pkg/systemd-250.4-2-x86_64.pkg.tar.zst
+
+=== Find applications that use libraries from older packages ===
+
+Already running processes do not automatically notice changes caused by updates. Instead, they continue using old library versions. That may be undesirable, due to potential issues related to security vulnerabilities or other bugs, and version incompatibility.
+
+Processes depending on updated libraries may be found using either {{Pkg|htop}}, which highlights the names of the affected programs, or with a snippet based on {{Pkg|lsof}}, which also prints the names of the libraries:
+
+ # lsof +c 0 | grep -w DEL | awk '1 { print $1 ": " $NF }' | sort -u
+
+This solution will only detect files, that are normally kept opened by running processes, which basically limits it to shared libraries ({{ic|.so}} files). It may miss some dependencies, like those of Java or Python applications.
+
+=== Installing only content in required languages ===
+
+Many packages install documentation and translations in several languages. Some programs are designed to remove such unnecessary files, such as {{AUR|localepurge}}, which runs after a package is installed to delete the unneeded locale files. A more preemptive approach is provided through the {{ic|NoExtract}} directive in {{ic|/etc/pacman.conf}}, which prevent these files from ever being installed.
+
+{{Note|As explained in [[Pacman#Skip files from being installed to system]], "later rules override previous ones, and you can negate a rule by prepending {{ic|!}}".}}
+
+To prevent the installation of all translations for help files, except for the C locale, add:
+
+ NoExtract = usr/share/help/* !usr/share/help/C/*
+
+To prevent the installation of all the HTML documentation, add:
+
+ NoExtract = usr/share/gtk-doc/html/*
+ NoExtract = usr/share/doc/HTML/*
+
+{{Warning|1=Some users noted that removing '''all''' locales has resulted in unintended consequences with [[Special:Permalink/460285#Dangerous NoExtract example|dmenu]], [[Special:Permalink/767628#Languages: NoExtract usr/share/X11/locale/*|Steam]], even under [https://bbs.archlinux.org/viewtopic.php?id=250846 Xorg]. The following example is adjusted to avoid such issues, by installing only English (US) files and the required C locales.}}
+
+To prevent the installation of the various [[locale]]s, except the required ones, add:
+
+{{bc|1=
+NoExtract = usr/share/locale/* usr/share/X11/locale/*/* usr/share/i18n/locales/* opt/google/chrome/locales/* !usr/share/X11/locale/C/* !usr/share/X11/locale/en_US.UTF-8/*
+NoExtract = !usr/share/X11/locale/compose.dir !usr/share/X11/locale/iso8859-1/*
+NoExtract = !*locale*/en*/* !usr/share/*locale*/locale.*
+NoExtract = !usr/share/*locales/en_?? !usr/share/*locales/i18n* !usr/share/*locales/iso*
+NoExtract = usr/share/i18n/charmaps/* !usr/share/i18n/charmaps/UTF-8.gz !usr/share/i18n/charmaps/ANSI_X3.4-1968.gz
+NoExtract = !usr/share/*locales/trans*
+NoExtract = !usr/share/*locales/C !usr/share/*locales/POSIX
+}}
+
+To prevent the installation of the translated [[man page]]s, add:
+
+ NoExtract = usr/share/man/* !usr/share/man/man*
+
+To prevent the installation of the language files in {{Pkg|vim-runtime}}, add:
+
+ NoExtract = usr/share/vim/vim*/lang/*
+
+To prevent the installation of all but English content in [[Qt]] applications, add:
+
+ NoExtract = usr/share/*/translations/*.qm !usr/share/*/translations/*en.qm usr/share/*/nls/*.qm usr/share/qt/phrasebooks/*.qph usr/share/qt/translations/*.pak !*/en-US.pak
+
+To prevent the installation of all but English content in [[Chromium]] and [[Electron]] applications, add:
+
+ NoExtract = usr/share/*/locales/*.pak opt/*/locales/*.pak usr/lib/*/locales/*.pak !*/en-US.pak
+
+To prevent the installation of English help files in [[LibreOffice]], add:
+
+ NoExtract = usr/lib/libreoffice/help/en-US/*
+
+To prevent the installation of all but English content from [[List of applications/Documents#Office suites|OnlyOffice]], add:
+
+{{bc|1=
+NoExtract = opt/onlyoffice/desktopeditors/dictionaries/* !opt/onlyoffice/desktopeditors/dictionaries/en_US/*
+NoExtract = opt/onlyoffice/desktopeditors/editors/web-apps/apps/*/main/locale/* !*/en.json
+NoExtract = opt/onlyoffice/desktopeditors/editors/web-apps/apps/*/main/resources/help/*/* !*/help/en/*
+NoExtract = opt/onlyoffice/desktopeditors/editors/web-apps/apps/*/main/resources/symboltable/* !*/en.json
+NoExtract = opt/onlyoffice/desktopeditors/editors/web-apps/apps/documenteditor/forms/locale/* !*/en.json
+NoExtract = opt/onlyoffice/desktopeditors/editors/web-apps/apps/spreadsheeteditor/main/resources/formula-lang/* !*/en.json !*/en_desc.json
+NoExtract = opt/onlyoffice/desktopeditors/converter/empty/*/* !opt/onlyoffice/desktopeditors/converter/empty/en-US/*
+NoExtract = opt/onlyoffice/desktopeditors/converter/templates/*/* !opt/onlyoffice/desktopeditors/converter/templates/EN/*
+}}
+
+To prevent the installation of all but the English [[iBus]] dictionary for emojis, add:
+
+ NoExtract = usr/share/ibus/dicts/emoji-*.dict !usr/share/ibus/dicts/emoji-en.dict
+
+=== Installing packages on bad connection ===
+
+When trying to install a package from a bad connection (e.g. a train using a cell phone), use the {{ic|--disable-download-timeout}} option to lessen the chance of receiving errors such as:
+
+ error: failed retrieving file […] Operation too slow. Less than 1 bytes/sec transferred the last 10 seconds
+
+or
+
+ error: failed retrieving file […] Operation timed out after 10014 milliseconds with 0 out of 0 bytes received
+
+== Performance ==
+
+=== Download speeds ===
+
+When downloading packages ''pacman'' uses the mirrors in the order they are in {{ic|/etc/pacman.d/mirrorlist}}. The mirror which is at the top of the list by default however may not be the fastest for you. To select a faster mirror, see [[Mirrors]].
+
+Pacman's speed in downloading packages can also be improved by using [[pacman#Parallel downloads|parallel downloads]], a major feature request ({{Bug|20056}}) added with [https://gitlab.archlinux.org/pacman/pacman/-/blob/master/NEWS#L80 pacman 6.0.0]. It is enabled by default since [https://gitlab.archlinux.org/archlinux/packaging/packages/pacman/-/commit/e151844c10fab9f8ea070f9cb24a63675298303c pacman 7.0.0].
+
+Instead of ''pacman''<nowiki/>'s built-in file downloader, a separate application can also be used to download packages.
+
+In all cases, make sure you have the latest ''pacman'' before doing any modifications.
+
+ # pacman -Syu
+
+==== wget ====
+
+This is very handy if you need more powerful proxy settings than ''pacman''<nowiki/>'s built-in capabilities.
+
+To use {{ic|wget}}, first [[install]] the {{Pkg|wget}} package then modify {{ic|/etc/pacman.conf}} by uncommenting the following line in the {{ic|[options]}} section:
+
+ XferCommand = /usr/bin/wget --passive-ftp --show-progress -c -q -N %u
+
+Instead of uncommenting the {{ic|wget}} parameters in {{ic|/etc/pacman.conf}}, you can also modify the {{ic|wget}} configuration file directly (the system-wide file is {{ic|/etc/wgetrc}}, per user files are {{ic|$HOME/.wgetrc}}).
+
+==== Other applications ====
+
+There are other downloading applications that you can use with ''pacman''. Here they are, and their associated XferCommand settings:
+
+* {{ic|snarf}}: {{ic|1=XferCommand = /usr/bin/snarf -N %u}}
+* {{ic|lftp}}: {{ic|1=XferCommand = /usr/bin/lftp -c pget %u}}
+* {{ic|axel}}: {{ic|1=XferCommand = /usr/bin/axel -n 2 -v -a -o %o %u}}
+* {{ic|hget}}: {{ic|1=XferCommand = /usr/bin/hget %u -n 2 -skip-tls false}} (please read the [https://github.com/huydx/hget documentation on the Github project page] for more info)
+* {{ic|saldl}}: {{ic|1=XferCommand = /usr/bin/saldl -c6 -l4 -s2m -o %o %u}} (please read the [https://saldl.github.io documentation on the project page] for more info)
+* [[Aria2#pacman XferCommand]]
+
+== Utilities ==
+
+{{Tip|Many of the (unsupported) [[AUR helpers]] also function as Pacman wrappers, some of which are graphical.}}
+
+* {{App|isfree|A Bash script to list non-free packages. Based on Parabola's blacklist.|https://github.com/leo-arch/isfree|{{AUR|isfree}}}}
+* {{App|Lostfiles|Script that identifies files not owned by any package.|https://github.com/graysky2/lostfiles|{{Pkg|lostfiles}}}}
+* {{App|pacutils|Helper library for libalpm based programs.|https://github.com/andrewgregory/pacutils|{{Pkg|pacutils}}}}
+* {{App|[[pkgfile]]|Tool that finds what package owns a file.|https://github.com/falconindy/pkgfile|{{Pkg|pkgfile}}}}
+* {{App|pkgtop|Interactive package manager and resource monitor designed for the GNU/Linux.|https://github.com/orhun/pkgtop|{{AUR|pkgtop-git}}}}
+* {{App|repoctl|Tool to help manage local repositories.|https://github.com/cassava/repoctl|{{AUR|repoctl}}}}
+* {{App|repose|An Arch Linux repository building tool.|https://github.com/vodik/repose|{{Pkg|repose}}}}
+* {{App|[[Snapper#Wrapping pacman transactions in snapshots|snap-pac]]|Make ''pacman'' automatically use snapper to create pre/post snapshots like openSUSE's YaST.|https://github.com/wesbarnett/snap-pac|{{Pkg|snap-pac}}}}
+* {{App|vrms-arch|A virtual Richard M. Stallman to tell you which non-free packages are installed.|https://github.com/orospakr/vrms-arch|{{AUR|vrms-arch-git}}}}
+
+=== Graphical ===
+
+{{Warning|PackageKit opens up system permissions by default, and is otherwise [https://github.com/archlinux/archinstall/issues/1321#issuecomment-1151343223 not recommended] for general usage. See {{Bug|50459}} and {{Bug|57943}}.}}
+
+* {{App|Discover|Qt application manager using PackageKit written in C++/QML. Supports [https://www.freedesktop.org/wiki/Distributions/AppStream/ AppStream metadata], [[Flatpak]] and [[fwupd|firmware updates]]. Part of {{Grp|plasma}}.|https://apps.kde.org/discover/|{{Pkg|discover}}}}
+* {{App|GNOME PackageKit|GTK package manager using PackageKit written in C.|https://freedesktop.org/software/PackageKit/|{{Pkg|gnome-packagekit}}}}
+* {{App|pcurses|Curses TUI ''pacman'' wrapper written in C++.|https://github.com/schuay/pcurses|{{AUR|pcurses}}}}
+* {{App|tkPacman|Tk pacman wrapper written in Tcl.|https://sourceforge.net/projects/tkpacman|{{AUR|tkpacman}}}}

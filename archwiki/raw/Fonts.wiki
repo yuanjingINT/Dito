@@ -1,0 +1,630 @@
+[[Category:Fonts]]
+[[de:Schriftarten]]
+[[es:Fonts]]
+[[hu:Fonts]]
+[[ja:フォント]]
+[[uk:Fonts]]
+[[zh-hans:Fonts]]
+{{Related articles start}}
+{{Related|Font configuration}}
+{{Related|List of applications/Utilities#Font viewers}}
+{{Related|List of applications/Multimedia#Font editors}}
+{{Related|Java Runtime Environment fonts}}
+{{Related|Linux console#Fonts}}
+{{Related|Metric-compatible fonts}}
+{{Related|Microsoft fonts}}
+{{Related articles end}}
+
+From [[Wikipedia:Computer font]]:
+
+: A computer font is implemented as a digital data file containing a set of graphically related [[Wikipedia:glyph|glyphs]]. A computer font is designed and created using a font editor. A computer font specifically designed for the computer screen, and not for printing, is a screen font.
+
+Note that certain font licenses may impose some legal limitations.
+
+== Font formats ==
+
+Most computer fonts used today are in either ''bitmap'' or ''outline'' data formats.
+;Bitmap fonts: Consist of a matrix of dots or pixels representing the image of each glyph in each face and size.
+;Outline or ''vector'' fonts: Use Bézier curves, drawing instructions and mathematical formulae to describe each glyph, which make the character outlines scalable to any size.
+
+=== Bitmap formats ===
+
+* [[Wikipedia:Glyph Bitmap Distribution Format|Bitmap Distribution Format]] (BDF) by Adobe
+* [[Fedora:Changes/ProvideOpenTypeBitmapFonts|OpenType Bitmap Fonts]] (OTB)
+* [[Wikipedia:PC Screen Font|PC Screen Font]] (PSF) used by the Kernel for console fonts, not supported by Xorg (for Unicode PSF files the extension is {{ic|psfu}})
+* [[Wikipedia:Portable Compiled Format|Portable Compiled Format]] (PCF) by Xorg
+
+These formats can also be gzipped. See [[#Bitmap]] for the available bitmap fonts.
+
+=== Outline formats ===
+
+* [[Wikipedia:PostScript fonts|PostScript fonts]] by Adobe – has various formats, e.g: Printer Font ASCII (PFA) and Printer Font Binary (PFB)
+* [[Wikipedia:TrueType|TrueType]] by Apple and Microsoft (file extension: {{ic|ttf}})
+* [[Wikipedia:OpenType|OpenType]] by Microsoft, built on TrueType (file extensions: {{ic|otf}}, {{ic|ttf}})
+
+For most purposes, the technical differences between TrueType and OpenType can be ignored.
+
+=== Other formats ===
+
+The font editing application [https://fontforge.github.io/en-US/ FontForge] ({{Pkg|fontforge}}) can store fonts in its native text-based format—Spline Font Database ({{ic|.sfd}}).
+
+The typesetting application [[TeX Live]] and its companion font software [[Wikipedia:Metafont|Metafont]] traditionally renders characters using its own methods. Some file extensions used for fonts from these two programs are {{ic|*pk}}, {{ic|*gf}}, {{ic|mf}} and {{ic|vf}}. Modern versions can also use TrueType and OpenType fonts.
+
+The [https://www.w3.org/TR/SVG/fonts.html SVG] format also has its own font description method.
+
+== Installation ==
+
+There are various methods for installing fonts.
+
+=== Pacman ===
+
+Fonts and font collections in the enabled repositories can be installed using [[pacman]].
+
+Available fonts may be found by [[pacman#Querying package databases|querying packages]] (e.g. for {{ic|font}} or {{ic|ttf}}).
+
+=== Creating a package ===
+
+You should give pacman the ability to manage your fonts, which is done by [[Creating packages|creating an Arch package]]. These can also be shared with the community in the [[AUR]]. The packages to install fonts are particularly similar; see [[Font packaging guidelines]].
+
+The family name of a font file can be acquired with the use of {{ic|fc-query}} for example: {{ic|fc-query -f '%{family[0]}\n' /path/to/file}}. The formatting is described in {{man|3|FcPatternFormat}}.
+
+=== Manual installation ===
+
+The recommended way of adding fonts that are not in the repositories of your system is described in [[#Creating a package]]. This gives pacman the ability to remove or update them at a later time.
+
+Alternatively, fonts can be installed manually:
+
+* For a single user, install fonts to {{ic|~/.local/share/fonts/}}.
+** In many cases this suffices, unless you run graphical applications as other users.
+** In the past {{ic|~/.fonts/}} was used, but is now deprecated.
+* For system-wide (all users) installation, place your fonts under {{ic|/usr/local/share/fonts/}}.
+** You may need to create the directory first: {{ic|mkdir -p /usr/local/share/fonts}}.
+** {{ic|/usr/share/fonts/}} is under the purview of the package manager, and should not be modified manually.
+
+The creation of a subdirectory structure is up to the user, and varies among Linux distributions. For clarity, it is good to keep each font in its own directory. [[Fontconfig]] will search its default paths recursively, ensuring nested files get picked up.
+
+An example structure might be:
+
+{{bc|
+/usr/local/share/fonts/
+├── otf
+│   └── SourceCodeVariable
+│       ├── SourceCodeVariable-Italic.otf
+│       └── SourceCodeVariable-Roman.otf
+└── ttf
+    ├── AnonymousPro
+    │   ├── Anonymous-Pro-B.ttf
+    │   ├── Anonymous-Pro-I.ttf
+    │   └── Anonymous-Pro.ttf
+    └── CascadiaCode
+        ├── CascadiaCode-Bold.ttf
+        ├── CascadiaCode-Light.ttf
+        └── CascadiaCode-Regular.ttf
+}}
+
+The font files need to have sufficient read permissions for all users, i.e. at least [[chmod]] {{ic|444}} for files, and {{ic|555}} for directories.
+
+For the Xserver to load fonts directly (as opposed to the use of a ''font server''), the directory for your newly added font must be added with a FontPath entry. This entry is located in the ''Files'' section of your [[Xorg#Configuration|Xorg configuration file]] (e.g. {{ic|/etc/X11/xorg.conf}} or {{ic|/etc/xorg.conf}}). See [[#Older applications]] for more detail.
+
+Finally, update the Fontconfig cache (usually unnecessary as software using the Fontconfig library does this):
+
+ $ fc-cache
+
+=== Older applications ===
+
+With older applications that do not support Fontconfig (e.g. GTK 1.x applications, and {{ic|xfontsel}}) the index will need to be created in the font directory:
+
+ $ mkfontscale
+ $ mkfontdir
+
+Or to include more than one folder with one command:
+
+ $ for dir in /font/dir1/ /font/dir2/; do xset +fp $dir; done && xset fp rehash
+
+Or if fonts were installed in a different sub-folders under the e.g. {{ic|/usr/share/fonts}}:
+
+ $ for dir in * ; do if [  -d  "$dir"  ]; then cd "$dir";xset +fp "$PWD" ;mkfontscale; mkfontdir;cd .. ;fi; done && xset fp rehash
+
+At times the X server may fail to load the fonts directory and you will need to rescan all the {{ic|fonts.dir}} files:
+
+ # xset +fp /usr/share/fonts/misc # Inform the X server of new directories
+ # xset fp rehash                # Forces a new rescan
+
+To check that the font(s) is included:
+
+ $ xlsfonts | grep fontname
+
+{{Note|Many packages will automatically configure Xorg to use the font upon installation. If that is the case with your font, this step is not necessary.}}
+
+This can also be set globally in {{ic|/etc/X11/xorg.conf}} or {{ic|/etc/X11/xorg.conf.d}}.
+
+Here is an example of the section that must be added to {{ic|/etc/X11/xorg.conf}}. Add or remove paths based on your particular font requirements.
+
+{{bc|
+# Let X.Org know about the custom font directories
+Section "Files"
+    FontPath    "/usr/share/fonts/100dpi"
+    FontPath    "/usr/share/fonts/75dpi"
+    FontPath    "/usr/share/fonts/cantarell"
+    FontPath    "/usr/share/fonts/cyrillic"
+    FontPath    "/usr/share/fonts/encodings"
+    FontPath    "/usr/share/fonts/misc"
+    FontPath    "/usr/share/fonts/truetype"
+    FontPath    "/usr/share/fonts/TTF"
+    FontPath    "/usr/share/fonts/util"
+EndSection
+}}
+
+=== Pango warnings ===
+
+When [https://www.pango.org/ Pango] is in use on your system it will read from [[Fontconfig]] to sort out where to source fonts.
+
+ (process:5741): Pango-WARNING **: failed to choose a font, expect ugly output. engine-type='PangoRenderFc', script='common'
+ (process:5741): Pango-WARNING **: failed to choose a font, expect ugly output. engine-type='PangoRenderFc', script='latin'
+
+If you are seeing errors similar to this and/or seeing blocks instead of characters in your application then you need to add fonts and update the font cache. This example uses the {{Pkg|ttf-liberation}} fonts to illustrate the solution (after successful installation of the package) and runs as root to enable them system-wide.
+
+{{hc|# fc-cache|
+/usr/share/fonts: caching, new cache contents: 0 fonts, 3 dirs
+/usr/share/fonts/TTF: caching, new cache contents: 16 fonts, 0 dirs
+/usr/share/fonts/encodings: caching, new cache contents: 0 fonts, 1 dirs
+/usr/share/fonts/encodings/large: caching, new cache contents: 0 fonts, 0 dirs
+/usr/share/fonts/util: caching, new cache contents: 0 fonts, 0 dirs
+/var/cache/fontconfig: cleaning cache directory
+fc-cache: succeeded
+}}
+
+You can test for a default font being set like so:
+
+{{hc|$ fc-match|
+LiberationMono-Regular.ttf: "Liberation Mono" "Regular"
+}}
+
+== Font packages ==
+
+This is a selective list that includes many font packages from the [[AUR]] along with those in the official repositories.
+
+{{Tip|[https://github.com/ternstor/distrofonts Archfonts] is a Python script that can be used to generate an overview of all the TTF fonts found in the official repositories and in the AUR.}}
+
+=== Bitmap ===
+
+{{Note|{{Pkg|pango}} 1.44 [https://blogs.gnome.org/mclasen/2019/05/25/pango-future-directions/ dropped support for FreeType in favor of HarfBuzz] thus [https://blogs.gnome.org/mclasen/2019/08/07/pango-1-44-wrap-up/ losing support for traditional BDF/PCF bitmap fonts], so some applications (e.g. {{Pkg|gnome-terminal}}) will not work with such fonts anymore, showing rectangles instead of glyphs. See {{Bug|63297}}, [https://gitlab.gnome.org/GNOME/pango/issues/386 Pango issue #386] and [https://github.com/harfbuzz/harfbuzz/issues/1897 HarfBuzz issue #1897].}}
+
+* Default 8×16
+* [https://github.com/seraxis/pcf-spectrum-berry Berry] ({{AUR|pcf-spectrum-berry}}) – 8px
+* [https://www.dcmembers.com/jibsen/download/61/ Dina] ({{AUR|dina-font}}) – 6pt, 8pt, 9pt, 10pt, monospaced, based on Proggy
+* [http://openlab.jp/efont/unicode/ Efont] ({{AUR|efont-unicode-bdf}}) – 10px, 12px, 14px, 16px, 24px, normal, bold and italic
+* [https://unifoundry.com/unifont.html GNU Unifont] ({{AUR|bdf-unifont}}) – 8×16, 16×16 ([[Wikipedia:Unicode font#Comparison of fonts|most extensive]] Unicode coverage of any font)
+* [https://font.gohu.org/ Gohu] ({{AUR|gohufont}}) – 11px, 14px, normal and bold
+* [https://typedesign.replit.app/kissinger2.html Kissinger 2] – 8×16, 16×16 (Unifont competitor)
+* [https://artwizaleczapka.sourceforge.net/ Lime] ({{AUR|artwiz-fonts}})
+* [https://tobiasjung.name/profont/ ProFont] ({{AUR|ttf-profont-iix}}) – 10px, 11px, 12px, 15px, 17px, 22px, 29px, normal
+* [[Wikipedia:Proggy programming fonts|Proggy]] ({{AUR|proggyfonts}}) – Has different variants
+* [http://www.fial.com/~scott/tamsyn-font/ Tamsyn] ({{AUR|tamsyn-font}})
+
+Works with Pango 1.44 and later:
+
+* [https://github.com/slavfox/Cozette/ Cozette] ({{AUR|cozette-otb}})
+* [https://font.gohu.org/ Gohufont] ({{AUR|gohufont-otb}})
+* [https://xorg.freedesktop.org/releases/individual/font/ Misc Fixed] ({{AUR|xorg-fonts-misc-otb}})
+* [https://tobiasjung.name/profont/ ProFont] ({{AUR|profont-otb}}) – OpenType Bitmap (OTB) variant of ProFont
+* [https://terminus-font.sourceforge.net/ Terminus] ({{Pkg|terminus-font}})
+* More [https://aur.archlinux.org/packages/?O=0&SeB=n&K=-otb&outdated=&SB=n&SO=a&PP=50&do_Search=Go OTB] fonts on the AUR
+
+=== Latin script ===
+
+==== Families ====
+
+Packages [[Font package guidelines#Provides|providing a base font set]]:
+
+* [[Wikipedia:Bitstream Vera|Bitstream Vera]] ({{Pkg|ttf-bitstream-vera}}) – Includes sans-serif, serif, and monospaced fonts. Bitstream Vera Sans is metrically compatible with [[Wikipedia:Verdana|Verdana]].
+* [[Wikipedia:Croscore fonts|Croscore fonts]] ({{Pkg|ttf-croscore}}) – [[Metric-compatible fonts]] for Helvetica, Times, Courier and Georgia — named Arimo, Tinos, Cousine and Gelasio respectively, shipped with Chrome OS
+* [[Wikipedia:DejaVu fonts|DejaVu fonts]] ({{Pkg|ttf-dejavu}}) – Bitstream Vera modified for greater Unicode coverage
+* [[Wikipedia:Droid (font)|Droid]] ({{Pkg|ttf-droid}}) – Default font for older Android versions with wide Unicode coverage including CJK but not symbols and emojis
+* [[Wikipedia:GNU FreeFont|GNU FreeFont]] ({{Pkg|gnu-free-fonts}}) – Includes three fonts — FreeSans, FreeSerif and FreeMono — that are clones of Helvetica, Times, and Courier respectively. Most Latin characters are from [[Wikipedia:URW Type Foundry|URW]] [[Wikipedia:Ghostscript#Free_fonts|Ghostscript]] fonts (e.g., [[Wikipedia:Nimbus Roman No. 9 L|Nimbus Roman]], [[Wikipedia:Nimbus Sans|Nimbus Sans]]), non-Latin characters come from many sources with good Unicode coverage, but do not include CJK.
+* [[Wikipedia:IBM Plex|IBM Plex]] ({{Pkg|ttf-ibm-plex}}) – Serif, sans-serif, condensed sans-serif and monospace with true italics
+* [https://input.djr.com/info/ Input] ({{Pkg|ttf-input}}) – Fonts for code from DJR & Font Bureau
+* {{Pkg|ttf-input-nerd}} – Patched Input font containing Nerd Font symbols. For a symbols-only font, see {{Pkg|ttf-nerd-fonts-symbols}}.
+* [[Wikipedia:Liberation fonts|Liberation fonts]] ({{Pkg|ttf-liberation}}) – [[Metric-compatible fonts]] for Helvetica, Times, and Courier, but are visually different
+* [[Microsoft fonts]] ({{AUR|ttf-ms-win11}}) – Windows 11 fonts (Windows 11 installation or installation medium needed)
+* [[Wikipedia:Noto fonts|Noto fonts]] ({{Pkg|noto-fonts}}) – Google font family with full Unicode coverage if installed with its emoji and CJK optional dependencies
+* [[Wikipedia:Roboto|Roboto]] ({{Pkg|ttf-roboto}}) – Default font for newer Android versions where it is complemented by Noto fonts for languages not supported like CJK
+
+Packages not providing a base font set:
+
+* [https://github.com/polarsys/b612/ B612] ({{AUR|ttf-b612}}) – Open-source font family (sans and mono) sponsored by Airbus, designed for comfort of reading on aircraft cockpit screens
+* [[Wikipedia:Ghostscript#Free_fonts|Ghostscript]] ({{Pkg|gsfonts}}) – The Ghostscript fonts donated by [[Wikipedia:URW Type Foundry|URW]], includes clones of Helvetica, Times, Courier, and others. GNU FreeFont ({{Pkg|gnu-free-fonts}}) and TeX Gyre fonts ({{Pkg|tex-gyre-fonts}}) are both partially based on the Ghostscript fonts
+* [https://github.com/alerque/libertinus Libertinus Fonts] ({{Pkg|otf-libertinus}}) – Forks of [[Wikipedia:Linux Libertine|Linux Libertine]] and Linux Biolinum, with extended math support, see [[#Math]]
+* [[Wikipedia:Luxi fonts|Luxi fonts]] ({{AUR|font-bh-ttf}}) – X.Org font family similar to Lucida
+* [https://www.gust.org.pl/projects/e-foundry/tex-gyre/index_html TeX Gyre fonts] ({{Pkg|tex-gyre-fonts}}) – Created by the Polish GUST association of TeX users, mostly based on [[Wikipedia:URW Type Foundry|URW]] [[Wikipedia:Ghostscript#Free_fonts|Ghostscript]] fonts, includes clones of Helvetica, Times, Courier, and others. Some have their own math companion fonts, see [[#Math]].
+* [[Wikipedia:Ubuntu Font Family|Ubuntu font family]] ({{Pkg|ttf-ubuntu-font-family}})
+
+Legacy Microsoft font packages:
+
+* [https://corefonts.sourceforge.net/ Microsoft fonts] ({{AUR|ttf-ms-fonts}}) – Andalé Mono, Courier New, Arial, Arial Black, Comic Sans, Impact, Lucida Sans, Microsoft Sans Serif, Trebuchet, Verdana, Georgia, Times New Roman
+* Vista fonts ({{AUR|ttf-vista-fonts}}) – Consolas, Calibri, Candara, Corbel, Cambria, Constantia
+
+==== Monospaced ====
+
+Fonts supporting "programming ligatures" (e.g., the display of the "->" sequence as a double-width "⟶" glyph)  are identified below with a ⟶ sign. For more monospaced fonts, also see [[#Bitmap]] and [[#Families]].
+
+* [https://www.marksimonson.com/fonts/view/anonymous-pro Anonymous Pro] ({{Pkg|ttf-anonymous-pro}}, included in {{AUR|ttf-google-fonts-git}})
+* [https://github.com/microsoft/cascadia-code Cascadia Code] ({{Pkg|ttf-cascadia-code}}) ⟶ – Designed to enhance the look of the Windows Terminal, with programming ligatures, released by Microsoft under the Open Font License
+* [https://quoteunquoteapps.com/courierprime/ Courier Prime] ({{AUR|ttf-courier-prime}}) – Courier alternative which has been supplemented by a sans serif font and a version optimized for programming, released under the Open Font License
+* [https://damieng.com/envy-code-r Envy Code R] ({{AUR|ttf-envy-code-r}}) – Font designed for programmers
+* Fantasque Sans Mono ({{Pkg|ttf-fantasque-sans-mono}}, {{Pkg|otf-fantasque-sans-mono}})
+* [[Wikipedia:Fira_(typeface)|Fira Mono]] ({{Pkg|ttf-fira-mono}}, {{Pkg|otf-fira-mono}}) – Font optimized for small screens and adopted by Mozilla for the Firefox OS
+* [[Wikipedia:Fira_(typeface)#Fira_Code|Fira Code]] ({{Pkg|ttf-fira-code}}) ⟶ – Extension of Fira Mono with programming ligatures for common programming multi-character combinations
+* [https://sourcefoundry.org/hack/ Hack] ({{Pkg|ttf-hack}}) - Open-source monospaced font, used as the default in KDE Plasma
+* [https://github.com/i-tu/Hasklig Hasklig] ({{AUR|otf-hasklig}}) ⟶ - A code font with monospaced ligatures
+* [https://pcaro.es/p/hermit/ Hermit] ({{Pkg|otf-hermit}}) - A font for programmers, by a programmer
+* [[Wikipedia:Inconsolata|Inconsolata]] ({{Pkg|ttf-inconsolata}}, included in {{AUR|ttf-google-fonts-git}}) – Designed for source code listing, inspired by Consolas and Letter Gothic
+* [https://leonardo-m.livejournal.com/77079.html Inconsolata-g] ({{AUR|ttf-inconsolata-g}}) – Adds some programmer-friendly modifications
+* [https://be5invis.github.io/Iosevka/ Iosevka] ({{Pkg|ttc-iosevka}}) ⟶ – Slender sans-serif and slab-serif typeface inspired by Pragmata Pro, M+ and PF DIN Mono, designed to be the ideal font for programming; it supports programming ligatures and over 2000 latin, greek, cyrillic, phonetic and PowerLine glyphs
+* [https://www.jetbrains.com/lp/mono/ JetBrains Mono] ({{Pkg|ttf-jetbrains-mono}}) ⟶ – Free and open-source font developed by JetBrains
+* [https://mishamyrt.github.io/Lilex/ Lilex] ({{AUR|ttf-lilex}}) ⟶ – Free and open-source modern programming font containing a set of ligatures for common programming multi-character combinations
+* [[Wikipedia:Lucida Typewriter|Lucida Typewriter]] (included in package {{AUR|jre}})
+* [[Wikipedia:Menlo (typeface)|Menlo]] ({{AUR|ttf-meslo}}) – Customized version of Apple's Menlo Regular font for OS X with larger vertical gap spacing
+* [[Wikipedia:Monaco (typeface)|Monaco]] ({{AUR|ttf-monaco}}) – Proprietary font designed by Apple for OS X
+* Monofur ({{Pkg|ttf-monofur}})
+* [https://madmalik.github.io/mononoki Mononoki] ({{AUR|ttf-mononoki}}) – A font for programming and code review
+* [[Wikipedia:Roboto#Roboto_Mono|Roboto Mono]] ({{Pkg|ttf-roboto-mono}}) – Based on Roboto ({{Pkg|ttf-roboto}})
+* [[Wikipedia:Source Code Pro|Source Code Pro]] ({{Pkg|adobe-source-code-pro-fonts}}, included in {{AUR|ttf-google-fonts-git}})
+* [https://dtinth.github.io/comic-mono-font/ Comic Mono] ({{AUR|ttf-comic-mono-git}}) A legible monospace font… the very typeface you’ve been trained to recognize since childhood, ergo Comic Sans
+
+Relevant websites:
+
+* [https://stackoverflow.com/questions/4689/recommended-fonts-for-programming Stack Overflow: Recommended fonts for programming]
+* [https://www.programmingfonts.org Programming Fonts - Test Drive]
+* [http://s9w.io/font_compare Programming Fonts Compare]
+* [https://www.codingfont.com/ Coding Font by Typogram]
+
+==== Sans-serif ====
+
+* [https://gitlab.gnome.org/GNOME/adwaita-fonts Adwaita] ({{Pkg|adwaita-fonts}}) – Default font supplied with GNOME.
+** [[Wikipedia:Cantarell (typeface)|Cantarell]] ({{Pkg|cantarell-fonts}}) – Old default font supplied with GNOME until version 48.
+* [https://software.sil.org/andika/ Andika] ({{AUR|ttf-andika}})
+* [https://typedesign.replit.app/dmcasansserif.html DMCA Sans Serif] ({{AUR|ttf-dmcasansserif}}) – General purpose sans serif font metric-compatible with Microsoft Consolas
+* [[Wikipedia:Fira (typeface)|Fira Sans]] ({{Pkg|ttf-fira-sans}}, {{Pkg|otf-fira-sans}}) – Sans serif font designed by Erik Spiekermann for Mozilla and the Firefox OS. Fira Mono and Fira Code are monospaced companions of Fira Sans (see [[#Monospaced]]).
+* [[Wikipedia:FreeSans|FreeSans]] ({{Pkg|gnu-free-fonts}}) – [[Commons:File:FreeSansDemonstration.png|Visually similar]] to Helvetica but metrically different, see [[#Families]]
+* [https://github.com/rsms/inter Inter] ({{Pkg|inter-font}}) – A geometric neo-grotesque font designed for user interfaces
+* [https://indestructibletype.com/Jost.html Jost*] ({{AUR|otf-jost}}) – An open-source typeface based on [[Wikipedia:Futura (typeface)|Futura]]
+* [[Wikipedia:Liberation Sans|Liberation Sans]] ({{Pkg|ttf-liberation}}) – Metric-compatible with Helvetica but [[Commons:File:Font_Sample_-_Liberation_Sans.svg|visually distinct]], see [[#Families]]
+* [https://fonts.google.com/specimen/Montserrat Montserrat] ({{Pkg|otf-montserrat}}) – An open-source font that shares similarities with [[Wikipedia:Gotham (typeface)|Gotham]] and [[Wikipedia:Proxima Nova|Proxima Nova]]
+* [https://fonts.google.com/specimen/Nunito Nunito] ({{Pkg|ttf-nunito}}) – An open-source font with rounded terminal, hence shares similarities with [[Wikipedia:Gotham_(typeface)#Variations|Gotham Rounded]] and [https://fonts.adobe.com/fonts/proxima-soft Proxima Soft]
+* [[Wikipedia:Open Sans|Open Sans]] ({{Pkg|ttf-opensans}}) – Sans serif font commissioned by Google, based on Droid sans but slightly wider
+* [[Wikipedia:PT Sans|PT Sans]] ({{AUR|ttf-google-fonts-git}}) – 3 major variations: normal, narrow, and caption - Unicode: Latin, Cyrillic
+* [[Wikipedia:Source Sans|Source Sans]] ({{Pkg|adobe-source-sans-fonts}}) – Open-source sans serif font from Adobe with a design based on News Gothic and Franklin Gothic
+* [https://www.winehq.org/announce/0.9.47 Tahoma (Wine Replacement)] ({{AUR|ttf-tahoma}}) – Open-source substitute for [[Wikipedia:Tahoma (typeface)|Tahoma]] developed by the [[Wine]] project. It was created because many Windows applications expected Tahoma to be available.
+
+==== Serif ====
+
+* [[Wikipedia:Bitstream Charter|Bitstream Charter]] ({{AUR|ttf-bitstream-charter}}, {{AUR|otf-bitstream-charter}}) – Originally a commercial font designed by [[Wikipedia:Matthew Carter|Matthew Carter]]. A version was released under a free license and later [https://practicaltypography.com/charter.html converted] to modern formats (provided as the aforementioned packages).
+* [https://indestructibletype.com/Bodoni.html Bodoni*] ({{AUR|otf-bodoni}}) – An open-source [[Wikipedia:Bodoni|Bodoni]] revival
+* [https://github.com/skosch/Crimson Crimson] ({{Pkg|otf-crimson}}) – An open-source font that shares similarities with [[Wikipedia:Minion_(typeface)|Minion]]
+* [[Wikipedia:EB_Garamond|EB Garamond]] ({{AUR|ebgaramond-otf}}) – An open-source [[Wikipedia:Garamond|Garamond]] revival, the aforementioned package is the version developed by [https://github.com/octaviopardo/EBGaramond12 Octavio Pardo]
+* [[Wikipedia:FreeSerif|FreeSerif]] ({{Pkg|gnu-free-fonts}}) – [[Commons:File:FreeSerifDemonstration.png|Visually similar]] to Times New Roman but [https://askubuntu.com/questions/346552/closest-alternative-to-times-new-roman/1148247#1148247 metrically different], see [[#Families]]
+* [[Wikipedia:Gentium|Gentium]] ({{Pkg|ttf-gentium}}, {{Pkg|ttf-gentium-book}}) – Unicode, comprehensive support for Latin, Greek, Cyrillic, International Phonetic Alphabet (IPA) characters
+* [[Wikipedia:Utopia_(typeface)#Derived_typefaces|Heuristica]] ({{AUR|ttf-heuristica}}) – Based on a version of [[Wikipedia:Utopia_(typeface)|Utopia]] that was released under a free license
+* [[Wikipedia:Liberation Serif|Liberation Serif]] ({{Pkg|ttf-liberation}}) – Metric-compatible with Times New Roman but [[Wikipedia:File:Times New Roman Liberation Serif comparison.png|visually distinct]], see [[#Families]]
+* [https://fonts.google.com/specimen/Libre+Baskerville Libre Baskerville] ({{AUR|ttf-librebaskerville}}) – An open-source [[Wikipedia:Baskerville|Baskerville]] revival designed by Impallari Type
+* [https://ctan.org/pkg/baskervillef BaskervilleF] ({{AUR|otf-baskervillef}}) – A PDF-optimized serif font, fork of Libre Baskerville, with added Bold Italic style
+* [https://fonts.google.com/specimen/Libre+Caslon+Text Libre Caslon] ({{AUR|otf-libre-caslon}}) – An open-source [[Wikipedia:Caslon|Caslon]] revival designed by Impallari Type
+* [[Wikipedia:Linux Libertine|Linux Libertine]] ({{Pkg|ttf-linux-libertine}}) – Developed as a substitute of Times New Roman, but different both visually and metrically (the metric differences are more notable for italic and bold fonts). Its fork [[Wikipedia:Linux_Libertine#Derivative_works|Libertinus Fonts]] ({{Pkg|otf-libertinus}}) is the version that is under active development.
+* [https://www.gust.org.pl/projects/e-foundry/tex-gyre/index_html TeX Gyre Termes] ({{Pkg|tex-gyre-fonts}}) – Visually similar to Times New Roman (but there are some minor metric differences), see [[#Families]]
+* [[Wikipedia:Croscore_fonts|Tinos]] ({{Pkg|ttf-croscore}}) – Metric-compatible with Times New Roman but visually distinct (and looks similar to Liberation Serif), see [[#Families]]
+
+==== Handwriting ====
+
+* {{AUR|ttf-nothingyoucoulddo}} – Handwriting of a photographer
+* {{AUR|ttf-indieflower}} – Handwriting sans-serif font with bubbly and rounded edges
+* {{AUR|ttf-pacifico}} – Brush script handwriting font which was inspired by the 1950s American surf culture and expanded to Cyrillic
+* {{AUR|otf-londrina}} – Handwriting font inspired from the streets of Sao Paulo, Brazil
+* {{AUR|otf-tesla}} – Script font based on a reconstruction of Nikola Tesla's handwriting
+* {{AUR|ttf-architects-daughter}} – Font incorporating the graphic, squared look of architectural writing and the natural feel of daily handwriting
+
+==== Unsorted ====
+
+{{Style|This section should be absorbed into the Monospace/Serif/Sans-Serif structure}}
+
+* {{AUR|all-repository-fonts}} – Meta package for all fonts in the official repositories
+* {{AUR|ttf-cheapskate}} – Font collection from ''dustismo.com''
+* {{AUR|ttf-google-fonts-git}} – A huge collection of free fonts (including Ubuntu, Inconsolata, Roboto, etc.) {{Note|Your font dialog might get very long as more than 100 fonts will be added.}}
+* {{Pkg|ttf-junicode}} – Junius font containing almost complete medieval Latin script glyphs
+* {{AUR|ttf-mph-2b-damase}} – Covers full plane 1 and several scripts
+* {{AUR|open-dyslexic-fonts}} – [[Wikipedia:OpenDyslexic|OpenDyslexic]] font for readers with dyslexia
+* {{Pkg|xorg-fonts-type1}} – IBM Courier and Adobe Utopia sets of [[Wikipedia:PostScript fonts|PostScript fonts]]
+
+=== Non-latin scripts ===
+
+==== Ancient Scripts ====
+
+* {{AUR|ttf-ancient-fonts}} – Font containing Unicode symbols for Aegean, Egyptian, Cuneiform, Anatolian, Maya, and Analecta scripts
+
+==== Arabic ====
+See [[Localization/Arabic#Fonts]].
+
+==== Bengali ====
+
+Read [[Localization/Bengali#Fonts]] for details.
+
+==== Braille ====
+
+* {{AUR|ttf-ubraille}} – Font containing Unicode symbols for ''braille''
+
+==== Chinese, Japanese, Korean, Vietnamese ====
+
+===== Pan-CJK =====
+
+Adobe Source Han fonts and Noto CJK fonts have [https://github.com/adobe-fonts/source-han-sans/issues/122 identical glyphs and metrics], but with different branding since the project was commissioned by both Adobe and Google.
+
+Both collections comprehensively support Simplified Chinese, Traditional Chinese, Japanese, and Korean, with a consistent design and look. Noto Sans CJK fonts lack localized menu names, that are not required, but may make fonts more user-friendly for customers whose native language is that of the target language of the font.
+
+* Adobe Source Han fonts
+** [[Wikipedia:Source_Han_Sans|Source Han Sans]] ({{Pkg|adobe-source-han-sans-otc-fonts}})
+** [[Wikipedia:Source_Han_Serif|Source Han Serif]] ({{Pkg|adobe-source-han-serif-otc-fonts}})
+* [[Wikipedia:Noto_fonts#CJK|Noto CJK fonts]] ({{Pkg|noto-fonts-cjk}}) – Includes both Noto Sans CJK and Noto Serif CJK
+
+===== Chinese =====
+
+See [[Localization/Chinese#Fonts]].
+
+===== Japanese =====
+
+See [[Localization/Japanese#Fonts]].
+
+===== Korean =====
+
+See [[Localization/Korean#Fonts]].
+
+===== Vietnamese =====
+
+* {{Pkg|ttf-hannom}} – Vietnamese TrueType font for chữ Nôm characters
+
+==== Cyrillic ====
+
+See also [[#Latin script]].
+
+* {{AUR|ttf-paratype}} – Font family by ParaType: sans, serif, mono, extended cyrillic and latin, OFL license
+* {{AUR|otf-russkopis}} – A free OpenType cursive font for Cyrillic script
+
+==== Greek ====
+
+Almost all Unicode fonts contain the Greek character set (polytonic included). Some additional font packages, which might not contain the complete Unicode set but utilize high quality Greek (and Latin, of course) typefaces are:
+
+* {{AUR|otf-gfs}} – Selection of OpenType fonts from the Greek Font Society
+* {{AUR|ttf-mgopen}} – Professional TrueType fonts from Magenta
+* {{AUR|ttf-sbl-biblit}} – SBL BibLit, includes characters from both SBL Greek and SBL Hebrew
+
+==== Hebrew ====
+
+* {{AUR|opensiddur-hebrew-fonts}} – Large collection of Open-source licensed Hebrew fonts. There are also few Latin, Greek, Cyrillic, Arabic, and Amharic.
+* {{AUR|culmus}} – Nice collection of free Hebrew fonts
+* {{AUR|alefbet}} – 4 Hebrew fonts (at the moment): the commonly used "David Libre", the handwriting font "Gveret Levin", "Varela Round" and "open-sans"
+* {{AUR|ttf-ms-fonts}} – contains Arial and other fonts
+* {{AUR|ttf-sbl-hebrew}} – SBL Hebrew, created by the Society of Biblical Literature (SBL)
+* {{AUR|ttf-sbl-biblit}} – SBL BibLit, includes characters from both SBL Hebrew and SBL Greek
+
+===== Monospaced =====
+
+* '''Cousine''' ({{pkg|ttf-croscore}}) – part of the [[Wikipedia:Croscore fonts|Chrome OS Core Fonts]]
+* [https://www.evertype.com/emono/ Everson Mono] ({{AUR|ttf-everson-mono}}) – is lighter and a bit looser than Courier, with wide range of supported Unicode blocks
+* '''FreeMono''' ({{pkg|gnu-free-fonts}}) – part of the [[Wikipedia:GNU FreeFont|GNU FreeFont]]
+
+==== Indic ====
+
+See [[Localization/Indic#Fonts]].
+
+==== Khmer ====
+
+* {{Pkg|ttf-khmer}} – Font covering glyphs for Khmer language
+* [https://github.com/danhhong/Hanuman Hanuman] ({{AUR|ttf-google-fonts-git}})
+
+==== Mongolic and Tungusic ====
+
+* {{AUR|ttf-abkai}} – Fonts for Sibe, Manchu and Daur scripts (incomplete, currently in development)
+
+==== Persian ====
+
+Arabic fonts like {{pkg|ttf-scheherazade-new}} also cover Persian letters. A list of Arabic fonts can be checked in [[Localization/Arabic#Fonts]].
+
+* {{AUR|persian-fonts}} – Meta package for installing all Persian fonts in AUR
+* {{AUR|borna-fonts}} – Borna Rayaneh Co. Persian B font series
+* {{AUR|iran-nastaliq-fonts}} – A free Unicode calligraphic Persian font
+* {{AUR|iranian-fonts}} – Iranian-Sans and Iranian-Serif Persian font family
+* {{AUR|ir-standard-fonts}} – Iran Supreme Council of Information and Communication Technology (SCICT) standard Persian fonts
+* {{AUR|persian-hm-ftx-fonts}} – A Persian font series derived from X Series 2, Metafont and FarsiTeX fonts with Kashida feature
+* {{AUR|persian-hm-xs2-fonts}} – A Persian font series derived from X Series 2 fonts with Kashida feature
+* {{AUR|gandom-fonts}}, {{AUR|parastoo-fonts}}, {{AUR|sahel-fonts}}, {{AUR|samim-fonts}}, {{AUR|shabnam-fonts}}, {{AUR|tanha-fonts}}, {{AUR|vazirmatn-fonts}}, {{AUR|vazir-code-fonts}} – Beautiful Persian fonts made by Saber RastiKerdar
+* {{AUR|ttf-yas}} – The Yas Persian font series (with '''hollow zero''')
+* {{AUR|ttf-x2}} – Free fonts with support for Persian, Arabic, Urdu, Pashto, Dari, Uzbek, Kurdish, Uighur, old Turkish (Ottoman) and modern Turkish (Roman)
+
+==== Tai–Kadai ====
+
+* {{AUR|fonts-tlwg}} – Collection of scalable Thai fonts
+* {{AUR|ttf-google-thai}} – High-quality Thai fonts from Google and new [https://cadsondemak.github.io/ improvement] for Thai National Fonts
+* {{AUR|ttf-lao}} – Lao TTF font (Phetsarath_OT)
+
+==== Tibeto-Burman ====
+
+* {{Pkg|ttf-tibetan-machine}} – Tibetan Machine TTFont
+* {{AUR|ttf-sil-padauk}} – Unicode font that supports the many diverse languages that use the Myanmar script
+
+=== Emoji and symbols ===
+
+A section of the Unicode standard is designated for pictographic characters called "emoji".
+
+[[Wikipedia:Emoji|Emoji]] fonts come in different formats: CBDT/CBLC (Google), SBIX (Apple), COLR/CPAL (Microsoft), SVG (Mozilla/Adobe).
+
+Emojis should work out of the box once you have at least one emoji font installed of a supported format. However, some of the emoji fonts encode their glyphs as large fixed-size bitmaps and thus, for the purpose of displaying at the intended size, rely on [[Font configuration#Disable scaling of bitmap fonts|bitmap font downscaling]], which is enabled by default.
+
+Emoji font fallback according to [[Wikipedia:Emoji#Emoji versus text presentation|the standard]] requires [https://github.com/google/emoji-segmenter extra code to handle emoji].
+
+For the discovery and input of Emoji see [[List of applications/Utilities#Text input]].
+
+{| class="wikitable"
+|-
+! Software !! CBDT/CBLC !! SBIX !! COLR/CPAL !! SVG !! Emoji font fallback
+|-
+! [[Wikipedia:FreeType|FreeType]]
+| {{Yes}} || {{Yes}} || {{Yes}} || {{No|https://savannah.nongnu.org/bugs/?46141}} || {{-}}
+|-
+! [[Chromium]]
+| colspan=3 {{C|FreeType}} || {{-}}
+| {{Yes|https://chromium.googlesource.com/chromium/src.git/+/671511b00e2d6c374a3079c1c379d2d0dfad32fe}}
+|-
+! [[Firefox]]
+| colspan=3 {{C|FreeType}} || {{Yes}}
+| {{No|1=https://bugzilla.mozilla.org/show_bug.cgi?id=1509988}}, see [[Firefox#Font troubleshooting]] for workaround.
+|-
+! [[Wikipedia:Pango|Pango]]
+| colspan=3 {{C|FreeType}} || {{-}}
+| {{Yes|https://gitlab.gnome.org/GNOME/pango/-/issues/298}}
+|-
+! [[Qt]]
+| colspan=3 {{C|FreeType}} || {{-}}
+| {{No}} [https://bugreports.qt.io/browse/QTBUG-71568] [https://bugreports.qt.io/browse/QTBUG-85014] [https://bugreports.qt.io/browse/QTBUG-85744]
+|-
+! [[List of applications/Internet#WebKitGTK-based|WebKitGTK]]
+| colspan=3 {{C|FreeType}} || {{-}}
+| {{Yes|https://trac.webkit.org/changeset/239822/webkit}}
+|}
+
+{{Note|Qt can only use first 255 fonts at a time [https://bugreports.qt.io/browse/QTBUG-80434]. Make sure you have an emoji font in your list of [[Font configuration#Set default or fallback fonts|preferred fallback fonts]].}}
+
+* [[Wikipedia:Font Awesome|Font Awesome]] ({{Pkg|woff2-font-awesome}}) – the iconic SVG font
+* [https://joypixels.com/emoji JoyPixels] ({{AUR|ttf-joypixels}}) – formerly EmojiOne, part of Emoji as a Service, proprietary
+* [https://github.com/ryanoasis/nerd-fonts/?tab=readme-ov-file#-- Nerd Fonts] ({{Grp|nerd-fonts}}) – developer targeted fonts patched with a high number of icons
+* [https://fonts.google.com/noto/specimen/Noto+Color+Emoji/glyphs Noto Color Emoji] ({{Pkg|noto-fonts-emoji}}) –  Google open-source emoji font, color
+* [https://fonts.google.com/noto/specimen/Noto+Emoji/glyphs Noto Emoji ] ({{AUR|ttf-noto-emoji-monochrome}}) – Google open-source emoji font, black and white
+* [https://openmoji.org/ OpenMoji] ({{AUR|otf-openmoji}}) – German University of Design in Schwäbisch Gmünd open-source emoji
+* [https://dn-works.com/ufas/ Symbola] ({{AUR|ttf-symbola-free}}) – part of Unicode Fonts for Ancient Scripts; version 9 was the last free version, current version is licensed as "pay for any use"
+* [https://babelstone.co.uk/Fonts/Pseudographica.html BabelStone Pseudographica] - a font covering various geometric shapes, box drawing shapes, arrows, geometric symbols, and symbol-like punctuation marks defined in the Unicode Standard
+* [https://github.com/jdecked/twemoji Twemoji (Twitter Emoji)] ({{AUR|ttf-twemoji}}) – emoji for everyone, originally created by Twitter
+* [https://github.com/13rac1/twemoji-color-font Twitter Color Emoji] ({{AUR|ttf-twemoji-color}}) – SVG-OpenType (SVGinOT) font built from the Twemoji artwork; this font also contains black and white emoji, and the original Twemoji font contains color emoji too
+
+[[Wikipedia:Kaomoji|Kaomoji]] are sometimes referred to as "Japanese emoticons" and are composed of characters from various character sets, including CJK and Indic fonts. The following set of packages covers most of existing kaomoji:
+* {{Pkg|gnu-free-fonts}}
+* {{Pkg|ttf-arphic-uming}}
+* {{Pkg|ttf-indic-otf}}
+
+[https://www.tunera.xyz/fonts/teranoptia/ Teranoptia] ({{AUR|ttf-teranoptia-furiae}}) – is a typeface without letters (an illustrative font), a peculiar contraption that allows you to imagine chimeric creatures just by typing letters with your keyboard.
+
+=== Math ===
+
+* [[wikipedia:Computer Modern|Computer Modern]] ({{AUR|ttf-cm-unicode}}, {{AUR|otf-cm-unicode}})
+* Computer Modern ({{Pkg|otf-latin-modern}}, {{Pkg|otf-latinmodern-math}}) – Improved version used in LaTeX
+* [[wikipedia:Linux_Libertine#Derivative_works|Libertinus Math]] ({{Pkg|otf-libertinus}}) – A math font based on Libertinus Serif which is a fork of [[Wikipedia:Linux Libertine|Linux Libertine]] ({{Pkg|ttf-linux-libertine}})
+* [[Wikipedia:STIX Fonts project|STIX fonts]] ({{AUR|otf-stix}}) – STIX is designed to be a royalty-free alternative that resembles Times New Roman. The current version is called STIX Two and includes a math companion named STIX Two Math.
+* [https://www.gust.org.pl/projects/e-foundry/tg-math TeX Gyre math fonts] ({{AUR|tex-gyre-math-fonts}}) – Math companions of TeX Gyre fonts (see [[#Families]]). Notably, TeX Gyre Termes Math is a math companion of Times New Roman.
+* [https://github.com/YuanshengZhao/Garamond-Math Garamond-Math] ({{AUR|otf-garamond-math}}) – An open type math font matching EB Garamond ({{AUR|ebgaramond-otf}}).
+* [https://juliamono.netlify.app/ JuliaMono] ({{AUR|ttf-juliamono}}) – A monospace typeface that has extensive support for mathematical symbols, including calligraphic, blackboard (double-struck), and Fraktur alphanumeric characters.
+
+Additionally, {{Pkg|texlive-basic}} and {{Pkg|texlive-fontsextra}} contain many math fonts such as Latin Modern Math and STIX fonts. See [[TeX Live#Making fonts available to Fontconfig]] for configuration.
+
+=== Other operating system fonts ===
+
+* {{AUR|ttf-mac-fonts}} - Apple MacOS TrueType fonts
+
+== Font alias ==
+
+{{Merge|Fontconfig|This section is Fontconfig-specific.}}
+
+There are several font aliases which represent other fonts in order that applications may use similar fonts. The most common aliases are: {{ic|serif}} for a font of the serif type (e.g. DejaVu Serif); {{ic|sans-serif}} for a font of the sans-serif type (e.g. DejaVu Sans); and {{ic|monospace}} for a monospaced font (e.g. DejaVu Sans Mono). However, the fonts which these aliases represent may vary and the relationship is often not shown in font management tools, such as those found in [[KDE Plasma]] and other [[desktop environments]].
+
+To reverse an alias and find which font it is representing, run:
+
+{{hc|$ fc-match monospace|
+DejaVuSansMono.ttf: "DejaVu Sans Mono" "Book"
+}}
+
+In this case, {{ic|DejaVuSansMono.ttf}} is the font represented by the {{ic|monospace}} alias.
+
+== Fallback font order ==
+
+{{Merge|Fontconfig|This section contains Fontconfig-only related information.}}
+
+Fontconfig automatically chooses a font that matches the current requirement. That is to say, if one is looking at a window containing English and Chinese for example, it will switch to another font for the Chinese text if the default one does not support it.
+
+Fontconfig lets every user configure the order they want via {{ic|$XDG_CONFIG_HOME/fontconfig/fonts.conf}}.
+If you want a particular Chinese font to be selected after your favorite Serif font, your file would look like this:
+
+ <?xml version="1.0"?>
+ <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+ <fontconfig>
+ <alias>
+   <family>serif</family>
+   <prefer>
+     <family>Your favorite Latin Serif font name</family>
+     <family>Your Chinese font name</family>
+   </prefer>
+ </alias>
+ </fontconfig>
+
+{{Tip|
+* If you use a Chinese locale, set {{ic|FC_LANG}} to {{ic|und}} or {{ic|en-US:zh-CN}} to make this work. Otherwise both English and Chinese text will be rendered in the Chinese font.
+* If you want to see a list of fonts against ambiguous patterns (i.e. which might not match exactly) such as a generic family names, you can use {{ic|fc-match --sort}} or {{ic|fc-match --all}}.
+* {{ic|fc-match --sort}} does not show a font if its Unicode coverage is provided by already shown font, see {{man|1|fc-match}} and {{man|3|FcFontSort}}.
+* After changing the configuration run {{ic|fc-match --all serif {{!}} head}} to verify your fallback font is set correctly.
+}}
+
+You can add a section for {{ic|sans-serif}} and {{ic|monospace}} as well.
+
+For more information, have a look at the Fontconfig manual. See also [[Font configuration#Set default or fallback fonts]].
+
+== Tips and tricks ==
+
+=== List installed fonts for a particular language ===
+
+{{Merge|Fontconfig|This section is Fontconfig-specific.}}
+
+Applications select and display fonts depending upon Fontconfig preferences and available font glyphs for Unicode text. To list installed fonts for a particular language, issue a command {{ic|1=fc-list :lang="''two letter language code''"}}. For instance, to list installed Arabic fonts or fonts supporting Arabic glyphs:
+
+{{hc|1=$ fc-list -f '%{file}\n' :lang=ar|2=
+/usr/share/fonts/TTF/FreeMono.ttf
+/usr/share/fonts/TTF/DejaVuSansCondensed.ttf
+/usr/share/fonts/truetype/custom/DroidKufi-Bold.ttf
+/usr/share/fonts/TTF/DejaVuSansMono.ttf
+/usr/share/fonts/TTF/FreeSerif.ttf
+}}
+
+=== List installed fonts for a particular Unicode character ===
+
+{{Merge|Fontconfig|This section is Fontconfig-specific.}}
+
+To list all fonts supporting a particular Unicode codepoint—[https://graphemica.com/%E2%AE%9D black upwards equilateral arrowhead] (⮝) in this case:
+
+ $ fc-list :charset=2B9D
+
+''fc-list'' does not normalize requests, it is going to list fonts which exactly matches. It is not suitable for generic family names (like {{ic|monospace}}) and other ambiguous patterns. To search for monospaced fonts supporting a particular Unicode codepoint you could try the following:
+
+ $ fc-match --sort monospace:charset=2B9D | head
+
+but you have to interpret the result on your own. ''fc-match'' by its nature does not guarantee that fonts in the output list are monospaced, nor that they contain the codepoint in question at all.
+
+=== Application-specific font cache ===
+
+Matplotlib ({{Pkg|python-matplotlib}}) uses its own font cache, so after updating fonts, be sure to remove {{ic|~/.matplotlib/fontList.cache}}, {{ic|~/.cache/matplotlib/fontList.cache}}, {{ic|~/.sage/matplotlib-1.2.1/fontList.cache}}, etc. so it will regenerate its cache and find the new fonts [https://discourse.matplotlib.org/t/getting-matplotlib-to-recognize-a-new-font/17754].
+
+=== Bidirectional text support ===
+
+See [[Bidirectional text]] for troubleshooting problems related to RTL languages.
+
+=== Braille font not displaying correctly inside terminals ===
+
+If braille characters in terminals exhibit [https://www.reddit.com/r/archlinux/comments/gf2vgb/the_braille_fonts_dont_show_properly_anywhere/ rendering issues], try [[install|installing]] a braille font and uninstalling {{Pkg|gnu-free-fonts}}.
+
+=== Application-specific font configuration tips ===
+
+==== Emacs ====
+
+Emacs calculates sizes differently than standard Linux desktop applications, and Emacs packages do not all use the same config format, so if points or raw pixel size doesn't work, try using the other value.
+
+==== Visual Studio Code ====
+
+Change the setting '''Editor: Experimental Whitespace Rendering''' from "svg" to "font" if your monospace fonts have problems scaling certain characters correctly.  This is known to help with "Terminus (TTF)" and "IBM 3270" fonts.
+
+== See also ==
+
+* [https://behdad.org/text/ State of Text Rendering]
+* [https://fontlibrary.org/en Font Library] — Fonts under free licenses

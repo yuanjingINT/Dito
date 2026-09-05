@@ -1,0 +1,37 @@
+{
+  "total": 4980,
+  "sources": {
+    "dito": {
+      "total": 466,
+      "selected": 466
+    },
+    "identity_nosys": {
+      "total": 129,
+      "selected": 129
+    },
+    "archwiki": {
+      "total": 2870,
+      "selected": 1200
+    },
+    "meme_qa": {
+      "total": 80,
+      "selected": 80
+    },
+    "meme_usage": {
+      "total": 80,
+      "selected": 80
+    },
+    "base": {
+      "total": 1955,
+      "selected": 1955
+    },
+    "agent": {
+      "total": 25,
+      "selected": 25
+    },
+    "agent_cot": {
+      "total": 4000,
+      "selected": 3000
+    }
+  }
+}
