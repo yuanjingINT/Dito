@@ -161,6 +161,8 @@ async function sendOneMessage(text: string, fresh = false): Promise<void> {
   await created.session.prompt(text);
   process.stdout.write("\n");
   created.session.dispose();
+  // 单次问答跑完即退：MCP stdio 子进程/HTTP 连接会挂住 event loop，需显式退出
+  process.exit(0);
 }
 
 // ── 扩展装配 ────────────────────────────────────────────────────
