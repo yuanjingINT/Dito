@@ -10,7 +10,7 @@
 - **系统检测**：自动识别当前操作系统与 Linux 发行版（Arch / Debian / Ubuntu / Fedora / openSUSE / Gentoo / NixOS / Alpine / Void / macOS / Windows 等），切换对应的专属运维提示词
 - **发行版工具**：AUR 搜索 + 「红 / 黄 / 绿」红绿灯审查（拉 PKGBUILD 做危险信号初筛）+ AUR 安装命令生成（paru/yay）、Fedora COPR 仓库检索与启用/安装/更新命令生成
 - **联网搜索**：无 key 时走 DuckDuckGo，也可配 Tavily / Exa / SearXNG
-- **频道：QQ（SnowLuma）/ Matrix**：`dito qq` 通过 SnowLuma（OneBot 协议）连 QQ——私聊/群聊对话（每聊天独立会话、QQ 专属人设）、被戳自动戳回去、按情绪给消息贴表情回应、**发 QQ 空间说说**，SnowLuma 的 184 个 OneBot action 全部注册为独立工具由模型自主选择，回复超 100 字自动转图片；`dito matrix` 连 Matrix homeserver 收发房间消息。均在 `dito config` → 「频道」里配置
+- **频道：QQ（SnowLuma）/ Matrix / 手机**：`dito qq` 通过 SnowLuma（OneBot 协议）连 QQ——私聊/群聊对话（每聊天独立会话、QQ 专属人设）、被戳自动戳回去、按情绪给消息贴表情回应、**发 QQ 空间说说**，SnowLuma 的 184 个 OneBot action 全部注册为独立工具由模型自主选择，回复超 100 字自动转图片；`dito matrix` 连 Matrix homeserver 收发房间消息；`dito mobile` 终端显示二维码，手机扫码即连——出门在外也能经公网中继连回家里的 Dito。均在 `dito config` → 「频道」里配置
 - **权限门 / sudo 权限**：高危命令（rm -rf /、fork bomb、格式化、卸载等）拦截/确认；可一键开启「sudo 权限模式」——权限门关闭，需要 root 的命令自动加 `sudo`（配置 / `/sudo on` 切换）
 - **默认模型**：opencode 免费公共模型（`big-pickle`，视觉 `mimo-v2.5-free`）——免 Key 开箱即用；内置智谱 GLM-4-Flash（免费·国内直连）等国内模型可一键切换
 
@@ -46,6 +46,9 @@ Dito/
 ├── system-prompts/       # 各系统/发行版专属运维提示词（开发源文件）
 ├── identities/           # 用户身份（开发源文件）
 ├── kb/                   # 默认知识库（首次启动自动导入）
+├── relay/                # 公网中继服务（单文件 server.mjs，手机频道公网模式）
+├── docs/protocol.md      # 手机/中继通信协议规格
+├── scripts/simulate-phone.mjs  # 模拟手机客户端（调试配对/对话链路）
 ├── config/dito.json      # 配置模板（实际写入 ~/.pi/agent/dito/config.json）
 └── .pi/settings.json     # 默认模型设置
 ```
@@ -128,7 +131,7 @@ dito config        # TUI 配置：模型 / 供应商 / 人格 / 知识库 / 记�
 - 界面为 opencode 风格：顶栏 `◈ Dito 配置` + 右侧当前模型、面板标题 breadcrumb、选中行整行高亮、底部按键提示栏、操作 toast 反馈
 - 操作：`j/k` 或方向键移动，`Enter` 编辑/选择（布尔项直接切换），`s` 保存，`q` 返回；编辑文本时用方向键/Home/End 移动光标，字母（含 h/l）原样输入；敏感字段（API Key）显示 `********`，进入编辑自动清空
 
-### 频道：QQ（SnowLuma）与 Matrix
+### 频道：QQ（SnowLuma）、Matrix 与手机
 
 Dito 可以作为聊天机器人接入外部 IM，每个聊天（好友/群/房间）拥有独立持久会话，任务进行中收到新消息会自动排队。
 
@@ -153,7 +156,21 @@ Dito 可以作为聊天机器人接入外部 IM，每个聊天（好友/群/房�
 
 **Matrix 频道（`dito matrix`）**：`dito config` → 「频道」→「Matrix」：启用、填 Homeserver 与 Access Token（Element：设置 → 帮助与关于 → 高级），房间 ID 可留空表示响应所有已加入房间。走明文房间消息（加密房间暂不支持）。
 
-数据位置：频道会话映射存于 `~/.pi/agent/dito/qq-chats.json` / `matrix-chats.json`，会话本体与本地会话同目录。
+**手机频道（`dito mobile`，扫码配对）**：让手机（Android App / iPhone PWA）连上电脑上的 Dito——在家里走局域网直连，出门在外经公网中继连回家。
+
+1. 电脑运行 `dito mobile`，终端显示**配对二维码**
+2. 手机扫码（或浏览器打开二维码里的地址）→ 电脑端按 `y` 确认 → 设备配对成功
+3. 直接在手机上和 Dito 对话：流式回复、工具执行可见，每台设备独立持久会话（主人级权限）
+
+要点：
+
+- **局域网模式**（默认，`relayUrl` 留空）：电脑内嵌中继监听 8787 端口，二维码即局域网地址，无需任何外部服务
+- **公网模式**：把仓库 `relay/` 目录部署到任意 VPS（见 `relay/README.md`，单文件仅依赖 `ws`），然后在 `dito config` → 「频道」→「手机连接」里填中继地址——二维码变成公网地址，任何网络下的手机都能连回家；电脑侧始终只做出站连接，**无需公网 IP / 端口转发**
+- **安全**：配对令牌一次性；已配对设备持长期 deviceToken（可随时在 `dito config` →「手机连接」→「已配对设备」里吊销）；公网建议走 wss（Caddy 自动证书配置见 relay/README）
+- **HTTP 隧道**：中继同时把 `https://<relay>/t/<房间>/<路径>` 转发到电脑本地服务（`channels.mobile.tunnel` 映射），手机端 MCP 客户端由此调用电脑上的 Dito 工具（MCP 支持在路线图 M2）
+- 调试：`node scripts/simulate-phone.mjs "<配对URL>"` 可在无手机情况下模拟全流程；协议规格见 `docs/protocol.md`
+
+数据位置：手机频道会话映射存于 `~/.pi/agent/dito/mobile/mobile-chats.json`，会话本体在 `~/.pi/agent/dito/mobile/mobile-sessions/`。
 
 ### RPM 打包
 
@@ -283,3 +300,8 @@ pi -e extensions/index.ts --model opencode-free/big-pickle -p "你是谁"
 ## 待办（阶段 5）
 
 - 语音对话：唤醒词 → STT（whisper-cli / 小米 MiMo）→ 大模型 → TTS（espeak-ng / piper / 小米 MiMo），全屏 UI。
+
+## 许可证
+
+本项目采用 [GPL-3.0-only](LICENSE)（GNU General Public License v3.0）开源发布。
+源码仓库即官方分发渠道，二进制打包（deb/rpm/npm 包）随包附同一许可证文本。

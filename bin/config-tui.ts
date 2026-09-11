@@ -1087,6 +1087,12 @@ async function channelsScreen(cfg: DitoConfig): Promise<void> {
       hint: "连接 Matrix homeserver 收发房间消息（需 Access Token）；`dito matrix` 启动",
       onEnter: () => matrixChannelScreen(cfg),
     },
+    {
+      label: "手机连接",
+      detail: cfg.channels.mobile.relayUrl ? `远程中继 · ${cfg.channels.mobile.devices.length} 台设备` : `局域网模式 · ${cfg.channels.mobile.devices.length} 台设备`,
+      hint: "手机 / iPhone PWA 扫码配对连到电脑；`dito mobile` 启动",
+      onEnter: () => mobileChannelScreen(cfg),
+    },
   ];
   await menuScreen({
     crumbParts: ["配置", "频道"],
@@ -1160,6 +1166,76 @@ async function matrixChannelScreen(cfg: DitoConfig): Promise<void> {
   persist(cfg);
 }
 
+async function mobileChannelScreen(cfg: DitoConfig): Promise<void> {
+  const items = (): MenuItem[] => [
+    {
+      label: "连接设置",
+      detail: cfg.channels.mobile.relayUrl ? `远程中继 · ${cfg.channels.mobile.relayUrl}` : "局域网模式（内嵌中继）",
+      hint: "中继地址、配对免确认、PWA 页面目录与隧道映射",
+      onEnter: () => mobileSettingsScreen(cfg),
+    },
+    {
+      label: "已配对设备",
+      detail: `${cfg.channels.mobile.devices.length} 台`,
+      hint: "选中后按 d 吊销设备；吊销后手机需重新扫码配对",
+      onEnter: () => mobileDevicesScreen(cfg),
+    },
+  ];
+  await menuScreen({
+    crumbParts: ["配置", "频道", "手机连接"],
+    panelTitle: "手机连接",
+    items,
+    status: () => statusOf(cfg),
+  });
+}
+
+async function mobileSettingsScreen(cfg: DitoConfig): Promise<void> {
+  const mb = cfg.channels.mobile;
+  const result = await formScreen({
+    crumbParts: ["配置", "频道", "手机连接", "连接设置"],
+    panelTitle: "手机连接 · 设置",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "远程中继地址", value: mb.relayUrl, kind: "text", hint: "如 https://relay.example.com；留空 = 局域网模式（电脑内嵌中继，手机需同一网络）。公网部署见 relay/README.md" },
+      { label: "配对免确认", value: String(mb.autoApprove), kind: "bool", hint: "开 = 新设备扫码直接连入（主人级权限）；默认关，配对需在 dito mobile 终端按 y 确认" },
+      { label: "PWA 页面目录", value: mb.pwaDir, kind: "text", hint: "可选；局域网模式下 /p/<房间> 服务该目录的网页构建产物，供 iPhone 添加到主屏幕" },
+      { label: "隧道映射（JSON）", value: JSON.stringify(mb.tunnel ?? {}), kind: "text", hint: "高级：把公网请求转发到本机服务，如 {\"/mcp\":\"http://127.0.0.1:3878\"}；接入 MCP 后由桌面端自动填写" },
+    ],
+  });
+  if (!result) return;
+  mb.relayUrl = result[0].value.trim().replace(/\/+$/, "");
+  mb.autoApprove = parseBool(result[1].value);
+  mb.pwaDir = result[2].value.trim();
+  try {
+    const parsed = JSON.parse(result[3].value || "{}") as Record<string, string>;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) mb.tunnel = parsed;
+  } catch {
+    /* JSON 不合法时保持原映射不变 */
+  }
+  persist(cfg);
+}
+
+async function mobileDevicesScreen(cfg: DitoConfig): Promise<void> {
+  const items = (): MenuItem[] =>
+    cfg.channels.mobile.devices.map((d) => ({
+      label: d.name || "未命名设备",
+      detail: `${d.platform || "未知平台"} · ${String(d.pairedAt).slice(0, 10)} · ${d.id.slice(0, 8)}…`,
+      hint: "按 d 吊销设备：令牌立即失效，手机需重新扫码配对",
+      onDelete: async () => {
+        const ok = await confirmOverlay("吊销设备", `确定吊销「${d.name || d.id.slice(0, 8)}」？该设备的令牌将立即失效。`);
+        if (!ok) return;
+        cfg.channels.mobile.devices = cfg.channels.mobile.devices.filter((x) => x.id !== d.id);
+        persist(cfg, `已吊销设备「${d.name || d.id.slice(0, 8)}」`);
+      },
+    }));
+  await menuScreen({
+    crumbParts: ["配置", "频道", "手机连接", "已配对设备"],
+    panelTitle: "已配对设备",
+    items,
+    status: () => statusOf(cfg),
+  });
+}
+
 // ── 主菜单 ───────────────────────────────────────────────────────
 
 async function mainMenu(cfg: DitoConfig): Promise<void> {
@@ -1225,9 +1301,15 @@ async function mainMenu(cfg: DitoConfig): Promise<void> {
       onEnter: () => permissionScreen(cfg),
     },
     {
-      label: "频道（QQ / Matrix）",
-      detail: cfg.channels.qq.enabled ? "QQ 已启用" : cfg.channels.matrix.enabled ? "Matrix 已启用" : "停用",
-      hint: "dito qq 连 SnowLuma 收发 QQ（含戳一戳/空间）；dito matrix 连 Matrix 房间",
+      label: "频道（QQ / Matrix / 手机）",
+      detail: cfg.channels.qq.enabled
+        ? "QQ 已启用"
+        : cfg.channels.matrix.enabled
+          ? "Matrix 已启用"
+          : cfg.channels.mobile.devices.length > 0
+            ? `手机已配 ${cfg.channels.mobile.devices.length} 台`
+            : "停用",
+      hint: "dito qq 连 SnowLuma 收发 QQ（含戳一戳/空间）；dito matrix 连 Matrix 房间；dito mobile 扫码连手机",
       onEnter: () => channelsScreen(cfg),
     },
     {
