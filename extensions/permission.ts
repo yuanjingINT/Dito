@@ -80,6 +80,7 @@ export function maybeElevate(
 ): string | null {
   const trimmed = command.trim();
   if (!enabled || !trimmed) return null;
+  if (process.platform === "win32") return null; // Windows 无 sudo，提权交给 UAC
   if (ELEVATED_PREFIX.test(trimmed)) return null;
   if (CONTAINS_ELEVATION.test(trimmed)) return null;
   if (SHELL_BUILTIN_FIRST.test(trimmed)) return null;
@@ -103,6 +104,10 @@ export function sudoModeEnabled(): boolean {
 
 /** 切换 sudo 模式并写回配置。返回切换后的状态。 */
 export function toggleSudoMode(next?: boolean): boolean {
+  if (process.platform === "win32") {
+    console.error("Windows 没有 sudo：sudo 模式不可用（需要管理员权限的操作请以管理员身份运行终端）。");
+    return false;
+  }
   const cfg = loadConfig();
   const target = next ?? cfg.plugins.permission.sudoMode !== true;
   cfg.plugins.permission.sudoMode = target;

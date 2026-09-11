@@ -1,0 +1,16 @@
+Dito — 第三方组件许可声明（GPL-3.0-only 之外的部分）
+
+本仓库整体以 GPL-3.0-only 发布（见 LICENSE）。以下第三方依赖以各自的许可证
+随包管理器独立分发，不包含在本仓库源码内：
+
+- @earendil-works/pi-ai / pi-coding-agent：MIT
+- @modelcontextprotocol/sdk、ws、qrcode：MIT
+- matrix-js-sdk（Matrix 频道）：Apache-2.0
+- @snowluma/sdk / @snowluma/mcp（QQ 频道）：SnowLuma Source-Available
+  Non-Commercial License（源可见、非商业许可，非 OSI 开源）。该项为可选功能：
+  不安装这两个包、或在 `dito config` 中停用 snowluma 插件即可完全规避，
+  Dito 其余功能不受影响。npm 安装 Dito 时这两个包作为常规依赖自动拉取，
+  其许可条款以包内 LICENSE 为准。
+
+Android 移动端（dito-mobile 仓库）基于 Operit（LGPL-3.0）修改，
+依 LGPL-3.0 §3 以 GPL-3.0-only 发布，声明见该仓库 NOTICE。

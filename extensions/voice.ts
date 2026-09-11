@@ -48,7 +48,8 @@ interface AgentSessionLike {
 }
 
 // ── 工具函数 ────────────────────────────────────────────────────
-function expand(path: string): string {
+/** 展开 ~ 与环境变量路径（doctor 等外部复用） */
+export function expand(path: string): string {
   if (path.startsWith("~")) return join(homedir(), path.slice(1));
   return path;
 }
@@ -70,18 +71,64 @@ function tmpWav(): string {
   return join(dir, "rec.wav");
 }
 
-function detectRecorder(): string {
+export function detectRecorder(): string {
+  const platform = process.platform;
+  // Windows：ffmpeg dshow（需要可用 ffmpeg；音频设备名在 record 时探测）
+  if (platform === "win32") {
+    return existsSync("C:\\ffmpeg\\bin\\ffmpeg.exe") || whichSync("ffmpeg") ? "ffmpeg-dshow" : "";
+  }
+  // macOS：ffmpeg avfoundation（:0 = 第一个音频设备）
+  if (platform === "darwin") {
+    return whichSync("ffmpeg") ? "ffmpeg-avfoundation" : "";
+  }
+  // Linux：PipeWire → PulseAudio → ALSA
   if (existsSync("/usr/bin/pw-record") || existsSync("/usr/local/bin/pw-record")) return "pw-record";
   if (existsSync("/usr/bin/parec")) return "parec";
   return "arecord";
 }
 
-function recorderArgs(recorder: string, out: string): string[] {
+/** PATH 探测（Windows/Linux/macOS 通用；找不到返回 null） */
+function whichSync(cmd: string): string | null {
+  const pathEnv = process.env.PATH ?? "";
+  const exts = process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""];
+  for (const dir of pathEnv.split(process.platform === "win32" ? ";" : ":")) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const p = join(dir, cmd + ext);
+      if (existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+
+function recorderArgs(recorder: string, out: string, ms?: number): string[] {
   // pw-record：PipeWire 版用 "s16"（"s16le" 会报 unknown format），
   // 且默认容器不是 wav——加 --container wav 让 whisper-cli 能直接读
   if (recorder === "pw-record") return ["--rate", "16000", "--channels", "1", "--format", "s16", "--container", "wav", out];
   if (recorder === "parec") return ["--rate=16000", "--channels=1", "--format=s16le", "--file-format=wav", out];
+  // ffmpeg 系：Windows 上 SIGINT 无法优雅收尾（wav 头不回写），用固定时长 -t
+  if (recorder === "ffmpeg-avfoundation") {
+    const args = ["-y", "-loglevel", "error", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1"];
+    if (ms) args.push("-t", (ms / 1000).toFixed(2));
+    args.push(out);
+    return args;
+  }
+  if (recorder === "ffmpeg-dshow") {
+    const args = ["-y", "-loglevel", "error", "-f", "dshow", "-i", `audio=${dshowDevice || "默认设备"}`, "-ar", "16000", "-ac", "1"];
+    if (ms) args.push("-t", (ms / 1000).toFixed(2));
+    args.push(out);
+    return args;
+  }
   return ["-f", "S16_LE", "-r", "16000", "-c", "1", out];
+}
+
+/** Windows dshow 音频设备名（探测一次缓存；失败留空走默认） */
+let dshowDevice = "";
+async function resolveDshowDevice(): Promise<void> {
+  if (process.platform !== "win32" || dshowDevice) return;
+  const r = await run("ffmpeg", ["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"]).catch(() => ({ stderr: "" }));
+  const m = r.stderr.match(/DirectShow audio devices[^\n]*\n\s+"([^"]+)"/);
+  dshowDevice = m?.[1] ?? "";
 }
 
 function asksQuestion(text: string): boolean {
@@ -568,6 +615,9 @@ export async function runVoiceMode(session: AgentSessionLike, cfg: VoiceConfig):
   stdin.on("data", onKey);
 
   const recorder = detectRecorder();
+  if (recorder === "ffmpeg-dshow") {
+    await resolveDshowDevice();
+  }
   const wakeWords = (cfg.wakeWord ?? "")
     .split(/[,，\s]+/)
     .map((w) => w.trim())
@@ -606,7 +656,10 @@ export async function runVoiceMode(session: AgentSessionLike, cfg: VoiceConfig):
 
   function record(ms?: number): Promise<string> {
     const out = tmpWav();
-    const child = spawn(recorder, recorderArgs(recorder, out));
+    if (!recorder) {
+      return Promise.reject(new Error("没有可用的音频录制器：请安装 ffmpeg（Windows/macOS）或 pw-record/parec/arecord（Linux）"));
+    }
+    const child = spawn(recorder, recorderArgs(recorder, out, ms ?? cfg.maxRecordSeconds * 1000));
     stopRequested = false;
     ui.setState("recording");
     const begin = Date.now();

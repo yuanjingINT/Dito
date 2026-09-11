@@ -302,6 +302,30 @@ pi -e extensions/index.ts --model opencode-free/big-pickle -p "你是谁"
 
 - 语音对话：唤醒词 → STT（whisper-cli / 小米 MiMo）→ 大模型 → TTS（espeak-ng / piper / 小米 MiMo），全屏 UI。
 
+## 全平台支持（Windows / macOS / Linux）
+
+桌面端是纯 Node 应用（≥22.5），三平台通用；`dito doctor` 一键体检本机环境
+（Node 版本、配置、模型连通性、录音/STT/TTS 依赖、频道与 MCP 状态）。
+
+| 能力 | Linux | macOS | Windows |
+|---|---|---|---|
+| 终端对话 / 频道 / MCP / 手机连接 | ✓ | ✓ | ✓ |
+| 系统提示词 | 按发行版（arch/debian/fedora…14 份） | macos.md | windows.md |
+| AUR / COPR 工具 | ✓（仅 Linux 注册） | — | — |
+| 语音录音 | pw-record → parec → arecord | ffmpeg avfoundation | ffmpeg dshow |
+| TTS / STT | espeak-ng / piper / whisper-cli / MiMo 同左 同左 | | |
+| sudo 权限模式 | ✓（macOS 同） | ✓ | 无 sudo，自动跳过提权 |
+
+安装（npm，要求 Node ≥ 22.5）：
+
+```bash
+npm i -g dito        # 或 npm pack 产物本地安装
+dito doctor          # 先体检，再开聊
+```
+
+QQ 频道依赖的 @snowluma/* 包为其自有许可（非 OSI 开源、非商业使用），不装它或
+停用 snowluma 插件即可规避；详见 NOTICE。
+
 ## 许可证
 
 本项目采用 [GPL-3.0-only](LICENSE)（GNU General Public License v3.0）开源发布。
