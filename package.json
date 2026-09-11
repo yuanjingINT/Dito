@@ -5,7 +5,8 @@
   "license": "GPL-3.0-only",
   "type": "module",
   "bin": {
-    "dito": "./bin/dito"
+    "dito": "./bin/dito",
+    "dito-relay": "./relay/server.mjs"
   },
   "keywords": [
     "pi-package",
@@ -20,9 +21,6 @@
     ],
     "skills": [
       "./skills"
-    ],
-    "themes": [
-      "./themes"
     ]
   },
   "dependencies": {
@@ -42,5 +40,22 @@
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1"
+  },
+  "files": [
+    "bin/",
+    "extensions/",
+    "relay/",
+    "personas/",
+    "identities/",
+    "system-prompts/",
+    "skills/",
+    "config/",
+    "kb/",
+    "docs/",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22.5"
   }
 }

@@ -192,6 +192,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args[0] === "doctor") {
+    const { runDoctor } = await import("./doctor.js");
+    await runDoctor();
+    return;
+  }
+
   if (args[0] === "mcp") {
     const { runMcpServerMain } = await import("./mcp-server.js");
     await runMcpServerMain();

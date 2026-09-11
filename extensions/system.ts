@@ -325,8 +325,10 @@ export function getSystemInfo(): SystemInfo {
 }
 
 export default function systemExtension(pi: ExtensionAPI): void {
-  // 发行版专属联网工具：AUR 搜索/红绿灯审查、COPR 仓库检索。
-  registerDistroTools(pi);
+  // 发行版专属联网工具：AUR 搜索/红绿灯审查、COPR 仓库检索（仅 Linux；win/mac 无意义）
+  if (process.platform === "linux") {
+    registerDistroTools(pi);
+  }
 
   // 每轮把「本机环境 + 发行版专属提示词」追加到系统提示词。
   pi.on("before_agent_start", (event) => {
