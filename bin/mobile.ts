@@ -24,6 +24,7 @@ import {
   type MobileChannelConfig,
   type MobileDeviceConfig,
 } from "../extensions/util.js";
+import { transcribeRemoteAudio, type VoiceConfig } from "../extensions/voice.js";
 import { openChannelSession, type TuiSession } from "./session.js";
 import { runWithTaskSlot } from "./channel-chat.js";
 import { startRelay, type RelayHandle } from "../relay/server.mjs";
@@ -277,21 +278,45 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
     log(`设备「${name}」已配对（共 ${current.channels.mobile.devices.length} 台）`);
   }
 
-  /** 设备业务消息：M1 只有 chat.user；一轮对话一个 id，流式回传 */
+  /** 设备业务消息：chat.user（文本）与 chat.voice（语音→ASR）；一轮对话一个 id，流式回传 */
   async function onDeviceMessage(deviceToken: string, payload: any): Promise<void> {
     if (!payload || typeof payload !== "object") return;
-    if (payload.type !== "chat.user") return;
+    if (payload.type !== "chat.user" && payload.type !== "chat.voice") return;
     const device = loadConfig().channels.mobile.devices.find((d) => d.id === deviceToken);
     if (!device) {
       log("收到未登记设备的消息，已忽略");
       return;
     }
+    const turnId = typeof payload.id === "string" ? payload.id : randomBytes(8).toString("hex");
+    const chat = await sessionFor(device);
+    chat.beginTurn(turnId);
+
+    if (payload.type === "chat.voice") {
+      // 语音消息：ASR 转文字后走正常对话流程
+      const sendToConn = (p: unknown): void => sendToDevice(deviceToken, p);
+      sendToConn({ type: "chat.tool", id: turnId, name: "语音识别", argsShort: "", state: "start" });
+      let text = "";
+      try {
+        const audio = Buffer.from(String(payload.audioB64 ?? ""), "base64");
+        if (audio.length === 0) throw new Error("空音频");
+        const voiceCfg = loadConfig().plugins.voice as VoiceConfig;
+        text = await transcribeRemoteAudio(audio, String(payload.mime ?? ""), voiceCfg);
+      } catch (err) {
+        sendToConn({ type: "chat.error", id: turnId, message: `语音识别失败：${(err as Error).message}` });
+        return;
+      }
+      if (!text) {
+        sendToConn({ type: "chat.error", id: turnId, message: "语音识别结果为空（检查桌面端语音 STT 配置，如 MiMo key）" });
+        return;
+      }
+      log(`「${device.name}」（语音）：${text.slice(0, 80)}`);
+      await runWithTaskSlot(() => chat.session.prompt(text));
+      return;
+    }
+
     const text = String(payload.text ?? "").trim();
     if (!text) return;
-    const chat = await sessionFor(device);
-    const turnId = typeof payload.id === "string" ? payload.id : randomBytes(8).toString("hex");
     log(`「${device.name}」：${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`);
-    chat.beginTurn(turnId);
     await runWithTaskSlot(() => chat.session.prompt(text));
   }
 

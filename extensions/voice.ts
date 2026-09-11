@@ -146,6 +146,55 @@ async function speechToText(wav: string, cfg: VoiceConfig): Promise<string> {
   return sttWhisper(wav, cfg);
 }
 
+/**
+ * 远程语音转写（手机端 chat.voice 用）：任意容器音频（webm/mp4/mp3/ogg…）→ wav → 走既有 STT。
+ * ffmpeg 不可用且非 wav 时抛错；未配置 ASR（如 MiMo key 为空）返回空串。
+ */
+export async function transcribeRemoteAudio(
+  audio: Buffer,
+  mime: string,
+  cfg: VoiceConfig,
+): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "dito-voice-"));
+  const ext = mime.includes("wav")
+    ? "wav"
+    : mime.includes("webm")
+      ? "webm"
+      : mime.includes("mp4") || mime.includes("aac")
+        ? "m4a"
+        : mime.includes("mpeg") || mime.includes("mp3")
+          ? "mp3"
+          : mime.includes("ogg")
+            ? "ogg"
+            : "bin";
+  const src = join(dir, `remote.${ext}`);
+  const wav = join(dir, "remote.wav");
+  writeFileSync(src, audio);
+  try {
+    if (ext === "wav") {
+      return await speechToText(src, cfg);
+    }
+    if (ext !== "bin") {
+      const conv = await run("ffmpeg", ["-y", "-loglevel", "error", "-i", src, "-ar", "16000", "-ac", "1", wav]);
+      if (conv.code === 0 && existsSync(wav)) {
+        return await speechToText(wav, cfg);
+      }
+    }
+    if (ext === "bin") {
+      throw new Error(`不支持的音频类型：${mime || "未知"}（且本机没有 ffmpeg 可转码）`);
+    }
+    // ffmpeg 缺失：尽力直传原始容器（部分 ASR 服务接受）
+    return await speechToText(src, cfg);
+  } finally {
+    try {
+      unlinkSync(src);
+    } catch {}
+    try {
+      unlinkSync(wav);
+    } catch {}
+  }
+}
+
 // ── TTS ─────────────────────────────────────────────────────────
 async function playWav(wav: string): Promise<void> {
   const player = existsSync("/usr/bin/paplay") ? "paplay" : existsSync("/usr/bin/aplay") ? "aplay" : "pw-play";

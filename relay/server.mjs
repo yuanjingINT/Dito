@@ -95,7 +95,7 @@ const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css",
   ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
   ".ico": "image/x-icon", ".webmanifest": "application/manifest+json", ".wasm": "application/wasm",
-  ".woff2": "font/woff2", ".map": "application/json",
+  ".woff2": "font/woff2", ".map": "application/json", ".webapp": "application/x-web-app-manifest+json",
 };
 
 /**
@@ -153,22 +153,47 @@ export function startRelay(opts = {}) {
       return;
     }
 
-    // /p/<room>?k=<token>：配对入口页
-    const pMatch = url.pathname.match(/^\/p\/([a-z0-9-]+)$/);
+    // /p/<room>?k=<token>：配对入口页（配置 PWA 目录后，同时服务其静态资产）
+    const pMatch = url.pathname.match(/^\/p\/(.+)$/);
     if (pMatch && req.method === "GET") {
-      const room = rooms.get(pMatch[1]);
-      if (!room || !room.host || room.host.readyState !== WebSocket.OPEN) {
-        res.writeHead(404, { "content-type": "text/html; charset=utf-8" });
-        res.end("<!doctype html><meta charset=utf-8><title>Dito</title><p>房间不存在或电脑端未在线。</p>");
+      const tail = pMatch[1];
+      // PWA 静态资产：/p/<file> → pwaDir/<file>（路径穿越防护）
+      if (pwaDir) {
+        const rel = path.normalize(tail).replace(/^(\.\.[/\\])+/, "");
+        const file = path.join(pwaDir, rel);
+        if (
+          file.startsWith(path.resolve(pwaDir)) &&
+          fs.existsSync(file) &&
+          fs.statSync(file).isFile()
+        ) {
+          const ext = path.extname(file).toLowerCase();
+          res.writeHead(200, {
+            "content-type": MIME[ext] ?? "application/octet-stream",
+            "service-worker-allowed": "/p/",
+          });
+          fs.createReadStream(file).pipe(res);
+          return;
+        }
+      }
+      // 房间页：返回 PWA（或内置测试页）
+      if (/^[a-z0-9-]+$/.test(tail)) {
+        const room = rooms.get(tail);
+        if (!room || !room.host || room.host.readyState !== WebSocket.OPEN) {
+          res.writeHead(404, { "content-type": "text/html; charset=utf-8" });
+          res.end("<!doctype html><meta charset=utf-8><title>Dito</title><p>房间不存在或电脑端未在线。</p>");
+          return;
+        }
+        if (pwaDir && fs.existsSync(path.join(pwaDir, "index.html"))) {
+          res.writeHead(200, { "content-type": MIME[".html"] });
+          fs.createReadStream(path.join(pwaDir, "index.html")).pipe(res);
+        } else {
+          res.writeHead(200, { "content-type": MIME[".html"] });
+          res.end(PAIR_PAGE);
+        }
         return;
       }
-      if (pwaDir && fs.existsSync(path.join(pwaDir, "index.html"))) {
-        res.writeHead(200, { "content-type": MIME[".html"] });
-        fs.createReadStream(path.join(pwaDir, "index.html")).pipe(res);
-      } else {
-        res.writeHead(200, { "content-type": MIME[".html"] });
-        res.end(PAIR_PAGE);
-      }
+      res.writeHead(404, { "content-type": "text/plain" });
+      res.end("not found");
       return;
     }
 
