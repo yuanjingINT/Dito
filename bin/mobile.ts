@@ -96,6 +96,23 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
   // ── 设备会话 ────────────────────────────────────────────────────
   const chats = new Map<string, DeviceChat>(); // deviceToken -> 会话
 
+  // ── MCP Server 内嵌启动（手机端经隧道调用 pc_* 工具的通道） ────────
+  let mcp: { close(): Promise<void> } | null = null;
+  if (cfg.plugins.mcp?.enabled && cfg.plugins.mcp.server?.enabled) {
+    try {
+      const { startMcpServer } = await import("./mcp-server.js");
+      mcp = await startMcpServer(cfg.plugins.mcp.server);
+      const prefix = "/mcp";
+      if (!ch.tunnel[prefix] || ch.tunnel[prefix] !== `http://127.0.0.1:${(mcp as { port: number }).port}`) {
+        ch.tunnel[prefix] = `http://127.0.0.1:${(mcp as { port: number }).port}`;
+        saveConfig(cfg);
+        log(`隧道已挂载 ${prefix} → 本机 MCP Server`);
+      }
+    } catch (err) {
+      log(`MCP Server 启动失败（手机端将无法调用电脑工具）：${(err as Error).message}`);
+    }
+  }
+
   async function sessionFor(device: MobileDeviceConfig): Promise<DeviceChat> {
     const hit = chats.get(device.id);
     if (hit) return hit;
@@ -330,6 +347,7 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
     closedByUs = true;
     rl.close();
     hostWs?.close();
+    await mcp?.close();
     await relay?.close();
     process.exit(0);
   }

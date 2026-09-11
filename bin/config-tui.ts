@@ -1215,8 +1215,7 @@ async function mobileSettingsScreen(cfg: DitoConfig): Promise<void> {
   persist(cfg);
 }
 
-async function mobileDevicesScreen(cfg: DitoConfig): Promise<void> {
-  const items = (): MenuItem[] =>
+async function mobileDevicesScreen(cfg: DitoConfig): Promise<void> {  const items = (): MenuItem[] =>
     cfg.channels.mobile.devices.map((d) => ({
       label: d.name || "未命名设备",
       detail: `${d.platform || "未知平台"} · ${String(d.pairedAt).slice(0, 10)} · ${d.id.slice(0, 8)}…`,
@@ -1234,6 +1233,37 @@ async function mobileDevicesScreen(cfg: DitoConfig): Promise<void> {
     items,
     status: () => statusOf(cfg),
   });
+}
+
+async function mcpScreen(cfg: DitoConfig): Promise<void> {
+  const mcp = cfg.plugins.mcp;
+  const result = await formScreen({
+    crumbParts: ["配置", "MCP 服务"],
+    panelTitle: "MCP 服务",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "总开关", value: String(mcp.enabled), kind: "bool", hint: "关闭后 dito mobile 不再内嵌启动 MCP Server，`dito mcp` 也不可用" },
+      { label: "对外暴露", value: String(mcp.server.enabled), kind: "bool", hint: "把知识库/记忆/联网搜索/系统信息等桥接工具以 MCP 暴露给手机端与本机客户端（只绑 127.0.0.1）" },
+      { label: "端口", value: String(mcp.server.port), kind: "text", hint: "默认 3878；dito mobile 会自动把 /mcp 隧道指到这里，手机经中继调用" },
+      { label: "Bearer 令牌", value: mcp.server.token, kind: "sensitive", hint: "留空 = 信任本机连接与已配对设备的隧道访问（隧道侧已完成设备鉴权）" },
+      { label: "允许 pc_bash", value: String(mcp.server.allowBash), kind: "bool", hint: "开放「在电脑上执行命令」的 MCP 工具（内置危险命令拦截）；默认关" },
+      { label: "外部 MCP 服务器（JSON）", value: JSON.stringify(mcp.clients ?? []), kind: "text", hint: "Dito 自己接入的外部 MCP 服务器列表；接外部工具能力后续版本提供，可先留空" },
+    ],
+  });
+  if (!result) return;
+  mcp.enabled = parseBool(result[0].value);
+  mcp.server.enabled = parseBool(result[1].value);
+  const portNum = Number(result[2].value);
+  mcp.server.port = Number.isFinite(portNum) && portNum > 0 && portNum < 65536 ? portNum : 3878;
+  mcp.server.token = result[3].value.trim();
+  mcp.server.allowBash = parseBool(result[4].value);
+  try {
+    const parsed = JSON.parse(result[5].value || "[]");
+    if (Array.isArray(parsed)) mcp.clients = parsed;
+  } catch {
+    /* JSON 不合法时保持原列表不变 */
+  }
+  persist(cfg);
 }
 
 // ── 主菜单 ───────────────────────────────────────────────────────
@@ -1311,6 +1341,16 @@ async function mainMenu(cfg: DitoConfig): Promise<void> {
             : "停用",
       hint: "dito qq 连 SnowLuma 收发 QQ（含戳一戳/空间）；dito matrix 连 Matrix 房间；dito mobile 扫码连手机",
       onEnter: () => channelsScreen(cfg),
+    },
+    {
+      label: "MCP 服务",
+      detail: cfg.plugins.mcp?.enabled
+        ? cfg.plugins.mcp.server.enabled
+          ? `对外暴露 · 端口 ${cfg.plugins.mcp.server.port}${cfg.plugins.mcp.server.allowBash ? " · pc_bash 开" : ""}`
+          : "仅接入外部（未实现）"
+        : "停用",
+      hint: "把 Dito 能力以 MCP 暴露给手机端/本机客户端；`dito mcp` 独立运行，dito mobile 自动内嵌",
+      onEnter: () => mcpScreen(cfg),
     },
     {
       label: "保存并退出",

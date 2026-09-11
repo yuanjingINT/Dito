@@ -359,7 +359,8 @@ async function searxngSearch(query: string, max: number, baseUrl: string): Promi
   }));
 }
 
-async function doSearch(query: string, max: number, provider?: string): Promise<string> {
+/** 联网搜索（聚合各搜索源，自动降级）；MCP Server 等外部能力复用 */
+export async function doSearch(query: string, max: number, provider?: string): Promise<string> {
   const config = loadConfig();
   const ws = config.plugins.web_search;
   const errors: string[] = [];
@@ -427,7 +428,8 @@ async function doSearch(query: string, max: number, provider?: string): Promise<
   return `搜索失败：${errors.length ? errors.join("；") : "无可用搜索源"}`;
 }
 
-async function doFetch(url: string, format: string): Promise<string> {
+/** 网页抓取（转纯文本）；MCP Server 等外部能力复用 */
+export async function doFetch(url: string, format: string): Promise<string> {
   const resp = await fetch(url, { headers: { "User-Agent": UA } });
   if (!resp.ok) return `抓取失败：HTTP ${resp.status}`;
   const ct = resp.headers.get("content-type") || "";

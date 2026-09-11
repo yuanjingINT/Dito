@@ -190,6 +190,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args[0] === "mcp") {
+    const { runMcpServerMain } = await import("./mcp-server.js");
+    await runMcpServerMain();
+    return;
+  }
+
   if (args[0] === "voice") {
     const voicePlugin = loadConfig().plugins.voice;
     if (voicePlugin.enabled === false) {
