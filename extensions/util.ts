@@ -93,6 +93,28 @@ export interface MobileDeviceConfig {
   pairedAt: string;
 }
 
+export interface McpServerConfig {
+  enabled: boolean;
+  /** 监听端口（只绑 127.0.0.1；公网访问必须经手机频道隧道） */
+  port: number;
+  /** Bearer 令牌；留空 = 仅信任本机连接（隧道访问已经中继设备鉴权） */
+  token: string;
+  /** 允许 pc_bash 工具（在电脑上执行命令；默认关） */
+  allowBash: boolean;
+}
+
+export interface McpClientConfig {
+  name: string;
+  /** stdio：spawn 本地命令；http：连接远端 streamable HTTP */
+  transport: "stdio" | "http";
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  enabled: boolean;
+}
+
 export interface MobileChannelConfig {
   enabled: boolean;
   /** 远程中继基址（如 https://relay.example.com）；留空 = 本地局域网模式（内嵌中继 + 局域网 IP） */
@@ -179,6 +201,12 @@ export interface DitoConfig {
     };
     ask: { enabled: boolean };
     snowluma: { enabled: boolean };
+    /** MCP 双向：server 暴露 Dito 工具；client 接入外部 MCP 服务器 */
+    mcp: {
+      enabled: boolean;
+      server: McpServerConfig;
+      clients: McpClientConfig[];
+    };
   };
 }
 
@@ -409,6 +437,11 @@ export function defaultConfig(): DitoConfig {
       permission: { enabled: true, sudoMode: false, autoSudo: true, sudoCommand: "sudo" },
       ask: { enabled: true },
       snowluma: { enabled: true },
+      mcp: {
+        enabled: true,
+        server: { enabled: true, port: 3878, token: "", allowBash: false },
+        clients: [],
+      },
     },
   };
 }
