@@ -184,6 +184,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args[0] === "mobile") {
+    const { runMobileChannel } = await import("./mobile.js");
+    await runMobileChannel(args.slice(1));
+    return;
+  }
+
   if (args[0] === "voice") {
     const voicePlugin = loadConfig().plugins.voice;
     if (voicePlugin.enabled === false) {

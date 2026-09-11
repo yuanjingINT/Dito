@@ -85,6 +85,32 @@ export interface MatrixChannelConfig {
   rooms: string[];
 }
 
+export interface MobileDeviceConfig {
+  /** deviceToken（128 位 hex），设备端与配置各存一份 */
+  id: string;
+  name: string;
+  platform: string;
+  pairedAt: string;
+}
+
+export interface MobileChannelConfig {
+  enabled: boolean;
+  /** 远程中继基址（如 https://relay.example.com）；留空 = 本地局域网模式（内嵌中继 + 局域网 IP） */
+  relayUrl: string;
+  /** 房间 ID（r-xxxxxxxx）；留空则首次启动自动生成并写回 */
+  room: string;
+  /** 桌面端身份令牌；留空则首次启动自动生成并写回 */
+  hostToken: string;
+  /** 新设备配对免确认（测试/无人值守用；默认关，配对需终端 y/n） */
+  autoApprove: boolean;
+  /** 已配对设备（deviceToken 列表的权威来源，可在此吊销） */
+  devices: MobileDeviceConfig[];
+  /** HTTP 隧道路径前缀 → 本地服务，如 {"/mcp": "http://127.0.0.1:3878"} */
+  tunnel: Record<string, string>;
+  /** 本地局域网模式下托管到 /p/<room> 的 PWA 构建产物目录（空 = 内置测试页） */
+  pwaDir: string;
+}
+
 export interface DitoConfig {
   version: number;
   model: {
@@ -97,10 +123,11 @@ export interface DitoConfig {
     active: string;
     identity: string;
   };
-  /** 外部聊天频道：QQ（SnowLuma OneBot）与 Matrix */
+  /** 外部聊天频道：QQ（SnowLuma OneBot）、Matrix 与手机（中继 + 扫码配对） */
   channels: {
     qq: QqChannelConfig;
     matrix: MatrixChannelConfig;
+    mobile: MobileChannelConfig;
   };
   plugins: {
     provider: { enabled: boolean };
@@ -329,6 +356,16 @@ export function defaultConfig(): DitoConfig {
         homeserver: "https://matrix.org",
         accessToken: "",
         rooms: [],
+      },
+      mobile: {
+        enabled: false,
+        relayUrl: "",
+        room: "",
+        hostToken: "",
+        autoApprove: false,
+        devices: [],
+        tunnel: {},
+        pwaDir: "",
       },
     },
     plugins: {

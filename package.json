@@ -2,7 +2,7 @@
   "name": "dito",
   "version": "0.2.0",
   "description": "Dito（蒂特）—— 基于 pi agent 的 QQ/终端 AI 助手：语音对话、知识库、记忆、SnowLuma QQ 频道、Matrix 频道、联网搜索、权限门，默认模型为 opencode 免费公共模型",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "type": "module",
   "bin": {
     "dito": "./bin/dito"
@@ -31,10 +31,15 @@
     "@snowluma/mcp": "^1.14.15",
     "@snowluma/sdk": "^1.14.15",
     "matrix-js-sdk": "^42.3.0",
+    "qrcode": "^1.5.4",
     "tsx": "^4.23.12",
-    "typebox": "^1.3.13"
+    "typebox": "^1.3.13",
+    "ws": "^8.21.3"
   },
   "scripts": {},
-  "devDependencies": {},
-  "author": "yuanjingINT"
+  "author": "yuanjingINT",
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.18.1"
+  }
 }
