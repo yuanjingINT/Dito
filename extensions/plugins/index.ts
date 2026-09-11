@@ -14,6 +14,7 @@ import { permissionPlugin } from "./permission.js";
 import { askPlugin } from "./ask.js";
 import { voicePlugin } from "./voice.js";
 import { snowlumaPlugin } from "./snowluma.js";
+import { mcpClientPlugin } from "./mcp.js";
 
 export const DITO_PLUGINS: DitoPlugin[] = [
   providerPlugin,
@@ -27,4 +28,5 @@ export const DITO_PLUGINS: DitoPlugin[] = [
   askPlugin,
   voicePlugin,
   snowlumaPlugin,
+  mcpClientPlugin,
 ];
