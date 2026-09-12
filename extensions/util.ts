@@ -80,6 +80,12 @@ export interface QqChannelConfig {
   pokeBack: boolean;
   /** 自动同意好友/群邀请（默认关，请求只打日志） */
   autoApprove: boolean;
+  /** QQ 管理后台（dito qqadmin）：网页端管理好友/群/消息/好感度/表情包 */
+  admin: {
+    port: number;
+    /** 非空时页面与 API 需要 ?token= 或 Bearer（本机 127.0.0.1 访问始终放行） */
+    token: string;
+  };
 }
 
 export interface MatrixChannelConfig {
@@ -387,6 +393,7 @@ export function defaultConfig(): DitoConfig {
         friends: true,
         pokeBack: true,
         autoApprove: false,
+        admin: { port: 3880, token: "" },
       },
       matrix: {
         enabled: false,

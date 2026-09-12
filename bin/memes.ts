@@ -6,7 +6,7 @@
  * 发送用 base64 段（SnowLuma 在容器里，宿主机路径 file:// 对它无效）。
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, resolveApiKey } from "../extensions/util.js";
 
@@ -38,6 +38,7 @@ export class MemeStore {
   readonly dir: string;
   private index: MemeEntry[] = [];
   private loaded = false;
+  private lastMtime = 0;
 
   constructor(dir: string) {
     this.dir = dir;
@@ -47,11 +48,32 @@ export class MemeStore {
     if (this.loaded) return;
     const idx = join(this.dir, "memes.json");
     try {
-      if (existsSync(idx)) this.index = JSON.parse(readFileSync(idx, "utf-8")) as MemeEntry[];
+      if (existsSync(idx)) {
+        this.lastMtime = statSync(idx).mtimeMs;
+        this.index = JSON.parse(readFileSync(idx, "utf-8")) as MemeEntry[];
+      }
     } catch {
       this.index = [];
     }
     this.loaded = true;
+  }
+
+  /** qqadmin 后台改动 memes.json 后重读，避免本进程旧索引覆盖外部修改 */
+  reloadIfChanged(): void {
+    if (!this.loaded) {
+      this.load();
+      return;
+    }
+    const idx = join(this.dir, "memes.json");
+    try {
+      if (!existsSync(idx)) return;
+      const mtime = statSync(idx).mtimeMs;
+      if (mtime === this.lastMtime) return;
+      this.lastMtime = mtime;
+      this.index = JSON.parse(readFileSync(idx, "utf-8")) as MemeEntry[];
+    } catch {
+      /* 重读失败保留内存态 */
+    }
   }
 
   private save(): void {
@@ -94,12 +116,15 @@ export class MemeStore {
 
   /** 按情绪 + 内容关键词挑一张；不带条件 = 全库随机；有条件但无匹配时也全库随机兜底 */
   pick(emotion?: string, query?: string): MemeEntry | null {
-    this.load();
+    this.reloadIfChanged();
     if (this.index.length === 0) return null;
+    // 后台可能删过图片文件：兜底过滤掉已不存在的条目
+    const available = this.index.filter((e) => existsSync(join(this.dir, e.file)));
+    if (available.length === 0) return null;
     const emo = (emotion ?? "").trim();
     const q = (query ?? "").trim().toLowerCase();
-    if (!emo && !q) return this.index[Math.floor(Math.random() * this.index.length)];
-    const scored = this.index.map((e) => {
+    if (!emo && !q) return available[Math.floor(Math.random() * available.length)];
+    const scored = available.map((e) => {
       let score = 0;
       if (emo && e.emotion.includes(emo)) score += 10;
       if (q) {
@@ -109,7 +134,7 @@ export class MemeStore {
       return { e, score };
     });
     const best = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
-    if (best.length === 0) return this.index[Math.floor(Math.random() * this.index.length)];
+    if (best.length === 0) return available[Math.floor(Math.random() * available.length)];
     return best[Math.floor(Math.random() * Math.min(best.length, 3))].e;
   }
 

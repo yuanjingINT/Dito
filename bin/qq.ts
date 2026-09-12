@@ -594,6 +594,9 @@ export async function runQqChannel(): Promise<void> {
     if (!ch.friends) return;
     if (seenOnce(event.message_id)) return;
     if (event.user_id === (await safeSelfId(bot))) return;
+    // qqadmin 后台可能改过好感度/表情包索引：先同步外部修改
+    affinity.reloadIfChanged();
+    memes.reloadIfChanged();
     stealMemes(Array.isArray(event.message) ? event.message : [], `私聊-${event.user_id}`, memes);
     const key = `qq-private-${event.user_id}`;
     const name = event.sender?.nickname ?? String(event.user_id);
@@ -608,6 +611,9 @@ export async function runQqChannel(): Promise<void> {
   const onGroup = async (event: Parameters<Parameters<Bot["onGroupMessage"]>[0]>[0]): Promise<void> => {
     if (!ch.groups.includes(event.group_id)) return;
     if (seenOnce(event.message_id)) return;
+    // qqadmin 后台可能改过好感度/表情包索引：先同步外部修改
+    affinity.reloadIfChanged();
+    memes.reloadIfChanged();
     const name = event.sender?.card || event.sender?.nickname || String(event.user_id);
     let content = extractPlainText(event.raw_message);
     const keywords = ch.wakeKeywords.filter(Boolean);

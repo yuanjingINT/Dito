@@ -154,6 +154,17 @@ Dito 可以作为聊天机器人接入外部 IM，每个聊天（好友/群/房�
 - **群聊好感度**：每个群友 0-100 分（初始 50，持久化在 `affinity.json`），分数注入在每条群消息里，模型按对话体验用 `qq_affinity` 自主加减分（单次 ±20），语气随分数变化；**低于 20 分的群友消息直接忽略**
 - 好友/群请求默认只打日志，`autoApprove` 可开自动同意
 
+**QQ 管理后台（`dito qqadmin`）**：网页端管理 QQ 频道——总览（登录号/在线状态/数据统计）、实时消息流（SSE）、聊天查看与手动发送（OneBot 原始记录 + Dito 会话合并展示）、好友/群/群成员列表（好感度徽标、主人标记）、好感度管理（±/设定，改动热同步到 dito qq 进程）、表情包库（预览/删除）、QQ 频道配置表单、OneBot 动作台（白名单透传）。
+
+```bash
+dito qqadmin            # http://127.0.0.1:3880/（默认，channels.qq.admin.port 可改）
+dito qqadmin --port 9000 --token xxx --host 0.0.0.0   # 局域网开放需配令牌
+```
+
+- 安全：默认只绑 127.0.0.1；`channels.qq.admin.token` 非空时非本机访问需要令牌；动作台仅白名单动作（凭据类动作永不暴露）
+- 手机远程管理：mobile 频道启用时自动挂载隧道 `/qq`，配对设备经 `https://<relay>/t/<房间>/qq/` 访问
+- 多客户端并存：后台自建一条 SnowLuma 连接，与 `dito qq`、终端 TUI 互不干扰；`--no-bot` 可在 SnowLuma 离线时纯管理本地数据
+
 **Matrix 频道（`dito matrix`）**：`dito config` → 「频道」→「Matrix」：启用、填 Homeserver 与 Access Token（Element：设置 → 帮助与关于 → 高级），房间 ID 可留空表示响应所有已加入房间。走明文房间消息（加密房间暂不支持）。
 
 **手机频道（`dito mobile`，扫码配对）**：让手机（Android App / iPhone PWA）连上电脑上的 Dito——在家里走局域网直连，出门在外经公网中继连回家。

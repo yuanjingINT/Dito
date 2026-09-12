@@ -180,6 +180,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args[0] === "qqadmin") {
+    const { runQqAdminChannel } = await import("./qq-admin.js");
+    await runQqAdminChannel(args.slice(1));
+    return;
+  }
+
   if (args[0] === "matrix") {
     const { runMatrixChannel } = await import("./matrix.js");
     await runMatrixChannel();
