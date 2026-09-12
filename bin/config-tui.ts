@@ -1123,6 +1123,7 @@ async function qqChannelScreen(cfg: DitoConfig): Promise<void> {
       { label: "回复附带表情包概率", value: String(qq.memeChance ?? 0.3), kind: "text", hint: "0-1 小数（0.3 = 30%），回复后按概率补一张随机表情包；库空自动跳过" },
       { label: "被戳戳回去", value: String(qq.pokeBack), kind: "bool", hint: "收到戳一戳时自动戳回去" },
       { label: "自动同意请求", value: String(qq.autoApprove), kind: "bool", hint: "自动同意好友/群邀请（默认关，请求只打日志）" },
+      { label: "仅唤醒响应的群号", value: qq.wakeOnlyGroups.join(","), kind: "text", hint: "这些群不参与概率回复，只有 @/唤醒词 才回话（表情回应仍跟随回复）" },
     ],
   });
   if (!result) return;
@@ -1142,6 +1143,7 @@ async function qqChannelScreen(cfg: DitoConfig): Promise<void> {
   qq.memeChance = Number.isFinite(chanceNum) ? Math.max(0, Math.min(1, chanceNum)) : 0.3;
   qq.pokeBack = parseBool(result[12].value);
   qq.autoApprove = parseBool(result[13].value);
+  qq.wakeOnlyGroups = parseNumberList(result[14].value);
   persist(cfg);
 }
 

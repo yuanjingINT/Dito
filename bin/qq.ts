@@ -640,8 +640,8 @@ export async function runQqChannel(): Promise<void> {
     // 剥完为空（纯表情/图片的 @ 或打招呼）：给模型一个可回应的提示
     if (!content) content = atMe ? "（对方@了你，发的是一个表情/图片，没有文字）" : "（对方发了一个表情/图片，没有文字）";
 
-    // 文字回复概率：被唤醒必答；普通群聊消息按概率回复（默认 0.2）
-    const chance = woken ? 1 : (ch.groupReplyChance ?? 0.2);
+    // 文字回复概率：被唤醒必答；被动群（wakeOnlyGroups）不参与概率回复；其余按概率回复（默认 0.2）
+    const chance = woken ? 1 : (ch.wakeOnlyGroups.includes(event.group_id) ? 0 : (ch.groupReplyChance ?? 0.2));
     if (Math.random() >= chance) {
       console.log(`[dito qq] 群 ${event.group_id} 消息未命中回复概率（${chance}），忽略：${content.slice(0, 30)}`);
       return;

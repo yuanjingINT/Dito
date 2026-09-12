@@ -25,6 +25,8 @@ const common = {
   logLevel: "warning",
   minify: false,
   sourcemap: false,
+  // native 模块无法内联：运行时经 banner 的 require 桥从包根 node_modules 解析
+  external: ["@matrix-org/matrix-sdk-crypto-nodejs", "@mariozechner/clipboard-linux-x64-gnu"],
 };
 
 // ── ESM：import.meta 原生保留；banner 提供 CJS require 桥（外部模块动态 require 用）──

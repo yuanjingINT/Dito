@@ -29,6 +29,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@snowluma/mcp": "^1.14.15",
     "@snowluma/sdk": "^1.14.15",
+    "matrix-bot-sdk": "^0.8.0",
     "matrix-js-sdk": "^42.3.0",
     "qrcode": "^1.5.4",
     "tsx": "^4.23.12",

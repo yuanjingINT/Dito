@@ -1,0 +1,42 @@
+{
+  "name": "dito-agent",
+  "version": "0.2.0",
+  "description": "Dito（蒂特）—— 基于 pi agent 的个人 AI 助手：语音对话、知识库、记忆、SnowLuma QQ 频道、Matrix、手机频道、联网搜索、权限门。默认 opencode 免费模型，免 Key 开箱即用",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "dito": "./bin/dito",
+    "dito-relay": "./relay/server.mjs"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "assistant",
+    "dito",
+    "agent"
+  ],
+  "scripts": {},
+  "author": "yuanjingINT",
+  "files": [
+    "dist/",
+    "relay/",
+    "personas/",
+    "identities/",
+    "system-prompts/",
+    "skills/",
+    "config/",
+    "kb/",
+    "extensions/",
+    "docs/",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.5"
+  },
+  "optionalDependencies": {
+    "@matrix-org/matrix-sdk-crypto-nodejs": "0.6.6",
+    "@mariozechner/clipboard-linux-x64-gnu": "0.3.9"
+  }
+}
