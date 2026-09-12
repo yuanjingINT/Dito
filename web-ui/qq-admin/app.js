@@ -69,15 +69,13 @@
     const up = Math.floor((s.uptimeMs ?? 0) / 60000);
     $("#main").innerHTML = `
       <h2>总览</h2>
-      <div class="card">
-        <div class="grid">
-          <div><div class="stat">${esc(login.nickname || (s.noBot ? "未启用 bot" : "未连接"))}</div><div class="stat-label">登录号 ${esc(login.user_id ?? "-")}</div></div>
-          <div><div class="stat">${s.botConnected ? "在线" : "离线"}</div><div class="stat-label">SnowLuma · ${up} 分钟</div></div>
-          <div><div class="stat">${s.stats.memes}</div><div class="stat-label">表情包</div></div>
-          <div><div class="stat">${s.stats.affinityKeys}</div><div class="stat-label">好感度记录</div></div>
-          <div><div class="stat">${s.stats.sessions}</div><div class="stat-label">Dito 会话</div></div>
-          <div><div class="stat">${s.config.groups.length}</div><div class="stat-label">响应群数</div></div>
-        </div>
+      <div class="grid">
+        <div class="cell"><div class="stat">${esc(login.nickname || (s.noBot ? "未启用" : "未连接"))}</div><div class="stat-label">登录号 ${esc(login.user_id ?? "-")}</div></div>
+        <div class="cell"><div class="stat">${s.botConnected ? "在线" : "离线"}</div><div class="stat-label">SnowLuma · ${up} 分钟</div></div>
+        <div class="cell"><div class="stat">${s.stats.memes}</div><div class="stat-label">表情包</div></div>
+        <div class="cell"><div class="stat">${s.stats.affinityKeys}</div><div class="stat-label">好感度记录</div></div>
+        <div class="cell"><div class="stat">${s.stats.sessions}</div><div class="stat-label">Dito 会话</div></div>
+        <div class="cell"><div class="stat">${s.config.groups.length}</div><div class="stat-label">响应群数</div></div>
       </div>
       <div class="card">
         <h3>快捷开关（保存即时生效）</h3>
