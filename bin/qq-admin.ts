@@ -17,7 +17,7 @@ import { basename, extname, join, resolve, sep } from "node:path";
 
 import { SnowLumaWebSocketClient, message } from "@snowluma/sdk";
 
-import { loadConfig, saveConfig, ditoDataDir, type QqChannelConfig } from "../extensions/util.js";
+import { loadConfig, saveConfig, ditoDataDir, ROOT_DIR, type QqChannelConfig } from "../extensions/util.js";
 import { Affinity } from "./affinity.js";
 import { MemeStore } from "./memes.js";
 import { renderTextPng } from "./qq.js";
@@ -54,7 +54,7 @@ const ALLOWED_ACTIONS = new Set([
   "get_group_member_list", "get_group_member_info", "get_group_msg_history", "get_friend_msg_history",
   "get_msg", "get_version_info", "get_status",
   "set_group_card", "set_group_ban", "set_group_whole_ban", "set_group_admin",
-  "set_group_leave", "send_group_notice", "delete_msg",
+  "set_group_leave", "send_group_notice", "get_group_notice", "delete_msg",
   "friend_poke", "group_poke", "send_like", "set_qq_profile", "set_online_status",
 ]);
 
@@ -189,10 +189,27 @@ export async function runQqAdminChannel(argv: string[] = []): Promise<void> {
     }
   }
 
+  /** tool 名 → SnowLuma 实际动作名（目录快照里部分扩展动作带 _ 前缀） */
+  let actionNameMap: Map<string, string> | null = null;
+  function resolveAction(name: string): string {
+    if (actionNameMap === null) {
+      actionNameMap = new Map();
+      try {
+        const catalog = JSON.parse(
+          readFileSync(join(ROOT_DIR, "extensions", "snowluma-actions.json"), "utf-8"),
+        ) as Array<{ name: string; tool: string }>;
+        for (const a of catalog) actionNameMap.set(a.tool, a.name);
+      } catch {
+        /* 目录缺失则按原名调用 */
+      }
+    }
+    return actionNameMap.get(name) ?? name;
+  }
+
   async function raw(action: string, params?: Record<string, unknown>): Promise<{ ok: boolean; result?: unknown; error?: string }> {
     if (!bot || !botConnected) return { ok: false, error: "SnowLuma 未连接（--no-bot 或离线）" };
     try {
-      const result = await bot.raw(action, params);
+      const result = await bot.raw(resolveAction(action), params);
       return { ok: true, result };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
@@ -358,6 +375,30 @@ export async function runQqAdminChannel(argv: string[] = []): Promise<void> {
         return;
       }
       json(res, 200, await sendToChat(sendMatch[1], text.trim()));
+      return;
+    }
+    // 会话重置：移除映射并删除会话文件（dito qq 运行中时下一条消息自动开新会话）
+    const chatDelMatch = path.match(/^\/api\/chats\/(qq-(?:private|group)-\d+)$/);
+    if (chatDelMatch && method === "DELETE") {
+      const key = chatDelMatch[1];
+      let index: Record<string, string> = {};
+      try {
+        index = JSON.parse(readFileSync(QQ_CHATS_INDEX, "utf-8")) as Record<string, string>;
+      } catch {}
+      const file = index[key];
+      if (!file) {
+        json(res, 404, { ok: false, error: "会话不存在" });
+        return;
+      }
+      delete index[key];
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(QQ_CHATS_INDEX, JSON.stringify(index, null, 2), "utf-8");
+      try {
+        if (file.startsWith(QQ_SESSIONS_DIR + sep) && existsSync(file)) unlinkSync(file);
+      } catch (err) {
+        log(`会话文件删除失败（映射已移除）：${(err as Error).message}`);
+      }
+      json(res, 200, { ok: true, key, note: "映射已移除，会话文件已删除；dito qq 运行中时下一条消息自动开新会话" });
       return;
     }
 
