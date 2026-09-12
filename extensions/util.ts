@@ -7,10 +7,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir } from "node:os";
 import { hasPromptBundle, listEncryptedPromptNames, namespaceForDir, readEncryptedPrompt } from "./prompt-crypto.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const HERE = typeof import.meta !== "undefined" && typeof import.meta.url === "string"
+  ? dirname(fileURLToPath(import.meta.url))
+  : typeof __dirname !== "undefined"
+    ? __dirname
+    : ".";
 
 /** 包根目录（extensions/ 的上一级） */
-export const ROOT_DIR = join(__dirname, "..");
+export const ROOT_DIR = join(HERE, "..");
 export const PERSONAS_DIR = join(ROOT_DIR, "personas");
 export const IDENTITIES_DIR = join(ROOT_DIR, "identities");
 

@@ -12,7 +12,9 @@ import { dirname } from "node:path";
 
 // ESM 下没有全局 require，用 createRequire 恢复 CommonJS 风格加载，
 // 以便按运行时选择 bun:sqlite / node:sqlite。
-const require = createRequire(import.meta.url);
+const require = typeof import.meta !== "undefined" && typeof import.meta.url === "string"
+  ? createRequire(import.meta.url)
+  : createRequire(__filename);
 
 type Row = Record<string, unknown>;
 

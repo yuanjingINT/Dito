@@ -33,3 +33,6 @@ CONTEXT-compressed.md
 # 私人聊天存档不入仓库
 docs/
 .zcode/
+
+# 打包运行时缓存（node 二进制/appimagetool），体积大且可自动下载
+packaging/.cache/

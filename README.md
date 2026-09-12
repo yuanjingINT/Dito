@@ -302,6 +302,19 @@ pi -e extensions/index.ts --model opencode-free/big-pickle -p "你是谁"
 
 - 语音对话：唤醒词 → STT（whisper-cli / 小米 MiMo）→ 大模型 → TTS（espeak-ng / piper / 小米 MiMo），全屏 UI。
 
+## 打包（桌面端三平台产物）
+
+```bash
+packaging/build-portable.sh
+```
+
+- `dist/dito-linux-x64.AppImage`（55M，双击/命令行即用，已内置 Node）
+- `dist/dito-win-x64.zip`（55M，解压后 `dito.exe` 为 SEA 单文件可执行，`dito.cmd` 启动）
+- `dist/dito-macos-arm64.zip`（50M，解压出 `Dito.app`；首启需 `xattr -cr Dito.app` 绕过 Gatekeeper）
+
+均不发版自动分发，产物仅在本地 dist/。Android APK 见 dito-mobile 仓库
+（本地 `./gradlew :app:assembleDebug` 或其 GitHub Actions）。
+
 ## 全平台支持（Windows / macOS / Linux）
 
 桌面端是纯 Node 应用（≥22.5），三平台通用；`dito doctor` 一键体检本机环境

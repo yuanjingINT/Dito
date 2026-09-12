@@ -37,6 +37,7 @@ export function runWithTaskSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ROOT_DIR } from "../extensions/util.js";
 import type { TuiSession } from "./session.js";
 
 /** SnowLuma 动作目录快照（与 bin/qq.ts 共用同一份） */
@@ -46,7 +47,7 @@ interface SnowLumaAction {
   readOnly: boolean;
 }
 const SNOWLUMA_ACTIONS: SnowLumaAction[] = JSON.parse(
-  readFileSync(join(import.meta.dirname ?? ".", "..", "extensions", "snowluma-actions.json"), "utf-8"),
+  readFileSync(join(ROOT_DIR, "extensions", "snowluma-actions.json"), "utf-8"),
 ) as SnowLumaAction[];
 const SNOWLUMA_READ_ONLY = new Map(SNOWLUMA_ACTIONS.map((a) => [a.tool, a.readOnly]));
 
