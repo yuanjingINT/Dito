@@ -29,14 +29,13 @@ function sanitizeToolName(...parts: string[]): string {
 
 const CONNECT_TIMEOUT_MS = 15_000;
 
-function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`连接超时（${CONNECT_TIMEOUT_MS / 1000}s）`)), CONNECT_TIMEOUT_MS)),
-  ]);
-}
+/** 模块级连接缓存：同一外部服务器只连一次，多会话（含会话重建）共享 */
+const clientCache = new Map<string, { client: InstanceType<typeof Client>; tools: Array<{ name: string; description?: string; inputSchema?: unknown }> }>();
 
-async function connectAndRegister(pi: ExtensionAPI, cfg: McpClientConfig): Promise<void> {
+async function getClient(cfg: McpClientConfig): Promise<{ client: InstanceType<typeof Client>; tools: Array<{ name: string; description?: string; inputSchema?: unknown }> } | null> {
+  const key = JSON.stringify([cfg.name, cfg.transport, cfg.command, cfg.args, cfg.url]);
+  const hit = clientCache.get(key);
+  if (hit) return hit;
   const client = new Client({ name: "dito", version: "0.2.0" });
   try {
     const transport =
@@ -50,19 +49,28 @@ async function connectAndRegister(pi: ExtensionAPI, cfg: McpClientConfig): Promi
             env: { ...process.env, ...(cfg.env ?? {}) } as Record<string, string>,
           });
     await withTimeout(client.connect(transport), cfg.name);
+    const listed = await withTimeout(client.listTools(), cfg.name);
+    const tools = listed.tools as Array<{ name: string; description?: string; inputSchema?: unknown }>;
+    const entry = { client, tools };
+    clientCache.set(key, entry);
+    return entry;
   } catch (err) {
     console.error(`[mcp] 接入外部服务器「${cfg.name}」失败：${(err as Error).message}`);
-    return;
+    return null;
   }
+}
 
-  let tools: Array<{ name: string; description?: string; inputSchema?: unknown }> = [];
-  try {
-    const listed = await withTimeout(client.listTools(), cfg.name);
-    tools = listed.tools as typeof tools;
-  } catch (err) {
-    console.error(`[mcp] 「${cfg.name}」工具列表获取失败：${(err as Error).message}`);
-    return;
-  }
+function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`连接超时（${CONNECT_TIMEOUT_MS / 1000}s）`)), CONNECT_TIMEOUT_MS)),
+  ]);
+}
+
+async function connectAndRegister(pi: ExtensionAPI, cfg: McpClientConfig): Promise<void> {
+  const shared = await getClient(cfg);
+  if (!shared) return;
+  const { client, tools } = shared;
 
   let registered = 0;
   for (const tool of tools) {
@@ -95,7 +103,10 @@ async function connectAndRegister(pi: ExtensionAPI, cfg: McpClientConfig): Promi
       });
       registered++;
     } catch (err) {
-      console.error(`[mcp] 注册工具 ${toolName} 失败：${(err as Error).message}`);
+      // 会话重建后旧 ctx 变 stale：新 runner 会重新注册，这里静默跳过
+      if (!String((err as Error).message).includes("stale")) {
+        console.error(`[mcp] 注册工具 ${toolName} 失败：${(err as Error).message}`);
+      }
     }
   }
   if (registered > 0) {
