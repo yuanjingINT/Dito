@@ -86,6 +86,10 @@ export async function runMatrixChannel(): Promise<void> {
   client.on("room.message", (roomId: string, event: Record<string, any>) => {
     void (async () => {
       try {
+        // 每条消息重读配置：rooms/owners/enabled 等行为字段后台改动即时生效
+        // （homeserver/accessToken 属于连接参数，改动需重启 dito matrix）
+        const ch: MatrixChannelConfig = loadConfig().channels.matrix;
+        if (!ch.enabled) return;
         const content = event?.content;
         if (!content || event.sender === selfId) return;
         if (ch.rooms.length > 0 && !ch.rooms.includes(roomId)) return;

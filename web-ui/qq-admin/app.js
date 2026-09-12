@@ -40,6 +40,7 @@
     ["groups", "群列表", () => renderContacts("groups")],
     ["affinity", "好感度", renderAffinity],
     ["memes", "表情包", renderMemes],
+    ["matrix", "Matrix", renderMatrix],
     ["config", "配置", renderConfig],
     ["actions", "动作台", renderActions],
   ];
@@ -554,6 +555,63 @@
         autoReact: $("#c-react").checked, autoApprove: $("#c-approve").checked,
       }) });
       toast("已保存");
+    };
+  }
+
+  // ── Matrix ──────────────────────────────────────────────────────
+  async function renderMatrix() {
+    $("#main").innerHTML = `<h2>Matrix</h2><div class="muted">加载中…</div>`;
+    let st, cfg;
+    try {
+      st = await (await fetch("/api/matrix/status")).json();
+      cfg = (await api("/api/config/matrix")).config;
+    } catch (e) {
+      $("#main").innerHTML = `<div class="card">加载失败：${esc(e.message)}</div>`;
+      return;
+    }
+    const rooms = st.joinedRooms ?? [];
+    $("#main").innerHTML = `
+      <h2>Matrix 频道</h2>
+      <div class="grid">
+        <div class="cell"><div class="stat">${st.daemon?.running === null ? "未知" : st.daemon?.running ? "运行中" : "未运行"}</div><div class="stat-label">dito matrix 守护进程 ${st.daemon?.uptime ? "· 已跑 " + esc(st.daemon.uptime) : ""}</div></div>
+        <div class="cell"><div class="stat">${st.tokenValid ? "有效" : st.reachable ? "无效" : "不可达"}</div><div class="stat-label">令牌 / Homeserver</div></div>
+        <div class="cell"><div class="stat">${rooms.length}</div><div class="stat-label">已加入房间</div></div>
+        <div class="cell"><div class="stat">${cfg.enabled ? "启用" : "停用"}</div><div class="stat-label">频道开关</div></div>
+      </div>
+      <div class="card">
+        <h3>账号</h3>
+        <div class="muted">${st.account ? `机器人账号：<code>${esc(st.account)}</code>（E2EE 由 dito matrix 守护进程负责）` : "令牌无效或 Homeserver 不可达，无法读取账号信息"}</div>
+      </div>
+      <div class="card">
+        <h3>配置</h3>
+        <div class="form-row"><label>启用频道</label><input type="checkbox" id="mx-enabled" ${cfg.enabled ? "checked" : ""}></div>
+        <div class="form-row"><label>Homeserver</label><input id="mx-hs" value="${esc(cfg.homeserver)}" style="flex:1"></div>
+        <div class="form-row"><label>Access Token</label><input id="mx-token" type="password" placeholder="${cfg.hasToken ? "已配置（留空保持不变）" : "尚未配置"}" style="flex:1"></div>
+        <div class="form-row"><label>响应房间</label><input id="mx-rooms" value="${esc((cfg.rooms || []).join(","))}" placeholder="留空 = 所有已加入房间；多个用逗号分隔（!xxx:server）" style="flex:1"></div>
+        <div class="form-row"><label>主人</label><input id="mx-owners" value="${esc((cfg.owners || []).join(","))}" placeholder="@alice:example.org,@bob:example.org" style="flex:1"><span class="muted">DM 且仅主人时全量工具</span></div>
+        <button class="btn" id="mx-save">保存</button>
+        <span class="muted" style="margin-left:8px">rooms/owners/enabled 即时生效；homeserver/token 改动需重启 dito matrix</span>
+      </div>
+      <div class="card">
+        <h3>已加入房间（${rooms.length}）</h3>
+        <table>${rooms.map((r) => `<tr>
+          <td>${esc(r.name || "未命名房间")}</td>
+          <td class="muted" style="font-family:var(--mono)">${esc(r.id)}</td>
+          <td>${r.members} 人</td>
+          <td>${cfg.rooms && cfg.rooms.length && !cfg.rooms.includes(r.id) ? '<span class="badge">未响应（未列入白名单）</span>' : '<span class="badge owner">响应中</span>'}</td>
+        </tr>`).join("") || '<tr><td class="muted">无</td></tr>'}</table>
+      </div>`;
+    $("#mx-save").onclick = async () => {
+      const patch = {
+        enabled: $("#mx-enabled").checked,
+        homeserver: $("#mx-hs").value.trim(),
+        rooms: $("#mx-rooms").value.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean),
+        owners: $("#mx-owners").value.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean),
+      };
+      const token = $("#mx-token").value.trim();
+      if (token) patch.accessToken = token;
+      const r = await api("/api/config/matrix", { method: "PATCH", body: JSON.stringify(patch) });
+      toast("已保存。" + (r.note || ""));
     };
   }
 
