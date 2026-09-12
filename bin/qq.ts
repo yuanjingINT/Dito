@@ -508,7 +508,7 @@ function buildQqSystemPrompt(): string {
 
 export async function runQqChannel(): Promise<void> {
   const cfg = loadConfig();
-  const ch: QqChannelConfig = cfg.channels.qq;
+  let ch: QqChannelConfig = cfg.channels.qq;
   if (!ch.enabled) {
     console.error("QQ 频道未启用：在 `dito config` 的「频道」分区启用 channels.qq 并填 SnowLuma 地址。");
     process.exit(1);
@@ -591,6 +591,8 @@ export async function runQqChannel(): Promise<void> {
 
   // 私聊
   const onPrivate = async (event: Parameters<Parameters<Bot["onPrivateMessage"]>[0]>[0]): Promise<void> => {
+    // 每条消息重读配置：owners/groups/概率等行为字段后台改动即时生效
+    ch = loadConfig().channels.qq;
     if (!ch.friends) return;
     if (seenOnce(event.message_id)) return;
     if (event.user_id === (await safeSelfId(bot))) return;
@@ -609,6 +611,7 @@ export async function runQqChannel(): Promise<void> {
 
   // 群聊（仅 allowlist 内的群；含唤醒词或 @机器人 才响应）
   const onGroup = async (event: Parameters<Parameters<Bot["onGroupMessage"]>[0]>[0]): Promise<void> => {
+    ch = loadConfig().channels.qq;
     if (!ch.groups.includes(event.group_id)) return;
     if (seenOnce(event.message_id)) return;
     // qqadmin 后台可能改过好感度/表情包索引：先同步外部修改

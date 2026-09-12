@@ -29,6 +29,13 @@ function log(msg: string): void {
   console.log(`${C.dim}[${TAG}]${C.reset} ${msg}`);
 }
 
+function formatDuration(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return d > 0 ? `${d}天${h}小时` : h > 0 ? `${h}小时${m}分` : `${m}分钟`;
+}
+
 const DITO_DIR = ditoDataDir();
 const CHAT_SESSIONS_DIR = join(DITO_DIR);
 const QQ_CHATS_INDEX = join(DITO_DIR, "qq-chats.json");
@@ -504,6 +511,99 @@ export async function runQqAdminChannel(argv: string[] = []): Promise<void> {
       if (typeof patch.url === "string" && patch.url.trim()) c.url = patch.url.trim();
       saveConfig(current);
       json(res, 200, { ok: true, config: { ...c, accessToken: undefined } });
+      return;
+    }
+
+    // ── Matrix ──────────────────────────────────────────────────
+    if (path === "/api/matrix/status" && method === "GET") {
+      const mc = loadConfig().channels.matrix;
+      const result: Record<string, unknown> = { ok: true, enabled: mc.enabled, homeserver: mc.homeserver, hasToken: !!mc.accessToken, roomsLimit: mc.rooms, owners: mc.owners };
+      // 守护进程探测（/proc 扫描；非 Linux 返回 unknown）
+      if (process.platform === "linux") {
+        let pid: number | null = null;
+        let etime = "";
+        try {
+          const { readdirSync, readFileSync: rf } = await import("node:fs");
+          for (const d of readdirSync("/proc")) {
+            if (!/^\d+$/.test(d)) continue;
+            try {
+              const cmd = rf(`/proc/${d}/cmdline`, "utf-8").replace(/\0/g, " ");
+              if (cmd.includes("dito.ts") && / matrix(\s|$)/.test(cmd)) {
+                pid = Number(d);
+                const stat = rf(`/proc/${d}/stat`, "utf-8").split(")");
+                const fields = stat[1]?.trim().split(" ") ?? [];
+                const uptime = Number(rf("/proc/uptime", "utf-8").split(" ")[0]);
+                const starttime = Number(fields[19] ?? 0) / 100;
+                etime = formatDuration(uptime - starttime);
+                break;
+              }
+            } catch {}
+          }
+        } catch {}
+        result.daemon = { running: pid !== null, pid, uptime: etime };
+      } else {
+        result.daemon = { running: null, pid: null, uptime: "" };
+      }
+      // homeserver 可达 + whoami
+      if (mc.homeserver && mc.accessToken) {
+        try {
+          const who = await fetch(`${mc.homeserver.replace(/\/+$/, "")}/_matrix/client/v3/account/whoami`, {
+            headers: { Authorization: `Bearer ${mc.accessToken}` },
+            signal: AbortSignal.timeout(8000),
+          });
+          const whoJson = (await who.json()) as { user_id?: string };
+          result.reachable = true;
+          result.account = who.ok ? whoJson.user_id ?? "" : "";
+          result.tokenValid = who.ok;
+          // 已加入房间
+          if (who.ok) {
+            try {
+              const jr = await fetch(`${mc.homeserver.replace(/\/+$/, "")}/_matrix/client/v3/joined_rooms`, {
+                headers: { Authorization: `Bearer ${mc.accessToken}` }, signal: AbortSignal.timeout(8000) });
+              const roomIds = ((await jr.json()) as { joined_rooms?: string[] }).joined_rooms ?? [];
+              const rooms = await Promise.all(roomIds.slice(0, 50).map(async (roomId) => {
+                let name = "";
+                let members = 0;
+                try {
+                  const nr = await fetch(`${mc.homeserver.replace(/\/+$/, "")}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.name`, {
+                    headers: { Authorization: `Bearer ${mc.accessToken}` }, signal: AbortSignal.timeout(8000) });
+                  if (nr.ok) name = ((await nr.json()) as { name?: string }).name ?? "";
+                } catch {}
+                try {
+                  const mr = await fetch(`${mc.homeserver.replace(/\/+$/, "")}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`, {
+                    headers: { Authorization: `Bearer ${mc.accessToken}` }, signal: AbortSignal.timeout(8000) });
+                  if (mr.ok) members = Object.keys(((await mr.json()) as { joined?: Record<string, unknown> }).joined ?? {}).length;
+                } catch {}
+                return { id: roomId, name, members };
+              }));
+              result.joinedRooms = rooms;
+            } catch { result.joinedRooms = []; }
+          }
+        } catch {
+          result.reachable = false;
+        }
+      }
+      json(res, 200, result);
+      return;
+    }
+    if (path === "/api/config/matrix" && method === "GET") {
+      const c = loadConfig().channels.matrix;
+      json(res, 200, { ok: true, config: { enabled: c.enabled, homeserver: c.homeserver, hasToken: !!c.accessToken, rooms: c.rooms, owners: c.owners ?? [] } });
+      return;
+    }
+    if (path === "/api/config/matrix" && method === "PATCH") {
+      const body = await readBody(req);
+      let patch: Record<string, unknown>;
+      try { patch = JSON.parse(body) as Record<string, unknown>; } catch { json(res, 400, { ok: false, error: "invalid json" }); return; }
+      const current = loadConfig();
+      const c = current.channels.matrix;
+      if (typeof patch.enabled === "boolean") c.enabled = patch.enabled;
+      if (typeof patch.homeserver === "string" && patch.homeserver.trim()) c.homeserver = patch.homeserver.trim();
+      if (typeof patch.accessToken === "string" && patch.accessToken.trim()) c.accessToken = patch.accessToken.trim();
+      if (Array.isArray(patch.rooms)) c.rooms = patch.rooms.map(String).map((x) => x.trim()).filter(Boolean);
+      if (Array.isArray(patch.owners)) c.owners = patch.owners.map(String).map((x) => x.trim()).filter(Boolean);
+      saveConfig(current);
+      json(res, 200, { ok: true, note: "rooms/owners/enabled 即时生效；homeserver/accessToken 改动需重启 dito matrix" });
       return;
     }
 
