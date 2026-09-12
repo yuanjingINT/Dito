@@ -14,10 +14,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const HERE = typeof import.meta !== "undefined" && typeof import.meta.url === "string"
+  ? dirname(fileURLToPath(import.meta.url))
+  : typeof __dirname !== "undefined"
+    ? __dirname
+    : ".";
 
 /** 包根目录（extensions/ 的上一级） */
-export const PROMPT_ROOT = join(__dirname, "..");
+export const PROMPT_ROOT = join(HERE, "..");
 
 export type PromptNamespace = "personas" | "identities" | "system-prompts";
 

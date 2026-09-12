@@ -12,7 +12,7 @@ import net from "node:net";
 import { randomBytes } from "node:crypto";
 import { Type } from "typebox";
 import { SnowLumaWebSocketClient, message } from "@snowluma/sdk";
-import { loadConfig } from "./util.js";
+import { loadConfig, ROOT_DIR } from "./util.js";
 import { MemeStore } from "../bin/memes.js";
 import { homedir } from "node:os";
 
@@ -28,7 +28,7 @@ interface SnowLumaAction {
   inputSchema: Record<string, unknown>;
 }
 const SNOWLUMA_ACTIONS: SnowLumaAction[] = JSON.parse(
-  readFileSync(join(import.meta.dirname ?? ".", "snowluma-actions.json"), "utf-8"),
+  readFileSync(join(ROOT_DIR, "extensions", "snowluma-actions.json"), "utf-8"),
 ) as SnowLumaAction[];
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
