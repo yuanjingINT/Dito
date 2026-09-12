@@ -68,6 +68,8 @@ export interface QqChannelConfig {
   wakeKeywords: string[];
   /** 普通群聊消息的文字回复概率（0-1，默认 0.2）；被唤醒（@/唤醒词）时必答 */
   groupReplyChance: number;
+  /** 仅唤醒响应的群：这些群不参与概率回复，只有 @/唤醒词 才回话 */
+  wakeOnlyGroups: number[];
   /** 自动表情回应：每条群消息到达时按情绪自动贴一个表情 */
   autoReact: boolean;
   /** 每次回复附带随机表情包的概率（0-1，默认 0.3；库空时自动跳过） */
@@ -87,6 +89,8 @@ export interface MatrixChannelConfig {
   accessToken: string;
   /** 允许响应的房间 ID；空 = 所有已加入房间 */
   rooms: string[];
+  /** 主人 Matrix 用户 ID（如 @alice:example.org）；DM 且成员仅主人时解锁全量工具 */
+  owners?: string[];
 }
 
 export interface MobileDeviceConfig {
@@ -376,6 +380,7 @@ export function defaultConfig(): DitoConfig {
         owners: [1471048379],
         wakeKeywords: [],
         groupReplyChance: 0.2,
+        wakeOnlyGroups: [],
         autoReact: true,
         memeChance: 0.3,
         groups: [],
