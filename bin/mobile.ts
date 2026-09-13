@@ -4,12 +4,13 @@
  * 用法：dito mobile [--reset]
  *   启动后连接中继（relayUrl 空 = 本地内嵌中继、局域网直连），
  *   终端显示配对二维码；手机扫码 → 电脑端确认 → 建立会话开始对话。
- *   已配对设备重连自动接入，每个设备一条独立持久会话（主人级权限）。
+ *   已配对设备重连自动接入；每台设备可建多个对话（列表/新建/切换/删除），
+ *   支持语音输入（桌面端 ASR）与语音回传（桌面端 TTS → chat.tts）。
  *
  * 协议见 docs/protocol.md；许可证 GPL-3.0-only。
  */
 import { randomBytes } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline/promises";
 
@@ -24,15 +25,24 @@ import {
   type MobileChannelConfig,
   type MobileDeviceConfig,
 } from "../extensions/util.js";
-import { transcribeRemoteAudio, type VoiceConfig } from "../extensions/voice.js";
-import { openChannelSession, type TuiSession } from "./session.js";
+import { transcribeRemoteAudio, synthesizeSpeech, type VoiceConfig } from "../extensions/voice.js";
+import { openChannelSession, parseSessionTurns, type TuiSession } from "./session.js";
 import { runWithTaskSlot } from "./channel-chat.js";
 import { startRelay, type RelayHandle } from "../relay/server.mjs";
 
 const TAG = "dito mobile";
 const MOBILE_DIR = join(ditoDataDir(), "mobile");
+const CHATS_INDEX = join(MOBILE_DIR, "mobile-chats.json");
+const CONV_STORE = join(MOBILE_DIR, "mobile-conversations.json");
+const SESSIONS_DIR = join(MOBILE_DIR, "mobile-sessions");
 const EMBED_PORT = Number(process.env.DITO_MOBILE_PORT ?? 8787);
 const EMBED_PORTS = [EMBED_PORT, EMBED_PORT + 1, EMBED_PORT + 2, EMBED_PORT + 3];
+/** 主对话（兼容旧版单会话映射：mobile-chats.json 里 <devKey> → 会话文件） */
+const MAIN_CONV = "main";
+/** TTS 单次合成的文本上限（控制音频体量，超出截断） */
+const TTS_TEXT_LIMIT = 600;
+/** 供「点按重播语音」缓存的最近回复条数 */
+const TTS_CACHE_LIMIT = 80;
 
 const C = { reset: "\x1b[0m", dim: "\x1b[90m", cyan: "\x1b[36m", green: "\x1b[32m", yellow: "\x1b[33m", bold: "\x1b[1m" };
 
@@ -62,6 +72,67 @@ interface DeviceChat {
   beginTurn(id: string): void;
 }
 
+// ── 对话元数据（每设备多个对话；main = 旧版默认会话） ──────────────
+interface ConvMeta {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  /** 会话文件绝对路径（创建后写入） */
+  file?: string;
+}
+
+interface ConvStore {
+  /** devKey -> 当前对话 id */
+  active: Record<string, string>;
+  /** devKey -> 对话列表（新对话插最前） */
+  items: Record<string, ConvMeta[]>;
+}
+
+function loadConvStore(): ConvStore {
+  try {
+    const parsed = JSON.parse(readFileSync(CONV_STORE, "utf-8")) as Partial<ConvStore>;
+    return { active: parsed.active ?? {}, items: parsed.items ?? {} };
+  } catch {
+    return { active: {}, items: {} };
+  }
+}
+
+function saveConvStore(store: ConvStore): void {
+  mkdirSync(MOBILE_DIR, { recursive: true });
+  writeFileSync(CONV_STORE, JSON.stringify(store, null, 2), "utf-8");
+}
+
+/** chatKey = mobile-chats.json 的键 / memoryScope。main 保持旧键以兼容既有会话与记忆库 */
+function chatKeyOf(devKey: string, cid: string): string {
+  return cid === MAIN_CONV ? `mobile-${devKey}` : `mobile-${devKey}:${cid}`;
+}
+
+/** 从会话 JSONL 提取标题候选（第一条用户消息；需全量解析，不能只取尾部窗口） */
+function firstUserText(file?: string): string {
+  if (!file || !existsSync(file)) return "";
+  return parseSessionTurns(file, 10_000).find((t) => t.role === "user")?.text ?? "";
+}
+
+function lastTurnText(file?: string): string {
+  if (!file || !existsSync(file)) return "";
+  const turns = parseSessionTurns(file, 1);
+  return turns.at(-1)?.text ?? "";
+}
+
+function turnCount(file?: string): number {
+  if (!file || !existsSync(file)) return 0;
+  return parseSessionTurns(file, 10_000).length;
+}
+
+/** 旧会话文件的修改时间（毫秒），用于迁移元数据的时间字段 */
+function fileMtimeIso(file?: string): string {
+  try {
+    if (file && existsSync(file)) return new Date(statSync(file).mtime.getTime()).toISOString();
+  } catch {}
+  return new Date().toISOString();
+}
+
 export async function runMobileChannel(argv: string[] = []): Promise<void> {
   const reset = argv.includes("--reset");
   const cfg = loadConfig();
@@ -79,7 +150,7 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
   if (!ch.hostToken) ch.hostToken = TOKEN();
   saveConfig(cfg);
 
-  mkdirSync(join(MOBILE_DIR, "mobile-sessions"), { recursive: true });
+  mkdirSync(SESSIONS_DIR, { recursive: true });
 
   // ── 中继：远程 or 内嵌局域网 ────────────────────────────────────
   let wsBase: string;
@@ -94,8 +165,89 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
     log(`本地局域网模式：内嵌中继端口 ${started.port}（手机需与电脑同一网络）`);
   }
 
-  // ── 设备会话 ────────────────────────────────────────────────────
-  const chats = new Map<string, DeviceChat>(); // deviceToken -> 会话
+  // ── 会话与对话状态 ─────────────────────────────────────────────
+  const chats = new Map<string, DeviceChat>(); // chatKey -> 会话
+  const voiceMode = new Set<string>(); // devKey -> 是否开启语音回传（自动 TTS）
+  const ttsCache = new Map<string, string>(); // turnId -> 回复全文（点按重播用，FIFO 上限）
+
+  function cacheTurnText(id: string, text: string): void {
+    ttsCache.set(id, text);
+    while (ttsCache.size > TTS_CACHE_LIMIT) ttsCache.delete(ttsCache.keys().next().value as string);
+  }
+
+  /** 读取某设备的对话元数据（保证条目存在；首次访问时迁移旧版单会话映射）。
+   *  返回的 items 挂在 store 上：改动后需 saveConvStore(store) 持久化。 */
+  function ensureStore(devKey: string): { store: ConvStore; items: ConvMeta[] } {
+    const store = loadConvStore();
+    if (!store.items[devKey]?.length) {
+      const legacyFile = (() => {
+        try {
+          return (JSON.parse(readFileSync(CHATS_INDEX, "utf-8")) as Record<string, string>)[`mobile-${devKey}`] ?? "";
+        } catch {
+          return "";
+        }
+      })();
+      const meta: ConvMeta = {
+        id: MAIN_CONV,
+        title: firstUserText(legacyFile).slice(0, 24),
+        createdAt: fileMtimeIso(legacyFile),
+        updatedAt: fileMtimeIso(legacyFile),
+        ...(legacyFile ? { file: legacyFile } : {}),
+      };
+      store.items[devKey] = [meta];
+      if (!store.active[devKey]) store.active[devKey] = MAIN_CONV;
+      saveConvStore(store);
+    }
+    return { store, items: store.items[devKey] };
+  }
+
+  function activeCid(devKey: string): string {
+    const { store, items } = ensureStore(devKey);
+    const active = store.active[devKey];
+    if (active && items.some((c) => c.id === active)) return active;
+    return items[0]?.id ?? MAIN_CONV;
+  }
+
+  /** 更新对话元数据；titleIfEmpty 用于首轮消息自动起标题 */
+  function setConvTitle(
+    devKey: string,
+    cid: string,
+    patch: Partial<Pick<ConvMeta, "title" | "updatedAt" | "file">> & { titleIfEmpty?: string },
+  ): void {
+    const { store, items } = ensureStore(devKey);
+    const hit = items.find((c) => c.id === cid);
+    if (!hit) return;
+    const { titleIfEmpty, ...rest } = patch;
+    if (titleIfEmpty && !hit.title) hit.title = titleIfEmpty.slice(0, 24);
+    Object.assign(hit, rest);
+    saveConvStore(store);
+  }
+
+  /** 会话列表 payload（预览取最后一条消息，标题缺省从首条用户消息推导） */
+  function buildSessionList(devKey: string): { type: "session.list"; active: string; items: unknown[] } {
+    const { store, items } = ensureStore(devKey);
+    let dirty = false;
+    const view = items.map((c) => {
+      if (!c.title) {
+        const derived = firstUserText(c.file).slice(0, 24);
+        if (derived) {
+          c.title = derived;
+          dirty = true;
+        }
+      }
+      return {
+        id: c.id,
+        title: c.title || "新对话",
+        preview: lastTurnText(c.file).slice(0, 60),
+        messageCount: turnCount(c.file),
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt || c.createdAt,
+      };
+    });
+    if (dirty) saveConvStore(store);
+    view.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    return { type: "session.list", active: activeCid(devKey), items: view };
+  }
 
   // ── MCP Server 内嵌启动（手机端经隧道调用 pc_* 工具的通道） ────────
   let mcp: { close(): Promise<void> } | null = null;
@@ -114,24 +266,27 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
     }
   }
 
-  async function sessionFor(device: MobileDeviceConfig): Promise<DeviceChat> {
-    const hit = chats.get(device.id);
+  /** 取（或创建）某设备某对话的会话句柄，并挂上事件流转发 */
+  async function chatForConv(device: MobileDeviceConfig, cid: string): Promise<DeviceChat> {
+    const devKey = device.id.slice(0, 8);
+    const chatKey = chatKeyOf(devKey, cid);
+    const hit = chats.get(chatKey);
     if (hit) return hit;
-    const key = `mobile-${device.id.slice(0, 8)}`;
-    const created = await openChannelSession(join(MOBILE_DIR, "mobile-chats.json"), key, undefined, {
+    const created = await openChannelSession(CHATS_INDEX, chatKey, undefined, {
       systemPrompt: buildMobileSystemPrompt(device.name),
       skipPluginIds: ["mode"],
-      sessionsDir: join(MOBILE_DIR, "mobile-sessions"),
-      memoryScope: key,
+      sessionsDir: SESSIONS_DIR,
+      memoryScope: chatKey,
     });
-    const chat = attachStreamRelay(created.session, device.id);
-    chats.set(device.id, chat);
-    log(`手机会话就绪：${key}（${device.name}）`);
+    const chat = attachStreamRelay(created.session, device.id, devKey, cid);
+    chats.set(chatKey, chat);
+    if (created.session.sessionFile) setConvTitle(devKey, cid, { file: created.session.sessionFile });
+    log(`手机会话就绪：${chatKey}（${device.name}）`);
     return chat;
   }
 
   /** 把会话事件流翻译成手机端消息（chat.delta / chat.tool / chat.end / chat.error） */
-  function attachStreamRelay(session: TuiSession, deviceToken: string): DeviceChat {
+  function attachStreamRelay(session: TuiSession, deviceToken: string, devKey: string, cid: string): DeviceChat {
     let turnId = "";
     let buf = "";
     const sendTo = (payload: unknown): void => sendToDevice(deviceToken, payload);
@@ -165,9 +320,15 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
         return;
       }
       if (e.type === "agent_end") {
-        sendTo({ type: "chat.end", id: turnId, text: buf.trim() });
+        const text = buf.trim();
+        sendTo({ type: "chat.end", id: turnId, text });
+        cacheTurnText(turnId, text);
+        setConvTitle(devKey, cid, { updatedAt: new Date().toISOString() });
+        const endedTurn = turnId;
         buf = "";
         turnId = "";
+        // 语音回传：设备开启语音模式时自动朗读回复（异步，不阻塞下一轮）
+        if (text && voiceMode.has(devKey)) void speakAndSend(deviceToken, endedTurn, text);
       }
     });
     return {
@@ -177,6 +338,19 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
       },
       session,
     };
+  }
+
+  /** 桌面端 TTS → chat.tts（base64 音频；失败静默，不影响文本回复） */
+  async function speakAndSend(deviceToken: string, turnId: string, text: string): Promise<void> {
+    try {
+      const clipped = text.slice(0, TTS_TEXT_LIMIT);
+      const voiceCfg = loadConfig().plugins.voice as VoiceConfig;
+      const synth = await synthesizeSpeech(clipped, voiceCfg);
+      if (!synth || synth.audio.length === 0) return;
+      sendToDevice(deviceToken, { type: "chat.tts", id: turnId, mime: synth.mime, audioB64: synth.audio.toString("base64") });
+    } catch {
+      /* 合成失败不打扰对话 */
+    }
   }
 
   // ── host ↔ 中继连接（断线自动重连） ─────────────────────────────
@@ -278,17 +452,153 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
     log(`设备「${name}」已配对（共 ${current.channels.mobile.devices.length} 台）`);
   }
 
-  /** 设备业务消息：chat.user（文本）与 chat.voice（语音→ASR）；一轮对话一个 id，流式回传 */
+  /** 删除对话：清元数据、chats 索引与会话文件；若删的是当前对话则自动切到最近一个（没有就新建） */
+  function deleteConv(device: MobileDeviceConfig, cid: string): void {
+    const devKey = device.id.slice(0, 8);
+    const { store, items } = ensureStore(devKey);
+    const hit = items.find((c) => c.id === cid);
+    if (!hit) return;
+    const chatKey = chatKeyOf(devKey, cid);
+    const wasActive = activeCid(devKey) === cid;
+    store.items[devKey] = items.filter((c) => c.id !== cid);
+    delete store.active[devKey];
+    saveConvStore(store);
+
+    // chats 索引（chatKey → 会话文件）移除
+    try {
+      const index = JSON.parse(readFileSync(CHATS_INDEX, "utf-8")) as Record<string, string>;
+      const file = index[chatKey];
+      delete index[chatKey];
+      mkdirSync(MOBILE_DIR, { recursive: true });
+      writeFileSync(CHATS_INDEX, JSON.stringify(index, null, 2), "utf-8");
+      if (file && existsSync(file)) unlinkSync(file);
+    } catch {}
+    if (hit.file && existsSync(hit.file)) {
+      try {
+        unlinkSync(hit.file);
+      } catch {}
+    }
+    // 内存中的会话一并释放
+    const mem = chats.get(chatKey);
+    if (mem) {
+      chats.delete(chatKey);
+      try {
+        mem.session.dispose();
+      } catch {}
+    }
+    log(`「${device.name}」删除对话 ${cid}${wasActive ? "（当前对话，已自动切换）" : ""}`);
+  }
+
+  /** 设备业务消息：聊天、语音、会话管理与语音回传 */
   async function onDeviceMessage(deviceToken: string, payload: any): Promise<void> {
-    if (!payload || typeof payload !== "object") return;
-    if (payload.type !== "chat.user" && payload.type !== "chat.voice") return;
+    if (!payload || typeof payload.type !== "string") return;
     const device = loadConfig().channels.mobile.devices.find((d) => d.id === deviceToken);
     if (!device) {
       log("收到未登记设备的消息，已忽略");
       return;
     }
+    const devKey = device.id.slice(0, 8);
+    const reply = (p: unknown): void => sendToDevice(deviceToken, p);
+
+    switch (payload.type) {
+      // ── 会话管理 ──
+      case "session.list": {
+        reply(buildSessionList(devKey));
+        return;
+      }
+      case "session.new": {
+        const cid = `c-${randomBytes(3).toString("hex")}`;
+        const { store } = ensureStore(devKey);
+        const nowIso = new Date().toISOString();
+        store.items[devKey] = [{ id: cid, title: "", createdAt: nowIso, updatedAt: nowIso }, ...store.items[devKey]];
+        store.active[devKey] = cid;
+        saveConvStore(store);
+        await chatForConv(device, cid);
+        log(`「${device.name}」新建对话 ${cid}`);
+        reply(buildSessionList(devKey));
+        return;
+      }
+      case "session.switch": {
+        const cid = String(payload.id ?? "");
+        const { items } = ensureStore(devKey);
+        if (!items.some((c) => c.id === cid)) {
+          reply({ type: "chat.error", id: "", message: "对话不存在或已被删除" });
+          reply(buildSessionList(devKey));
+          return;
+        }
+        const { store } = ensureStore(devKey);
+        store.active[devKey] = cid;
+        saveConvStore(store);
+        await chatForConv(device, cid);
+        log(`「${device.name}」切换到对话 ${cid}`);
+        reply(buildSessionList(devKey));
+        return;
+      }
+      case "session.delete": {
+        const cid = String(payload.id ?? "");
+        const wasActive = activeCid(devKey) === cid;
+        deleteConv(device, cid);
+        if (wasActive) {
+          // 自动切到最近一个；一个不剩就新建
+          const { store, items: rest } = ensureStore(devKey);
+          if (rest.length > 0) {
+            const next = [...rest].sort((a, b) => Date.parse(b.updatedAt || b.createdAt) - Date.parse(a.updatedAt || a.createdAt))[0];
+            store.active[devKey] = next.id;
+            saveConvStore(store);
+            await chatForConv(device, next.id);
+          } else {
+            const cidNew = `c-${randomBytes(3).toString("hex")}`;
+            const nowIso = new Date().toISOString();
+            store.items[devKey] = [{ id: cidNew, title: "", createdAt: nowIso, updatedAt: nowIso }];
+            store.active[devKey] = cidNew;
+            saveConvStore(store);
+            await chatForConv(device, cidNew);
+          }
+        }
+        reply(buildSessionList(devKey));
+        return;
+      }
+      case "session.history": {
+        const cid = String(payload.id ?? "") || activeCid(devKey);
+        const { items } = ensureStore(devKey);
+        const meta = items.find((c) => c.id === cid);
+        const file = meta?.file ?? chatKeyFileOf(devKey, cid);
+        const limit = Number.isFinite(payload.limit) ? Math.min(Number(payload.limit), 500) : 200;
+        const turns = file ? parseSessionTurns(file, limit) : [];
+        reply({ type: "session.history", id: cid, items: turns });
+        return;
+      }
+
+      // ── 语音 ──
+      case "voice.mode": {
+        const on = !!payload.on;
+        if (on) voiceMode.add(devKey);
+        else voiceMode.delete(devKey);
+        log(`「${device.name}」语音回传${on ? "开启" : "关闭"}`);
+        reply({ type: "voice.mode", on });
+        return;
+      }
+      case "tts.request": {
+        const id = String(payload.id ?? "");
+        const text = ttsCache.get(id) ?? "";
+        if (text) await speakAndSend(deviceToken, id, text);
+        else reply({ type: "chat.error", id, message: "这条回复不在语音缓存里了，重新生成一条吧" });
+        return;
+      }
+
+      // ── 聊天 ──
+      case "chat.user":
+      case "chat.voice": {
+        break; // 落到下方统一处理
+      }
+      default:
+        return;
+    }
+
+    // 聊天统一路由到设备当前对话
     const turnId = typeof payload.id === "string" ? payload.id : randomBytes(8).toString("hex");
-    const chat = await sessionFor(device);
+    const cid = activeCid(devKey);
+    const chat = await chatForConv(device, cid);
     chat.beginTurn(turnId);
 
     if (payload.type === "chat.voice") {
@@ -310,6 +620,7 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
         return;
       }
       log(`「${device.name}」（语音）：${text.slice(0, 80)}`);
+      setConvTitle(devKey, cid, { updatedAt: new Date().toISOString(), titleIfEmpty: text });
       await runWithTaskSlot(() => chat.session.prompt(text));
       return;
     }
@@ -317,7 +628,18 @@ export async function runMobileChannel(argv: string[] = []): Promise<void> {
     const text = String(payload.text ?? "").trim();
     if (!text) return;
     log(`「${device.name}」：${text.slice(0, 80)}${text.length > 80 ? "…" : ""}`);
+    setConvTitle(devKey, cid, { updatedAt: new Date().toISOString(), titleIfEmpty: text });
     await runWithTaskSlot(() => chat.session.prompt(text));
+  }
+
+  /** 兼容读取：元数据缺 file 时从 mobile-chats.json 找（旧版映射） */
+  function chatKeyFileOf(devKey: string, cid: string): string | undefined {
+    const key = chatKeyOf(devKey, cid);
+    try {
+      return (JSON.parse(readFileSync(CHATS_INDEX, "utf-8")) as Record<string, string>)[key];
+    } catch {
+      return undefined;
+    }
   }
 
   /** HTTP 隧道：按配置前缀映射到本地服务（MCP 等）；体量与超时由中继保证 */

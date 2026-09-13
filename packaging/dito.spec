@@ -10,7 +10,7 @@
 # 注意：提交构建时必须加 --enable-net on（COPR 默认禁网会导致 npm ci 失败）。
 
 Name:           dito
-Version:        0.2.0
+Version:        0.2.1~preview
 Release:        1%{?dist}
 Summary:        Dito (TiTe) - AI assistant based on the pi agent
 

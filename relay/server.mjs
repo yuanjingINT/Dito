@@ -154,7 +154,7 @@ export function startRelay(opts = {}) {
     }
 
     // /p/<room>?k=<token>：配对入口页（配置 PWA 目录后，同时服务其静态资产）
-    const pMatch = url.pathname.match(/^\/p\/(.+)$/);
+    const pMatch = url.pathname.match(/^\/p\/(.*)$/);
     if (pMatch && req.method === "GET") {
       const tail = pMatch[1];
       // PWA 静态资产：/p/<file> → pwaDir/<file>（路径穿越防护）
@@ -174,6 +174,17 @@ export function startRelay(opts = {}) {
           fs.createReadStream(file).pipe(res);
           return;
         }
+      }
+      // PWA 主屏启动入口（/p/ 无房间）：直接返回 PWA，由页面自行选择已保存的电脑
+      if (tail === "") {
+        if (pwaDir && fs.existsSync(path.join(pwaDir, "index.html"))) {
+          res.writeHead(200, { "content-type": MIME[".html"] });
+          fs.createReadStream(path.join(pwaDir, "index.html")).pipe(res);
+        } else {
+          res.writeHead(200, { "content-type": MIME[".html"] });
+          res.end(PAIR_PAGE);
+        }
+        return;
       }
       // 房间页：返回 PWA（或内置测试页）
       if (/^[a-z0-9-]+$/.test(tail)) {

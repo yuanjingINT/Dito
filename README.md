@@ -158,12 +158,17 @@ dito qqadmin --no-bot       # SnowLuma 离线时纯管理本地数据
 
 1. 电脑运行 `dito mobile`，终端显示**配对二维码**
 2. 手机扫码（或浏览器打开二维码地址）→ 电脑端按 `y` 确认 → 配对成功
-3. 手机上直接和 Dito 对话：流式回复、工具执行可见，每设备独立持久会话（主人级权限）
+3. 手机上直接和 Dito 对话：流式回复、工具执行可见（主人级权限）
 
+手机端（重制版，界面与 [dito.dito.asia](https://dito.dito.asia) 同一设计语言）：
+
+- **扫码连接**：系统相机扫终端二维码直接进入；粘贴配对链接、已保存电脑一键重连
+- **多对话**：抽屉里新建 / 切换 / 删除对话，每个对话独立持久会话与记忆，标题自动取首条消息
+- **dito voice**：全屏水波球语音模式——按住说话 → 电脑 ASR → 回复自动 TTS 朗读回来；文字消息也可点喇叭随时重播
 - **局域网模式**（默认）：电脑内嵌中继监听 8787，无需任何外部服务
 - **公网模式**：把 `relay/` 部署到 VPS（见 `relay/README.md`，单文件仅依赖 `ws`），`channels.mobile.relayUrl` 填中继地址——无需公网 IP/端口转发，电脑侧只做出站连接
 - **Android App**：见 [dito-mobile 仓库](https://github.com/yuanjingINT/dito-mobile)（「电脑」屏幕粘贴配对链接即连）
-- **iPhone PWA**：把移动端仓库 `pwa/` 目录配到 `channels.mobile.pwaDir`，扫码即用（支持语音按住说话→电脑 MiMo ASR），Safari「添加到主屏幕」成独立应用
+- **iPhone / PWA**：把移动端仓库 `pwa/` 目录配到 `channels.mobile.pwaDir`，扫码即用；Safari「添加到主屏幕」成独立应用
 - **安全**：配对令牌一次性；deviceToken 可在 `dito config` →「手机连接」→「已配对设备」随时吊销
 - **HTTP 隧道**：`channels.mobile.tunnel` 把公网请求转发到本机服务——自动挂载 `/mcp`（手机调 Dito 工具）与 `/qq`（手机开管理后台）
 - 调试：`node scripts/simulate-phone.mjs "<配对URL>"` 模拟全流程；协议规格见 `docs/protocol.md`
