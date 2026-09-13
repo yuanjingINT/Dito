@@ -327,6 +327,46 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
   };
 }
 
+/** 会话 JSONL 里的单条对话消息（user/assistant，空文本已剔除） */
+export interface SessionTurn {
+  role: "user" | "assistant";
+  text: string;
+  ts?: string;
+}
+
+/** 解析会话 JSONL 为对话消息列表（只保留 user/assistant 的文本部分，取最后 limit 条）。
+ *  手机频道等远端用它做历史回放，无需打开完整会话。 */
+export function parseSessionTurns(file: string, limit = 200): SessionTurn[] {
+  const turns: SessionTurn[] = [];
+  try {
+    const lines = readFileSync(file, "utf-8").split("\n");
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const e = JSON.parse(line) as { type?: string; message?: { role?: string; content?: unknown }; timestamp?: string };
+        if (e.type !== "message" || !e.message?.role) continue;
+        if (e.message.role !== "user" && e.message.role !== "assistant") continue;
+        const content = e.message.content;
+        let text = "";
+        if (typeof content === "string") text = content;
+        else if (Array.isArray(content)) {
+          text = content
+            .map((c) => ((c as { type?: string; text?: string }).type === "text" ? (c as { text?: string }).text ?? "" : ""))
+            .join("\n");
+        }
+        text = text.trim();
+        if (!text) continue;
+        turns.push({ role: e.message.role, text, ts: e.timestamp });
+      } catch {
+        /* 跳过坏行 */
+      }
+    }
+  } catch {
+    return [];
+  }
+  return turns.slice(-limit);
+}
+
 /** 模型回退的详细原因（用于在 Web UI 顶部提示）。 */
 export async function describeModelSelection(): Promise<{ modelName: string; providerId: string; modelId: string; fallbackNotice: string | null }> {  writeModelsJson();
   const cfg = loadConfig();

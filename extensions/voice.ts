@@ -248,18 +248,16 @@ async function playWav(wav: string): Promise<void> {
   await run(player, [wav]);
 }
 
-async function ttsEspeak(text: string, cfg: VoiceConfig): Promise<void> {
+/** 合成到临时 wav 文件（不播放），失败/未配置返回 null */
+async function synthEspeak(text: string, cfg: VoiceConfig): Promise<string | null> {
   const out = tmpWav().replace("rec.wav", "tts.wav");
   await run("espeak-ng", ["-v", cfg.espeakVoice || "zh", "-w", out, text]);
-  await playWav(out);
-  try {
-    unlinkSync(out);
-  } catch {}
+  return out;
 }
 
-async function ttsPiper(text: string, cfg: VoiceConfig): Promise<void> {
+async function synthPiper(text: string, cfg: VoiceConfig): Promise<string | null> {
   const model = expand(cfg.piperModel);
-  if (!model || !existsSync(model)) return;
+  if (!model || !existsSync(model)) return null;
   const out = tmpWav().replace("rec.wav", "tts.wav");
   const args = ["--model", model, "--output_file", out];
   if (cfg.piperConfig) args.push("--config", expand(cfg.piperConfig));
@@ -270,17 +268,18 @@ async function ttsPiper(text: string, cfg: VoiceConfig): Promise<void> {
     child.on("close", () => resolve());
     child.on("error", () => resolve());
   });
-  await playWav(out);
-  try {
-    unlinkSync(out);
-  } catch {}
+  return out;
 }
 
-async function ttsXiaomi(text: string, cfg: VoiceConfig): Promise<void> {
-  if (!cfg.xiaomiApiKey.trim()) return;
+/** MiMo TTS：返回 {format, base64}（不落盘不播放），未配置/失败返回 null */
+async function synthXiaomi(
+  text: string,
+  cfg: VoiceConfig,
+): Promise<{ format: string; base64: string } | null> {
+  if (!cfg.xiaomiApiKey.trim()) return null;
   // MiMo TTS 走 chat/completions：要说的话放 assistant 消息，音频从 message.audio.data（base64 WAV）取回。
   // 配了 xiaomiTtsVoiceDesign（音色描述）时走 voicedesign 模型：user 消息 = 音色描述
-  const design = cfg.xiaomiTtsVoiceDesign?.trim();
+  const design = (cfg as VoiceConfig & { xiaomiTtsVoiceDesign?: string }).xiaomiTtsVoiceDesign?.trim();
   const resp = await fetch(`${cfg.xiaomiBaseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.xiaomiApiKey.trim()}` },
@@ -299,37 +298,83 @@ async function ttsXiaomi(text: string, cfg: VoiceConfig): Promise<void> {
   });
   if (!resp.ok) {
     console.error("[dito voice] MiMo TTS 失败：HTTP", resp.status);
-    return;
+    return null;
   }
   const json = (await resp.json()) as {
     choices?: { message?: { audio?: { data?: string; format?: string } } }[];
   };
   const audio = json.choices?.[0]?.message?.audio;
-  if (!audio?.data) return;
-  const out = tmpWav().replace("rec.wav", `tts.${audio.format || "wav"}`);
-  writeFileSync(out, Buffer.from(audio.data, "base64"));
-  await playWav(out);
+  if (!audio?.data) return null;
+  return { format: audio.format || "wav", base64: audio.data };
+}
+
+/** 合成语音到内存（不落盘不播放），供手机频道等远端回传使用；custom 命令无产物，返回 null */
+export interface SynthesizedAudio {
+  mime: string;
+  audio: Buffer;
+}
+
+export async function synthesizeSpeech(text: string, cfg: VoiceConfig): Promise<SynthesizedAudio | null> {
+  const clean = text.trim();
+  if (!clean) return null;
+  let file: string | null = null;
   try {
-    unlinkSync(out);
-  } catch {}
+    if (cfg.tts === "xiaomi") {
+      const hit = await synthXiaomi(clean, cfg);
+      if (!hit) return null;
+      return { mime: `audio/${hit.format === "mp3" ? "mpeg" : hit.format}`, audio: Buffer.from(hit.base64, "base64") };
+    }
+    if (cfg.tts === "piper") file = await synthPiper(clean, cfg);
+    else if (cfg.tts !== "custom") file = await synthEspeak(clean, cfg);
+    // custom 命令直接播放无产物，返回 null
+    if (!file) return null;
+    return { mime: "audio/wav", audio: readFileSync(file) };
+  } catch {
+    return null;
+  } finally {
+    if (file) {
+      try {
+        unlinkSync(file);
+      } catch {}
+    }
+  }
 }
 
 async function textToSpeech(text: string, cfg: VoiceConfig): Promise<void> {
   if (!text.trim()) return;
   try {
     if (cfg.tts === "xiaomi") {
-      await ttsXiaomi(text, cfg);
+      const hit = await synthXiaomi(text, cfg);
+      if (!hit) return;
+      const out = tmpWav().replace("rec.wav", `tts.${hit.format}`);
+      writeFileSync(out, Buffer.from(hit.base64, "base64"));
+      await playWav(out);
+      try {
+        unlinkSync(out);
+      } catch {}
       return;
     }
     if (cfg.tts === "piper") {
-      await ttsPiper(text, cfg);
+      const file = await synthPiper(text, cfg);
+      if (file) {
+        await playWav(file);
+        try {
+          unlinkSync(file);
+        } catch {}
+      }
       return;
     }
     if (cfg.tts === "custom" && cfg.customTtsCommand) {
       await run("bash", ["-c", cfg.customTtsCommand.replace("{text}", text)]);
       return;
     }
-    await ttsEspeak(text, cfg);
+    const file = await synthEspeak(text, cfg);
+    if (file) {
+      await playWav(file);
+      try {
+        unlinkSync(file);
+      } catch {}
+    }
   } catch {
     // 朗读失败不影响对话
   }

@@ -6,6 +6,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NAME="dito"
 VERSION="$(node -p "require('$ROOT/package.json').version")"
+# rpm 的 Version 字段不允许连字符：预发布版本 0.2.1-preview → 0.2.1~preview（rpm ≥ 4.14 支持 ~ 排序）
+RPM_VERSION="${VERSION//-/~}"
 RPMBUILD="${RPMBUILD_DIR:-$HOME/rpmbuild}"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -16,7 +18,7 @@ mkdir -p "$RPMBUILD"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 
 # ── 组装源码树（排除 node_modules / docs / 计划文档 / 原始人设副本）──
 # node_modules 不打包：COPR 构建时用 --enable-net on 联网跑 npm ci。
-SRC="$STAGE/$NAME-$VERSION"
+SRC="$STAGE/$NAME-$RPM_VERSION"
 mkdir -p "$SRC"
 cp -a \
   bin extensions kb config skills .pi personas identities system-prompts \
@@ -24,8 +26,8 @@ cp -a \
   "$SRC"/
 
 # ── 打包源码 tarball ──
-tar -C "$STAGE" -czf "$RPMBUILD/SOURCES/$NAME-$VERSION.tar.gz" "$NAME-$VERSION"
-echo "[build] 源码包：$RPMBUILD/SOURCES/$NAME-$VERSION.tar.gz"
+tar -C "$STAGE" -czf "$RPMBUILD/SOURCES/$NAME-$RPM_VERSION.tar.gz" "$NAME-$RPM_VERSION"
+echo "[build] 源码包：$RPMBUILD/SOURCES/$NAME-$RPM_VERSION.tar.gz"
 
 cp -f "$ROOT/packaging/$NAME.spec" "$RPMBUILD/SPECS/$NAME.spec"
 
