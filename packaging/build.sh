@@ -7,7 +7,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NAME="dito"
 VERSION="$(node -p "require('$ROOT/package.json').version")"
 # rpm 的 Version 字段不允许连字符：预发布版本 0.2.1-preview → 0.2.1~preview（rpm ≥ 4.14 支持 ~ 排序）
-RPM_VERSION="${VERSION//-/~}"
+# （不能用 ${var//-/~}：替换串里的 ~ 会被 bash 做 tilde 展开成家目录）
+RPM_VERSION="$(printf '%s' "$VERSION" | tr '-' '~')"
 RPMBUILD="${RPMBUILD_DIR:-$HOME/rpmbuild}"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
