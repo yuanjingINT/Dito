@@ -97,17 +97,41 @@ export async function runMatrixChannel(): Promise<void> {
         const body = (content.body ?? "").trim();
         if (!body) return;
         const key = roomKey(roomId);
+        // /whatnew 开新对话：丢弃缓存会话并强制重开，指令本身不进对话
+        const isNewChat = body.toLowerCase() === "/whatnew";
+        if (isNewChat) {
+          const previous = chats.get(key);
+          if (previous) {
+            try {
+              await previous.session.abort();
+            } catch {
+              /* 本来就没在跑 */
+            }
+            try {
+              previous.session.dispose();
+            } catch {
+              /* 重复释放无害 */
+            }
+            chats.delete(key);
+          }
+        }
         let chat = chats.get(key);
         if (!chat) {
           const created = await openChannelSession(join(CHAT_SESSIONS_DIR, "matrix-chats.json"), key, undefined, {
             sessionsDir: join(CHAT_SESSIONS_DIR, "matrix-sessions"),
             memoryScope: key,
-          });
+            disableThinking: true,
+          }, isNewChat);
           applySessionToolPolicy(created.session, await isOwnerRoom(client, roomId, ch), "dito matrix");
           chat = makeChannelChat(created.session, (reply) =>
             client.sendEvent(roomId, "m.room.message", { msgtype: "m.text", body: reply }), "dito matrix");
           chats.set(key, chat);
           console.log(`[dito matrix] 新房间会话：${roomId}（模型 ${created.modelName}）`);
+        }
+        if (isNewChat) {
+          await client.sendEvent(roomId, "m.room.message", { msgtype: "m.text", body: "新对话开好了，旧的翻篇" });
+          console.log(`[dito matrix] 房间 ${roomId} 重开新对话`);
+          return;
         }
         const senderName = event.sender && event.sender.startsWith("@") ? event.sender.split(":")[0].slice(1) : event.sender;
         const timer = setTimeout(() => {

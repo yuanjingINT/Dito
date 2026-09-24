@@ -243,6 +243,14 @@ function extractPlainText(rawMessage: string | undefined): string {
   return (rawMessage ?? "").replace(/\[CQ:[^\]]*\]/g, "").trim();
 }
 
+/** /whatnew 开新对话指令（大小写不敏感，前后可带空白） */
+export function isNewChatCommand(text: string): boolean {
+  return text.trim().toLowerCase() === "/whatnew";
+}
+
+/** /whatnew 的确认回复 */
+const NEW_CHAT_REPLY = "新对话开好了 旧的翻篇";
+
 // ── 情绪表情 ─────────────────────────────────────────────────────
 
 /** 按消息内容挑一个表情回应（轻量启发式；模型在会话里还可用 qq_react 精准追加） */
@@ -568,9 +576,23 @@ export async function runQqChannel(): Promise<void> {
     }
   };
 
-  const sessionFor = async (key: string): Promise<ChannelChat> => {
-    const hit = chats.get(key);
-    if (hit) return hit;
+  const sessionFor = async (key: string, forceNew = false): Promise<ChannelChat> => {
+    const previous = chats.get(key);
+    if (previous && !forceNew) return previous;
+    if (previous) {
+      // /whatnew 重开：中断进行中的任务并释放旧会话（旧会话文件保留作历史）
+      chats.delete(key);
+      try {
+        await previous.session.abort();
+      } catch {
+        /* 本来就没在跑 */
+      }
+      try {
+        previous.session.dispose();
+      } catch {
+        /* 重复释放无害 */
+      }
+    }
     const created = await openChannelSession(join(CHAT_SESSIONS_DIR, "qq-chats.json"), key, [
       qqToolsExtension(bot, affinity, memes),
     ], {
@@ -578,7 +600,8 @@ export async function runQqChannel(): Promise<void> {
       skipPluginIds: ["mode", "snowluma"],
       sessionsDir: join(CHAT_SESSIONS_DIR, "qq-sessions"),
       memoryScope: key,
-    });
+      disableThinking: true,
+    }, forceNew);
     // 权限分级：主人私聊全量工具；其余会话（含所有群聊）屏蔽电脑控制
     const ownerMatch = /^qq-private-(\d+)$/.exec(key);
     const isOwner = !!ownerMatch && ch.owners.includes(Number(ownerMatch[1]));
@@ -605,6 +628,13 @@ export async function runQqChannel(): Promise<void> {
     // 纯图片/表情消息（剥掉 CQ 码后没字）：只偷图，不进对话队列，避免连环图片把任务队列塞爆
     const content = extractPlainText(event.raw_message);
     if (!content) return;
+    // /whatnew 开新对话：指令直通，不进对话
+    if (isNewChatCommand(content)) {
+      await sessionFor(key, true);
+      await send(key, NEW_CHAT_REPLY);
+      console.log(`[dito qq] 私聊 ${event.user_id} 重开新对话`);
+      return;
+    }
     const chat = await sessionFor(key);
     await promptWithWatchdog(chat, `[QQ私聊 来自 ${name}] ${content}`, "dito qq");
   };
@@ -633,6 +663,15 @@ export async function runQqChannel(): Promise<void> {
     const score = affinity.get(`${event.group_id}:${event.user_id}`);
     if (score < 20) {
       console.log(`[dito qq] 群 ${event.group_id} 的 ${event.user_id} 好感度 ${score} < 20，忽略消息`);
+      return;
+    }
+
+    // /whatnew 开新对话：指令直通，不走唤醒与回复概率，也不贴表情
+    if (isNewChatCommand(content)) {
+      const key = `qq-group-${event.group_id}`;
+      await sessionFor(key, true);
+      await send(key, NEW_CHAT_REPLY);
+      console.log(`[dito qq] 群 ${event.group_id} 重开新对话`);
       return;
     }
 

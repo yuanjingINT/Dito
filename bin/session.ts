@@ -143,8 +143,12 @@ function makeExtensionFactory(skipPluginIds?: string[]): (pi: ExtensionAPI) => v
   };
 }
 
-/** 每次从 config.providers 重新生成 models.json，供应商/模型切换即时生效。 */
-export function writeModelsJson(): void {
+/** 每次从 config.providers 重新生成 models.json，供应商/模型切换即时生效。
+ *  disableThinking=true 时（频道进程专用文件），给当前聊天供应商的全部推理模型注入
+ *  modelOverrides.thinkingLevelMap —— 各思考档位都映射为 reasoning_effort "none"，
+ *  服务端不再产生推理 token。部分网关会把推理流进正文而非独立 thinking 事件，
+ *  频道消息里出现思维链时用它从源头根治；终端不传，保持原行为。 */
+export function buildModelsJson(disableThinking = false): string {
   const cfg = loadConfig();
   const providers: Record<string, unknown> = {};
   for (const p of cfg.providers) {
@@ -154,8 +158,10 @@ export function writeModelsJson(): void {
       if (key) entry.apiKey = key;
       // 内置供应商保留 pi 自带的模型细节（compat/thinkingLevelMap 等），
       // 只把 config 里新增的自定义模型合并进 models.json，避免覆盖官方模型。
+      let builtinIds = new Set<string>();
       try {
-        const builtinIds = new Set(getBuiltinModels(p.id as BuiltinProvider).map((m) => m.id));
+        const builtinModels = getBuiltinModels(p.id as BuiltinProvider);
+        builtinIds = new Set(builtinModels.map((m) => m.id));
         const customModels = p.models.filter((m) => !builtinIds.has(m.id));
         if (customModels.length > 0) {
           entry.models = customModels.map((m) => ({
@@ -172,11 +178,24 @@ export function writeModelsJson(): void {
       } catch {
         // 未知/动态内置供应商：退回只写鉴权，行为与之前一致。
       }
+      if (disableThinking && p.id === cfg.model.provider) {
+        const none = { minimal: "none", low: "none", medium: "none", high: "none" };
+        const overrides: Record<string, { thinkingLevelMap: typeof none }> = {};
+        try {
+          for (const m of getBuiltinModels(p.id as BuiltinProvider)) {
+            if (m.reasoning) overrides[m.id] = { thinkingLevelMap: none };
+          }
+        } catch {
+          /* 目录不可用时下面兜底覆盖 config 里的模型 */
+        }
+        for (const m of p.models) if (m.reasoning) overrides[m.id] = { thinkingLevelMap: none };
+        if (Object.keys(overrides).length > 0) entry.modelOverrides = overrides;
+      }
       providers[p.id] = entry;
       continue;
     }
     const resolvedKey = resolveApiKey(p.apiKey);
-    providers[p.id] = {
+    const entry: Record<string, unknown> = {
       baseUrl: p.baseUrl,
       apiKey: resolvedKey === "" ? " " : resolvedKey,
       api: p.api || "openai-completions",
@@ -191,9 +210,20 @@ export function writeModelsJson(): void {
         ...(m.baseUrl ? { baseUrl: m.baseUrl } : {}),
       })),
     };
+    if (disableThinking && p.id === cfg.model.provider) {
+      const none = { minimal: "none", low: "none", medium: "none", high: "none" };
+      const overrides: Record<string, { thinkingLevelMap: typeof none }> = {};
+      for (const m of p.models) if (m.reasoning) overrides[m.id] = { thinkingLevelMap: none };
+      if (Object.keys(overrides).length > 0) entry.modelOverrides = overrides;
+    }
+    providers[p.id] = entry;
   }
+  return JSON.stringify({ providers }, null, 2);
+}
+
+export function writeModelsJson(): void {
   mkdirSync(DITO_DIR, { recursive: true });
-  writeFileSync(join(DITO_DIR, "models.json"), JSON.stringify({ providers }, null, 2));
+  writeFileSync(join(DITO_DIR, "models.json"), buildModelsJson(false));
 }
 
 export interface TuiSession {
@@ -240,6 +270,9 @@ export interface CreateSessionOptions {
   /** 每聊天的记忆库 scope（频道用，记忆按会话隔离） */
   /** 每聊天的记忆/知识库 scope（频道用，记忆与上传按会话隔离） */
   memoryScope?: string;
+  /** 关闭模型思考：把思考档位映射为 reasoning_effort "none"（频道用——
+   *  部分网关会把推理流进正文而非独立 thinking 事件，关掉思考从源头根治思维链外泄） */
+  disableThinking?: boolean;
 }
 
 let createQueue: Promise<unknown> = Promise.resolve();
@@ -272,9 +305,18 @@ async function runCreate(options: CreateSessionOptions): Promise<SessionBundle> 
 async function createSessionInner(options: CreateSessionOptions): Promise<SessionBundle> {
   writeModelsJson();
 
+  // 频道关闭思考：用带 modelOverrides 的独立 models 文件建运行时。
+  // 覆盖必须走配置层——会话启动时 pi 会用注册表对象刷新 agent 的 model，
+  // 直接改内存里的模型对象会被冲掉。
+  let modelsPath = join(DITO_DIR, "models.json");
+  if (options.disableThinking) {
+    modelsPath = join(DITO_DIR, "models-channel.json");
+    writeFileSync(modelsPath, buildModelsJson(true));
+  }
+
   const cfg = loadConfig();
   const modelRuntime = await ModelRuntime.create({
-    modelsPath: join(DITO_DIR, "models.json"),
+    modelsPath,
     // 复用 pi 的共享鉴权文件（~/.pi/agent/auth.json）
     authPath: join(getAgentDir(), "auth.json"),
   });
@@ -418,12 +460,14 @@ interface ChannelIndex {
 /**
  * 按聊天 key 复用或新建一个频道会话。
  * 映射关系（聊天 key → 会话文件）持久化在 indexFile，进程重启后能接着聊。
+ * forceNew=true（/whatnew 开新对话）：丢弃旧映射重开全新会话，旧会话文件保留作历史。
  */
 export async function openChannelSession(
   indexFile: string,
   chatKey: string,
   extraExtensions?: ((pi: ExtensionAPI) => void)[],
   sessionOptions?: CreateSessionOptions,
+  forceNew = false,
 ): Promise<SessionBundle> {
   let index: ChannelIndex = {};
   try {
@@ -431,13 +475,18 @@ export async function openChannelSession(
   } catch {
     /* 首次使用或文件损坏，从空映射开始 */
   }
-  const known = index[chatKey];
+  const known = forceNew ? undefined : index[chatKey];
   if (known) {
     try {
       return await createSession({ sessionFile: known, extraExtensions, ...sessionOptions });
     } catch (err) {
       console.error(`[dito] 会话文件打开失败（${known}），改开新会话：`, (err as Error).message);
     }
+  }
+  if (forceNew && index[chatKey]) {
+    delete index[chatKey];
+    mkdirSync(dirname(indexFile), { recursive: true });
+    writeFileSync(indexFile, JSON.stringify(index, null, 2), "utf-8");
   }
   const created = await createSession({ fresh: true, extraExtensions, ...sessionOptions });
   const file = created.session.sessionFile;

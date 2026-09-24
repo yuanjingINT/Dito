@@ -97,8 +97,18 @@ export interface ChannelChat {
   session: TuiSession;
 }
 
+/** 兜底清理：个别模型会把 <think>…</think> 混进正文，剥掉标签块只留最终回复 */
+function stripThinkTags(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\/?think>/gi, "")
+    .trim();
+}
+
 /**
- * 包装会话：text_delta 聚成本轮回复，agent_end 时交给 send 发送。
+ * 包装会话：text_delta 按消息聚合，agent_end 时把最后一条 assistant 消息的文本交给 send 发送。
+ * 一轮任务里工具调用之间往往有多段 assistant 文本（过渡思考、"我先查一下"之类），
+ * 只发最后一条，频道里看到的才是干净的最终回复；思维链不外发。
  * 同一聊天的发送串行排队；任务进行中的新消息由 pi 的 followUp 队列承接。
  */
 export function makeChannelChat(
@@ -107,6 +117,7 @@ export function makeChannelChat(
   label: string,
 ): ChannelChat {
   let buf = "";
+  let lastReply = "";
   let chain: Promise<void> = Promise.resolve();
   session.subscribe((event) => {
     const e = event as {
@@ -118,13 +129,26 @@ export function makeChannelChat(
       buf += e.assistantMessageEvent.delta ?? "";
       return;
     }
-    // 模型报错必须可见：否则错误轮无文本产出，频道表现为"静默不回话"
-    if (e.type === "message_end" && e.message?.role === "assistant" && e.message.stopReason === "error") {
-      console.error(`[${label}] 模型错误：${e.message.errorMessage ?? "(无信息)"}`);
+    if (e.type === "message_start" && e.message?.role === "assistant") {
+      buf = "";
+      return;
+    }
+    if (e.type === "message_end" && e.message?.role === "assistant") {
+      // 模型报错必须可见：否则错误轮无文本产出，频道表现为"静默不回话"
+      if (e.message.stopReason === "error") {
+        console.error(`[${label}] 模型错误：${e.message.errorMessage ?? "(无信息)"}`);
+        buf = "";
+        return;
+      }
+      // 本条消息说完即定格：只有它替换 lastReply，前面的过渡话自动丢弃
+      const text = buf.trim();
+      buf = "";
+      if (text) lastReply = text;
       return;
     }
     if (e.type === "agent_end") {
-      const reply = buf.trim();
+      const reply = stripThinkTags(lastReply);
+      lastReply = "";
       buf = "";
       if (!reply) return;
       chain = chain
