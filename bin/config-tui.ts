@@ -26,6 +26,7 @@ import {
   type ProviderConfig,
 } from "../extensions/util.js";
 import { resolveDitoReConfig } from "../extensions/plugins/dito-re.js";
+import { resolveSubagentConfig } from "../extensions/subagent-config.js";
 
 // ── ANSI 与主题（天青色系，保留 Dito 视觉） ──────────────────────
 
@@ -1134,6 +1135,29 @@ async function ditoReScreen(cfg: DitoConfig): Promise<void> {
   persist(cfg);
 }
 
+async function subagentScreen(cfg: DitoConfig): Promise<void> {
+  const subagent = cfg.plugins.subagent;
+  const result = await formScreen({
+    crumbParts: ["配置", "子代理调度"],
+    panelTitle: "子代理调度",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(subagent.enabled), kind: "bool", hint: "启用后主代理可以调用 subagent 工具" },
+      { label: "最多子代理数", value: String(subagent.maxAgents), kind: "number", hint: "硬上限 100；用于限制同一主代理同时持有的子代理数量" },
+      { label: "最大并发数", value: String(subagent.maxConcurrency), kind: "number", hint: "并行任务同时运行的进程数，过高会占用更多内存和 API 配额" },
+      { label: "默认任务预算（美元）", value: String(subagent.defaultBudgetUsd), kind: "text", hint: "0 表示不设预算；子任务也可以在调用时单独指定 budgetUsd" },
+    ],
+  });
+  if (!result) return;
+  cfg.plugins.subagent = resolveSubagentConfig({
+    enabled: parseBool(result[0].value),
+    maxAgents: Number(result[1].value),
+    maxConcurrency: Number(result[2].value),
+    defaultBudgetUsd: Number(result[3].value),
+  });
+  persist(cfg);
+}
+
 function parseNumberList(v: string): number[] {
   return v
     .split(/[,，\s]+/)
@@ -1419,6 +1443,14 @@ async function mainMenu(cfg: DitoConfig): Promise<void> {
         : "停用",
       hint: "dito-re：爱好主题概率、直接对话识别、全群上下文",
       onEnter: () => ditoReScreen(cfg),
+    },
+    {
+      label: "子代理调度",
+      detail: cfg.plugins.subagent.enabled
+        ? `启用 · 最多 ${cfg.plugins.subagent.maxAgents} · 并发 ${cfg.plugins.subagent.maxConcurrency}`
+        : "停用",
+      hint: "主代理按任务内容、模型价格和预算分配隔离子代理",
+      onEnter: () => subagentScreen(cfg),
     },
     {
       label: "MCP 服务",

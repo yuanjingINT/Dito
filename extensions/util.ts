@@ -11,6 +11,7 @@ import { channelDataDir, migrateChannelData, userDataDir, writePrivateJson, type
 import { DEFAULT_CONTEXT_COMPACTION, type ContextCompactionConfig } from "./context-compaction.js";
 import { DEFAULT_MEMORY_CONFIG, resolveMemoryConfig, type MemoryConfig } from "./memory-config.js";
 import { DEFAULT_DITO_RE_CONFIG, type DitoReConfig } from "./plugins/dito-re.js";
+import { DEFAULT_SUBAGENT_CONFIG, type SubagentConfig } from "./subagent-config.js";
 
 const HERE = typeof import.meta !== "undefined" && typeof import.meta.url === "string"
   ? dirname(fileURLToPath(import.meta.url))
@@ -68,6 +69,13 @@ export interface ProviderModelConfig {
   api?: string;
   /** 模型级 baseUrl 覆盖（可选，默认继承供应商 baseUrl），用于单一供应商多端点（如 opencode-go）。 */
   baseUrl?: string;
+  /** 自定义供应商模型的价格，单位为 USD / 1M tokens；内置供应商会从 pi 模型目录读取。 */
+  cost?: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
 }
 
 export interface ProviderConfig {
@@ -263,6 +271,8 @@ export interface DitoConfig {
     };
     /** QQ 智能自动回复：爱好主题概率、直接对话识别和群聊上下文。 */
     "dito-re": DitoReConfig;
+    /** 子代理：隔离上下文、并行委派和按价格自动选模。 */
+    subagent: SubagentConfig;
   };
 }
 
@@ -506,6 +516,7 @@ export function defaultConfig(): DitoConfig {
         ...DEFAULT_DITO_RE_CONFIG,
         topics: DEFAULT_DITO_RE_CONFIG.topics.map((topic) => ({ ...topic, keywords: [...topic.keywords] })),
       },
+      subagent: { ...DEFAULT_SUBAGENT_CONFIG },
     },
   };
 }

@@ -41,6 +41,7 @@
     "test:user": "node --import tsx scripts/test-user-data.test.ts",
     "test:tui": "node --import tsx scripts/test-tui.test.ts",
     "test:dito-re": "node --import tsx scripts/test-dito-re.test.ts",
+    "test:subagent": "node --import tsx scripts/test-subagent.test.ts",
     "test:plugins": "node --import tsx scripts/test-plugin-manager.test.ts"
   },
   "author": "yuanjingINT",

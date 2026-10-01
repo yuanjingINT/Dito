@@ -95,6 +95,8 @@ dito                           # 进入全屏对话 TUI
 
 QQ 的 `dito-re` 配置位于 `~/.pi/agent/dito/config.json` 的 `plugins["dito-re"]`：`defaultReplyChance` 是普通消息概率，`topics` 中每个主题配置 `keywords` 与 `replyChance`，主题数组可以自由添加和删除，不受固定枚举限制；`contextMessages` / `contextChars` 控制每个群注入的上下文上限。`dito config` →「QQ 智能自动回复」可直接追加一个主题 JSON 或按 ID 删除主题。群上下文保存在 QQ 私有数据目录的 `dito-re-context.json`，只在本机使用。
 
+**子代理调度**：主代理可以调用 `subagent` 工具创建隔离上下文的单个任务、并行任务或串行任务链。任务支持 `workType`、`model` 和 `budgetUsd`；留空模型时会结合任务内容、模型推理能力和价格自动选择。并行任务最多 100 个，`plugins.subagent.maxConcurrency` 控制同时运行的数量；`dito config` →「子代理调度」可调整上限和默认预算。
+
 **长记忆**参考 laozhou 的“短日记 → 长期整理 → 自动联想”流程。每轮结束会按聊天 scope 保存短日记；“请记住”“我喜欢”“我的目标”等明确的稳定信息会整理为知识点，重要或反复被回忆的经历会升级为长期记忆。下一轮提问前，相关知识和经历会自动作为不可信历史资料注入上下文，并按回忆次数强化、按半衰期衰减。运行 `/memory-stats` 查看统计，运行 `/memory-clear` 清空；`dito config` →「记忆」可调整自动联想、短日记保留天数、联想条数和遗忘策略。记忆库仍保存在各聊天隔离的 `memory.db` / `memory-<scope>.db` 中，旧版数据库会自动迁移。
 
 **权限门**：`rm -rf /`、fork 炸弹、格式化等高危命令直接拦截；改动类命令弹确认。sudo 模式（`/sudo on`）下权限门关闭、需要 root 的命令自动加 `sudo`（Windows 无 sudo，自动跳过）。
@@ -117,6 +119,8 @@ dito config
 ```
 
 分区：**模型与供应商**（模型列表从 API 实时刷新，可增删供应商）、**提示词设定**、**知识库**、**记忆**、**网络搜索**（Tavily/Exa/SearXNG/免 Key DuckDuckGo）、**语音**、**权限与 sudo**、**频道**（QQ / Matrix / 手机连接）、**MCP 服务**。全部改动即时写盘。
+
+子代理调度也作为内置能力提供：主代理调用 `subagent` 工具后，可以把任务交给隔离上下文的 scout、planner、reviewer 或 worker，按任务类型、模型能力、价格和预算自动选模，支持最多 100 个并行任务。
 
 ## QQ 频道（SnowLuma）
 

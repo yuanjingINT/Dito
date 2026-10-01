@@ -119,8 +119,9 @@ export function listSessions(): SessionSummary[] {
 
 /** 解析会话管理器：指定文件打开；否则 fresh=true 开新会话、续接全局最近一次会话。
  *  sessionsDir 可为频道指定独立会话目录（与终端会话完全隔离）。 */
-function resolveSessionManager(fresh: boolean, sessionFile?: string, sessionsDir?: string): SessionManager {
+function resolveSessionManager(fresh: boolean, sessionFile?: string, sessionsDir?: string, ephemeral = false): SessionManager {
   const dir = sessionsDir ?? DITO_SESSIONS_DIR;
+  if (ephemeral) return SessionManager.inMemory(process.cwd());
   mkdirSync(dir, { recursive: true });
   if (sessionFile) return SessionManager.open(sessionFile, dir, process.cwd());
   if (!fresh) {
@@ -176,6 +177,7 @@ export function buildModelsJson(disableThinking = false): string {
             maxTokens: m.maxTokens || 16384,
             ...(m.api ? { api: m.api } : {}),
             ...(m.baseUrl ? { baseUrl: m.baseUrl } : {}),
+            ...(m.cost ? { cost: m.cost } : {}),
           }));
         }
       } catch {
@@ -211,6 +213,7 @@ export function buildModelsJson(disableThinking = false): string {
         maxTokens: m.maxTokens || 16384,
         ...(m.api ? { api: m.api } : {}),
         ...(m.baseUrl ? { baseUrl: m.baseUrl } : {}),
+        ...(m.cost ? { cost: m.cost } : {}),
       })),
     };
     if (disableThinking && p.id === cfg.model.provider) {
@@ -283,6 +286,10 @@ export interface CreateSessionOptions {
   /** 关闭模型思考：把思考档位映射为 reasoning_effort "none"（频道用——
    *  部分网关会把推理流进正文而非独立 thinking 事件，关掉思考从源头根治思维链外泄） */
   disableThinking?: boolean;
+  /** 子代理使用的明确模型，支持 provider/model 或模型 id；留空沿用主代理配置。 */
+  model?: string;
+  /** 子代理临时会话不落盘。 */
+  ephemeral?: boolean;
 }
 
 let createQueue: Promise<unknown> = Promise.resolve();
@@ -334,7 +341,10 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
   const available = await modelRuntime.getAvailable();
   const providerCfg = cfg.providers.find((p) => p.id === cfg.model.provider);
 
-  let model = available.find((m) => m.provider === cfg.model.provider && m.id === cfg.model.chat);
+  const requestedModel = options.model?.trim();
+  let model = requestedModel
+    ? available.find((m) => `${m.provider}/${m.id}` === requestedModel || m.id === requestedModel || m.name === requestedModel)
+    : available.find((m) => m.provider === cfg.model.provider && m.id === cfg.model.chat);
 
   if (!model) {
     const providerAvailable = available.filter((m) => m.provider === cfg.model.provider);
@@ -377,7 +387,7 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
     },
   });
 
-  const sessionManager = resolveSessionManager(!!options.fresh, options.sessionFile, options.sessionsDir);
+  const sessionManager = resolveSessionManager(!!options.fresh, options.sessionFile, options.sessionsDir, options.ephemeral);
 
   const { session } = await createAgentSession({
     model,

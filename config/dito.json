@@ -604,6 +604,12 @@
         { "id": "cola", "name": "3 摄氏度可口可乐", "keywords": ["可口可乐", "可乐", "3摄氏度", "三摄氏度", "冰可乐"], "replyChance": 0.52 },
         { "id": "mcdonalds", "name": "麦当劳薯条", "keywords": ["麦当劳", "麦麦", "薯条", "麦当劳薯条"], "replyChance": 0.52 }
       ]
+    },
+    "subagent": {
+      "enabled": true,
+      "maxAgents": 100,
+      "maxConcurrency": 8,
+      "defaultBudgetUsd": 0
     }
   }
 }

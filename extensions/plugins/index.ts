@@ -16,6 +16,7 @@ import { voicePlugin } from "./voice.js";
 import { snowlumaPlugin } from "./snowluma.js";
 import { mcpClientPlugin } from "./mcp.js";
 import { ditoRePlugin } from "./dito-re.js";
+import { subagentPlugin } from "./subagent.js";
 
 export const DITO_PLUGINS: DitoPlugin[] = [
   providerPlugin,
@@ -31,4 +32,5 @@ export const DITO_PLUGINS: DitoPlugin[] = [
   snowlumaPlugin,
   mcpClientPlugin,
   ditoRePlugin,
+  subagentPlugin,
 ];
