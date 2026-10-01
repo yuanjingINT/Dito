@@ -36,7 +36,9 @@
     "typebox": "^1.3.13",
     "ws": "^8.21.3"
   },
-  "scripts": {},
+  "scripts": {
+    "test:ask": "node --import tsx scripts/test-ask-question.test.ts"
+  },
   "author": "yuanjingINT",
   "devDependencies": {
     "@types/qrcode": "^1.5.6",

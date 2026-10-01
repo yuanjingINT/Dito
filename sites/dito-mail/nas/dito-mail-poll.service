@@ -1,0 +1,10 @@
+[Unit]
+Description=dito.asia 邮箱开通轮询
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/dito-mail/poller.env
+ExecStart=/usr/bin/python3 /volume1/dito-mail/poll.py
+TimeoutStartSec=900

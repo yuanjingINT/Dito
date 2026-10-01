@@ -14,6 +14,7 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   SessionManager,
+  type AgentSession,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 
@@ -227,6 +228,9 @@ export function writeModelsJson(): void {
 }
 
 export interface TuiSession {
+  /** 自定义界面必须显式绑定，SDK 会话默认只有无交互的 UI。 */
+  bindExtensions: AgentSession["bindExtensions"];
+  readonly extensionRunner: Pick<AgentSession["extensionRunner"], "getUIContext">;
   prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp" }): Promise<unknown>;
   subscribe(cb: (event: unknown) => void): () => void;
   dispose(): void;

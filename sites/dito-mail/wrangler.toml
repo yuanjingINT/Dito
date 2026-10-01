@@ -1,0 +1,16 @@
+name = "dito-mail"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "404-page"
+
+[[kv_namespaces]]
+binding = "MAIL_KV"
+id = "0828cf1fc6974b2caa9abf30df2fe220"
+
+[[routes]]
+pattern = "get.dito.asia"
+custom_domain = true

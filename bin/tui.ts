@@ -21,6 +21,7 @@ import {
   VStack,
   truncateToWidth,
   visibleWidth,
+  type Terminal,
 } from "@earendil-works/pi-tui";
 import {
   MODE_DEFS,
@@ -31,7 +32,8 @@ import {
   type DitoMode,
 } from "../extensions/mode.js";
 import { sudoModeEnabled, toggleSudoMode } from "../extensions/permission.js";
-import { createSession, listSessions, type SessionSummary } from "./session.js";
+import { createSession, listSessions, type SessionSummary, type TuiSession } from "./session.js";
+import { TuiDialogs } from "./tui-dialogs.js";
 
 // ── 天青色系配色 ───────────────────────────────────────────────
 const C = {
@@ -46,24 +48,6 @@ const C = {
   italic: "\x1b[3m",
   underline: "\x1b[4m",
 };
-
-interface TuiSession {
-  /** streamingBehavior："followUp" = 任务进行中时排队，本轮结束自动发送（中途插话）。 */
-  prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp" }): Promise<unknown>;
-  subscribe(cb: (event: unknown) => void): () => void;
-  dispose(): void;
-  getActiveToolNames(): string[];
-  setActiveToolsByName(toolNames: string[]): void;
-  setThinkingLevel(level: string): void;
-  /** 是否有任务在跑（流式输出中）。 */
-  readonly isStreaming: boolean;
-  /** 中断当前任务。 */
-  abort(): Promise<void>;
-  /** 当前会话文件路径（新会话落盘前为 undefined）。 */
-  readonly sessionFile: string | undefined;
-  /** 全部历史消息（含恢复的会话）。 */
-  readonly messages: unknown[];
-}
 
 interface NewSessionResult {
   session: TuiSession;
@@ -181,8 +165,8 @@ export async function runTui(
   session: TuiSession,
   modelName: string,
   newSession: () => Promise<NewSessionResult>,
+  terminal: Terminal = new ProcessTerminal(),
 ): Promise<void> {
-  const terminal = new ProcessTerminal();
   const tui = new TuiAltScreen(terminal, true);
 
   let currentSession = session;
@@ -368,6 +352,7 @@ export async function runTui(
     appendTranscript(`\n> 正在切换会话…\n`);
     try {
       const next = await loader();
+      await bindSessionUi(next.session);
       unsubscribe?.();
       currentSession.dispose();
       currentSession = next.session;
@@ -475,6 +460,25 @@ export async function runTui(
   const autocomplete = new CombinedAutocompleteProvider(slashCommands, process.cwd());
   editor.setAutocompleteProvider(autocomplete);
 
+  const dialogs = new TuiDialogs(tui);
+  const bindSessionUi = async (target: TuiSession): Promise<void> => {
+    await target.bindExtensions({
+      mode: "tui",
+      uiContext: {
+        ...target.extensionRunner.getUIContext(),
+        select: (title, options, opts) => dialogs.select(title, options, opts),
+        input: (title, placeholder, opts) => dialogs.input(title, placeholder, opts),
+        confirm: (title, message, opts) => dialogs.confirm(title, message, opts),
+        notify: (message) => appendTranscript(`\n${blockQuote(message)}\n`),
+        onTerminalInput: (handler) => tui.addInputListener(handler),
+        setTitle: (title) => terminal.setTitle(title),
+        setEditorText: (text) => { editor.setText(text); tui.requestRender(); },
+        getEditorText: () => editor.getText(),
+        pasteToEditor: (text) => { editor.handleInput(`\x1b[200~${text}\x1b[201~`); tui.requestRender(); },
+      },
+    });
+  };
+
   const handleSubmit = async (raw: string): Promise<void> => {
     const text = raw.trim();
     if (!text) return;
@@ -573,6 +577,14 @@ export async function runTui(
 
     const key = parseKey(data);
 
+    if (key === "ctrl+c" || key === "ctrl+d") {
+      shutdown();
+      return { consume: true };
+    }
+
+    // 提问弹窗拥有焦点：Esc/Tab/Alt 等按键不能被主页快捷键吞掉。
+    if (tui.hasOverlay()) return undefined;
+
     // 会话列表覆盖层：拦截全部按键（编辑器收不到）
     if (overlayActive) {
       if (key === "up" || key === "k") {
@@ -591,11 +603,6 @@ export async function runTui(
       }
       // escape / 其他键一律关闭
       closeSessionOverlay();
-      return { consume: true };
-    }
-
-    if (key === "ctrl+c" || key === "ctrl+d") {
-      shutdown();
       return { consume: true };
     }
 
@@ -646,13 +653,22 @@ export async function runTui(
   updateStatus();
 
   try {
-    tui.start();
-    await new Promise<void>((resolve) => {
+    const shutdownPromise = new Promise<void>((resolve) => {
       resolveShutdown = resolve;
+      if (shutdownRequested) resolve();
     });
+    tui.start();
+    await bindSessionUi(currentSession);
+    await shutdownPromise;
   } finally {
     process.off("SIGINT", shutdown);
-    tui.stop();
-    currentSession.dispose();
+    dialogs.dispose();
+    unsubscribe?.();
+    try {
+      await currentSession.abort();
+    } finally {
+      tui.stop();
+      currentSession.dispose();
+    }
   }
 }

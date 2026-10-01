@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>加入 dito chat — 自建端到端加密聊天</title>
+<meta name="description" content="dito chat 是自建的 Matrix 聊天服务器，端到端加密，附网页版、手机、电脑三端加入教程。">
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#131a26; --border:#1e2a3a; --text:#d6e2f0;
+    --muted:#7d8ea3; --accent:#35d0ba; --accent2:#6ee7b7; --warn:#febc2e; --err:#e06c75;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text); line-height:1.7;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:900px; margin:0 auto; padding:0 20px}
+  code,.mono{font-family:"JetBrains Mono","SF Mono",Consolas,monospace}
+  code{background:#0d1219; border:1px solid var(--border); border-radius:6px; padding:1px 6px; font-size:13.5px}
+
+  header{border-bottom:1px solid var(--border); padding:16px 0; position:sticky; top:0;
+         background:rgba(10,14,20,.92); backdrop-filter:blur(10px); z-index:10}
+  header .wrap{display:flex; align-items:center; justify-content:space-between}
+  .logo{font-size:16px; font-weight:600; letter-spacing:.3px}
+  .logo span{color:var(--accent)}
+  nav a{color:var(--muted); font-size:13px; margin-left:18px}
+  nav a:hover{color:var(--accent)}
+
+  .hero{padding:64px 0 36px; text-align:center}
+  .hero h1{font-size:34px; margin:0 0 14px; font-weight:700; letter-spacing:-.5px}
+  .hero h1 em{color:var(--accent); font-style:normal}
+  .hero p{color:var(--muted); margin:0 auto; max-width:600px; font-size:15px}
+  .badges{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:22px}
+  .badge{font-size:12.5px; color:var(--accent2); border:1px solid var(--border);
+         background:var(--panel); border-radius:999px; padding:5px 13px}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:26px 28px}
+  section{padding:30px 0}
+  h2{font-size:20px; margin:0 0 6px; font-weight:600}
+  .lead{color:var(--muted); font-size:14px; margin:0 0 22px}
+
+  ol.steps{margin:0; padding-left:22px}
+  ol.steps li{margin-bottom:12px; font-size:14.5px}
+  ol.steps li:last-child{margin-bottom:0}
+  ol.steps li b{color:var(--accent2); font-weight:600}
+
+  .tokenbox{margin-top:6px; padding:18px 20px; border-radius:10px; background:#0d1219;
+            border:1px solid var(--border); display:flex; align-items:center;
+            justify-content:space-between; gap:14px; flex-wrap:wrap}
+  .tokenbox .key{font-size:23px; letter-spacing:3px; color:var(--accent2); font-weight:700;
+                 font-family:"JetBrains Mono","SF Mono",Consolas,monospace; word-break:break-all}
+  .copybtn{border:1px solid var(--accent); background:transparent; color:var(--accent);
+           border-radius:8px; padding:8px 16px; font-size:13.5px; font-weight:600; cursor:pointer}
+  .copybtn:hover{background:rgba(53,208,186,.12)}
+
+  .tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px}
+  .tab{padding:9px 16px; border-radius:999px; border:1px solid var(--border);
+       background:transparent; color:var(--muted); font-size:13.5px; cursor:pointer; font-weight:500}
+  .tab.active{background:var(--accent); border-color:var(--accent); color:#06231f; font-weight:600}
+  .pane{display:none}
+  .pane.active{display:block}
+
+  .tip{margin-top:16px; padding:12px 15px; border-left:3px solid var(--warn);
+       background:#1a1608; border-radius:0 8px 8px 0; font-size:13.5px; color:#e8d9a8}
+  .note{margin-top:16px; padding:12px 15px; border-left:3px solid var(--accent);
+       background:#0b1a1a; border-radius:0 8px 8px 0; font-size:13.5px; color:#a9dcd4}
+
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th,td{padding:11px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top}
+  th{color:var(--muted); font-weight:500; width:170px; white-space:nowrap}
+  tr:last-child td,tr:last-child th{border-bottom:0}
+  .dl th{width:auto; white-space:nowrap; font-size:13px}
+  .dl td{font-size:13.5px}
+  .dl td:nth-child(2){white-space:nowrap}
+
+  #notify table{table-layout:fixed}
+  #notify th{width:15%; white-space:normal}
+  #notify th+th{width:85%}
+  @media(max-width:600px){ #notify th{width:24%} #notify th+th{width:76%} }
+
+  .field{margin-bottom:15px}
+  .field label{display:block; font-size:13px; color:var(--muted); margin-bottom:7px}
+  .field input{width:100%; box-sizing:border-box; padding:11px 13px; font:inherit; font-size:15px;
+               color:var(--text); background:#0d131d; border:1px solid var(--border);
+               border-radius:8px; outline:none}
+  .field input:focus{border-color:var(--accent)}
+  .field input.bad{border-color:var(--err)}
+  .field .hint{font-size:12.5px; color:var(--muted); margin-top:7px; line-height:1.6}
+  .rbtn{width:100%; padding:12px; font:inherit; font-size:15px; font-weight:600; color:#06120f;
+        background:var(--accent); border:0; border-radius:8px; cursor:pointer}
+  .rbtn:hover{background:var(--accent2)}
+  .rbtn:disabled{opacity:.55; cursor:default}
+  .msg{display:none; margin-top:14px; padding:13px 15px; border-radius:8px; font-size:14px; line-height:1.7}
+  .msg.show{display:block}
+  .msg.err{background:rgba(224,108,117,.1); border:1px solid rgba(224,108,117,.35); color:#f0a3a9}
+  .msg.ok{background:rgba(53,208,186,.1); border:1px solid rgba(53,208,186,.35); color:var(--accent2)}
+  .msg code{background:rgba(255,255,255,.07); padding:2px 6px; border-radius:5px; font-size:13px}
+
+  details{border-bottom:1px solid var(--border); padding:14px 0}
+  details:last-of-type{border-bottom:0}
+  summary{cursor:pointer; font-size:14.5px; font-weight:500; list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"+"; color:var(--accent); margin-right:10px; font-weight:700}
+  details[open] summary::before{content:"−"}
+  details .body{margin:10px 0 0; color:var(--muted); font-size:14px; padding-left:22px}
+  details .body p{margin:0 0 9px}
+  details .body p:last-child{margin-bottom:0}
+
+  footer{border-top:1px solid var(--border); padding:28px 0; margin-top:24px;
+         color:var(--muted); font-size:13px; text-align:center}
+  footer a{color:var(--muted)}
+  @media(max-width:600px){
+    .hero h1{font-size:26px}
+    .card{padding:20px 18px}
+    th{width:120px}
+    nav a{margin-left:12px; font-size:12.5px}
+    .tokenbox .key{font-size:19px; letter-spacing:2px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">dito<span>.</span>chat</div>
+    <nav>
+      <a href="#register">注册账号</a>
+      <a href="#start">登录</a>
+      <a href="#apps">客户端</a>
+      <a href="#downloads">下载</a>
+      <a href="#notify">通知</a>
+      <a href="#email">邮箱</a>
+      <a href="#params">参数表</a>
+      <a href="#faq">问答</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>加入 <em>dito chat</em></h1>
+    <p>自己搭的 Matrix 聊天服务器，消息端到端加密，服务器只存密文。服务器在国内，不用任何额外工具就能连。</p>
+    <div class="badges">
+      <span class="badge">端到端加密</span>
+      <span class="badge">自建 / 无广告</span>
+      <span class="badge">网页 + 手机 + 电脑</span>
+      <span class="badge">不用额外工具</span>
+    </div>
+  </div>
+
+  <section id="start">
+    <div class="card">
+      <h2>第二步：登录聊天</h2>
+      <p class="lead">电脑手机都能用，什么也不用装，三分钟就能进去。</p>
+      <ol class="steps">
+        <li>打开 <a href="https://element.dito.asia" target="_blank" rel="noreferrer">element.dito.asia</a>，这是本服务器的网页聊天界面。服务器地址已经配好了，不用自己填。</li>
+        <li>点 <b>登录</b>（Sign in），不是创建账户。</li>
+        <li>用户名填刚才注册那个，比如 <code>zhangsan</code>，<b>不用带 @ 和后面那截域名</b>；密码填注册时设的。</li>
+        <li>进去就能聊天了。第一次可能提示「未验证的会话」，那是加密相关的提示，不影响用，想弄干净就翻下面问答里那一条。</li>
+      </ol>
+      <div class="note">
+        用户名一旦定了，你的完整 ID 就是 <code>@用户名:dito.asia</code>，比如 <code>@zhangsan:dito.asia</code>。别人加你就是加这个 ID。
+      </div>
+    </div>
+  </section>
+
+  <section id="register">
+    <div class="card">
+      <h2>第一步：在这里注册账号</h2>
+      <p class="lead">不用装东西，也不用跳去别的页面。填个用户名和密码，点一下就建好了。</p>
+
+      <form id="regform" autocomplete="off" novalidate>
+        <div class="field">
+          <label for="ru">用户名</label>
+          <input id="ru" name="ru" type="text" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="32" placeholder="比如 zhangsan">
+          <div class="hint">
+            3 到 32 位，只能用英文小写字母、数字、点、下划线、横线，开头得是字母或数字（大写会自动转成小写）。定了就不能改，你的完整 ID 会是 <code>@用户名:dito.asia</code>。
+          </div>
+        </div>
+        <div class="field">
+          <label for="rp">密码</label>
+          <input id="rp" name="rp" type="password" autocomplete="new-password" placeholder="至少 8 位">
+          <div class="hint">别用生日、手机号、纯数字，用密码管理器生成一个最省心。</div>
+        </div>
+        <div class="field">
+          <label for="rp2">再输一遍密码</label>
+          <input id="rp2" name="rp2" type="password" autocomplete="new-password" placeholder="两遍要一模一样">
+        </div>
+        <button class="rbtn" id="rbtn" type="submit">注册</button>
+      </form>
+
+      <div class="msg" id="rmsg"></div>
+
+      <details>
+        <summary>我想在客户端里自己注册，不要用上面的表单</summary>
+        <div class="body">
+          <p>也行，客户端注册时要填这串注册令牌：</p>
+          <div class="tokenbox">
+            <span class="key" id="tokenval"></span>
+            <button class="copybtn" id="copybtn" type="button">复制</button>
+          </div>
+          <p>令牌是限次的，用完了就没了，找我换新的。部分手机客户端碰到填令牌这一步会卡住，卡住就还是用上面的表单。</p>
+        </div>
+      </details>
+
+      <div class="tip">
+        注册好了就是个正式账号，用任何客户端都能登。表单只负责建号，不会白存你的密码，也不会给你开多余的登录设备。想注销账号找我。
+      </div>
+    </div>
+  </section>
+
+  <section id="apps">
+    <div class="card">
+      <h2>装个客户端更好用</h2>
+      <p class="lead">网页版够用，但装了 App 才有通知、语音视频和加密密钥管理。先在上面注册好账号，再在 App 里登录。</p>
+
+      <div class="tabs">
+        <button class="tab active" data-pane="android" type="button">安卓</button>
+        <button class="tab" data-pane="ios" type="button">iPhone / iPad</button>
+        <button class="tab" data-pane="desktop" type="button">电脑</button>
+      </div>
+
+      <div class="pane active" id="android">
+        <ol class="steps">
+          <li>装 <b>Element X</b>，官方新客户端，速度最快：<a href="https://f-droid.org/packages/io.element.android.x/" target="_blank" rel="noreferrer">F-Droid</a> ｜ <a href="https://github.com/element-hq/element-x-android/releases" target="_blank" rel="noreferrer">GitHub 直下 APK</a> ｜ 应用商店搜 Element X（有 Google Play 的话）。</li>
+          <li>打开后如果问服务器地址，填 <code>dito.asia</code>。不问就直接下一步。</li>
+          <li>已经有账号就选「登录」，填用户名和密码。还没注册的话，先去网页版注册好（看上面第一段）再回来登录。</li>
+        </ol>
+        <div class="tip">
+          想要界面花一点的就装 <b>FluffyChat</b>：<a href="https://f-droid.org/packages/im.fluffychat/" target="_blank" rel="noreferrer">F-Droid</a> ｜ <a href="https://github.com/krille-chan/fluffychat/releases" target="_blank" rel="noreferrer">GitHub 直下 APK</a>。Element X 闪退或装不上的话，换经典版 <b>Element</b>，用法一样。国产系统记得在电池设置里给它开后台白名单，不然消息会延迟。
+        </div>
+      </div>
+
+      <div class="pane" id="ios">
+        <ol class="steps">
+          <li>装 <b>FluffyChat</b>：<a href="https://apps.apple.com/app/fluffychat/id1551469600" target="_blank" rel="noreferrer">App Store 下载链接</a>，官网是 <a href="https://fluffychat.im" target="_blank" rel="noreferrer">fluffychat.im</a>。</li>
+          <li>先在网页版把账号注册好（看上面第一段），再打开 App 选「登录」，用同一个用户名和密码。</li>
+          <li>如果 App 让你填服务器地址，填 <code>dito.asia</code>；不问就直接登录。</li>
+        </ol>
+        <div class="tip">
+          FluffyChat <b>没在中国区 App Store 上架</b>，点链接如果提示「在你所在的国家或地区不可用」，就把 Apple ID 换到其他区（美区 / 港区都行）再装。不想换区的用下面这个中国区备选。
+        </div>
+        <div class="note">
+          中国区能直接下到的 Matrix 客户端是 <b>fairchat matrix</b>（<a href="https://apps.apple.com/cn/app/fairchat-matrix/id6760774921" target="_blank" rel="noreferrer">App Store 链接</a>），它是 FluffyChat 的定制版，用法一样。注意别下成同名的 <b>fairchat</b>，那个是 Rocket.Chat 客户端，连不上这里，要选名字里带 matrix、开发者是 FAIRKOM 的那个。
+        </div>
+        <div class="tip">
+          还有一条零安装的路：Safari 打开 element.dito.asia，点底部分享按钮，选「添加到主屏幕」，桌面就多一个图标，功能跟 App 没区别。有外区 Apple ID 也可以装 <b>Element X</b>（<a href="https://apps.apple.com/app/element-x-secure-chat-call/id1631335820" target="_blank" rel="noreferrer">App Store 链接</a>）。不管用哪个客户端，登录后都要按提示把「恢复密钥」设好存好，以后换手机全靠它才能看回旧聊天记录。
+        </div>
+      </div>
+
+      <div class="pane" id="desktop">
+        <ol class="steps">
+          <li>Windows / macOS：去 <a href="https://element.io/download" target="_blank" rel="noreferrer">element.io/download</a> 下安装包，认准 Element Desktop。</li>
+          <li>Arch / 其他 Linux：<code>sudo pacman -S element-desktop</code>（官方仓库就有）；或者 Flatpak：<code>flatpak install flathub im.riot.Riot</code>。</li>
+          <li>想要 FluffyChat 桌面版：<a href="https://flathub.org/apps/im.fluffychat.Fluffychat" target="_blank" rel="noreferrer">Flathub</a> ｜ <a href="https://github.com/krille-chan/fluffychat/releases" target="_blank" rel="noreferrer">GitHub 安装包</a>。</li>
+          <li>第一次打开点「编辑」把服务器改成 <code>dito.asia</code>，然后登录。还没账号的话，先去网页版注册（看上面第一段）。</li>
+          <li>不想装东西的话，用 Chrome 打开网页版，地址栏右边有个安装图标，点一下就能当成桌面应用用。</li>
+        </ol>
+      </div>
+
+      <div class="note">
+        注册统一在网页版做最省事。各家 App 对「服务器要求注册令牌」这件事的支持程度不一样，网页版这条路是验过的。账号是通用的，任何客户端填同一个用户名密码都能登，消息会同步（加密的，服务器看不到内容）。
+      </div>
+    </div>
+  </section>
+
+  <section id="downloads">
+    <div class="card">
+      <h2>下载链接汇总</h2>
+      <p class="lead">所有平台的安装入口都在这里，挑一个顺手的，账号通用。</p>
+      <table class="dl">
+        <thead>
+          <tr><th>平台</th><th>软件</th><th>下载</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>网页<br>（零安装）</td>
+            <td>Element Web</td>
+            <td><a href="https://element.dito.asia" target="_blank" rel="noreferrer">element.dito.asia</a>，本服已经配好，打开就能登</td>
+          </tr>
+          <tr>
+            <td>iPhone<br>iPad</td>
+            <td>FluffyChat</td>
+            <td><a href="https://apps.apple.com/app/fluffychat/id1551469600" target="_blank" rel="noreferrer">App Store</a>（需非中国区 Apple ID）<br><a href="https://apps.apple.com/cn/app/fairchat-matrix/id6760774921" target="_blank" rel="noreferrer">中国区备选 fairchat matrix</a></td>
+          </tr>
+          <tr>
+            <td>安卓</td>
+            <td>Element X</td>
+            <td><a href="https://f-droid.org/packages/io.element.android.x/" target="_blank" rel="noreferrer">F-Droid</a> ｜ <a href="https://github.com/element-hq/element-x-android/releases" target="_blank" rel="noreferrer">GitHub APK</a></td>
+          </tr>
+          <tr>
+            <td>安卓</td>
+            <td>FluffyChat</td>
+            <td><a href="https://f-droid.org/packages/im.fluffychat/" target="_blank" rel="noreferrer">F-Droid</a> ｜ <a href="https://github.com/krille-chan/fluffychat/releases" target="_blank" rel="noreferrer">GitHub APK</a></td>
+          </tr>
+          <tr>
+            <td>Windows<br>macOS<br>Linux</td>
+            <td>Element<br>Desktop</td>
+            <td><a href="https://element.io/download" target="_blank" rel="noreferrer">element.io/download</a> ｜ <a href="https://flathub.org/apps/im.riot.Riot" target="_blank" rel="noreferrer">Flathub</a></td>
+          </tr>
+          <tr>
+            <td>Arch Linux</td>
+            <td>Element<br>Desktop</td>
+            <td><code>sudo pacman -S element-desktop</code></td>
+          </tr>
+          <tr>
+            <td>桌面版<br>FluffyChat</td>
+            <td>FluffyChat</td>
+            <td><a href="https://flathub.org/apps/im.fluffychat.Fluffychat" target="_blank" rel="noreferrer">Flathub</a> ｜ <a href="https://github.com/krille-chan/fluffychat/releases" target="_blank" rel="noreferrer">GitHub</a> ｜ <a href="https://fluffychat.im" target="_blank" rel="noreferrer">fluffychat.im</a></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">
+        装完都是同一个账号，登录时服务器填 <code>dito.asia</code>。手机端建议先在网页版把账号注册好，再拿账号去登录。
+      </div>
+    </div>
+  </section>
+
+  <section id="notify">
+    <div class="card">
+      <h2>怎么开通知</h2>
+      <p class="lead">账号登进去了，默认可能一声不响。下面三件事过一遍，通知就正常了。</p>
+
+      <p><b>第一件：让系统放行</b></p>
+      <table>
+        <thead>
+          <tr><th>平台</th><th>要开的开关</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>安卓</td>
+            <td>系统设置 → 通知 → 找到 Element X / FluffyChat → 允许通知；再去「应用管理 → 电池」把它设成<b>不受限制 / 允许后台活动</b>。小米、华为、OPPO、vivo 这类国产系统必须开，不开的话消息会被延迟甚至根本不推。</td>
+          </tr>
+          <tr>
+            <td>iPhone<br>iPad</td>
+            <td>设置 → 通知 → Element X / FluffyChat → 允许通知，把声音和横幅都打开；顺便把「后台 App 刷新」也打开。</td>
+          </tr>
+          <tr>
+            <td>电脑</td>
+            <td>第一次收到消息时系统会问要不要允许通知，点允许就是；macOS 还要去 系统设置 → 通知 → Element 里手动打开。</td>
+          </tr>
+          <tr>
+            <td>网页版</td>
+            <td>浏览器地址栏左边的小图标（锁或者铃铛）→ 通知 → 允许。iPhone 上想让网页版也能响，得先把页面「添加到主屏幕」（iOS 16.4 以上才支持网页通知）。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:22px"><b>第二件：把客户端里的开关打开</b></p>
+      <ol class="steps">
+        <li><b>Element Web</b>（网页版）：点左上角头像 → 设置 → 通知 → 打开「启用通知」，下面再去选「所有消息」还是「只算有人 @ 我」。</li>
+        <li><b>Element X</b>（安卓）：设置 → 通知 → 打开。</li>
+        <li><b>FluffyChat</b> / <b>fairchat matrix</b>：设置 → 通知 → 打开。</li>
+        <li>某个房间太吵、或者反而不响：进房间 → 右上角设置 → 通知 → 选「所有消息」「仅 @ 提及」还是「静音」。房间被静音了就别怪它不响。</li>
+      </ol>
+
+      <p style="margin-top:22px"><b>第三件：安卓还要额外装一个「分发器」</b></p>
+      <ol class="steps">
+        <li>安卓上的 Element X、FluffyChat 用的是 UnifiedPush 这套推送方式，需要一个「分发器」App 帮忙把通知从中转服务器收下来。手机上没有 Google 服务框架的话，这一步是必须的。</li>
+        <li>装一个分发器：<b>ntfy</b>（F-Droid 里搜 ntfy，或者应用商店搜同名），也可以装 <b>Sunup</b>。装完打开，允许它发通知、允许自启动。</li>
+        <li>回到聊天 App 的设置里选中这个分发器（Element X 第一次打开就会问；FluffyChat 在 设置 → 通知 里改）。</li>
+        <li>从 Google Play 装的 Element X 一般自带推送通道，可以跳过这一步；真的收不到再回来装上试试。</li>
+      </ol>
+      <div class="tip">
+        国产系统的省电策略是通知最大的敌人。分发器和聊天 App 都得加进「电池白名单 / 允许后台运行 / 允许自启动」，不然锁屏几分钟以后就收不到了。
+      </div>
+
+      <div class="note" style="margin-top:20px">
+        做完还是收不到的话：通知延迟本身是正常的，服务器架在自己家里、走家宽，比大厂慢几秒不奇怪；突然不响了先把 App 退出来重新登录一次，这样会重新注册一遍推送；网页版关掉标签页就不提醒了，想随时收到就装 App，或者在手机浏览器里「添加到主屏幕」。
+      </div>
+    </div>
+  </section>
+
+  <section id="email">
+    <div class="card">
+      <h2>邮箱和找回密码</h2>
+      <p class="lead">绑个邮箱，忘了密码自己就能重置，不用来求管理员。</p>
+
+      <p><b>绑之前先知道两件事</b></p>
+      <ol class="steps">
+        <li>邮箱<b>只用来验证身份和重置密码</b>，服务器不会给你发「你有新消息」那种提醒邮件，不用担心被邮件轰炸。</li>
+        <li>一个邮箱只归一个账号用。拿已经被别人注册过的邮箱去注册新账号，服务器会拦下来，并给你发一封提示邮件。</li>
+      </ol>
+
+      <p style="margin-top:22px"><b>怎么绑</b></p>
+      <ol class="steps">
+        <li>用 <a href="https://element.dito.asia" target="_blank" rel="noopener">element.dito.asia</a> 网页版登录。App 里路径差不多，但网页版最不容易点错。</li>
+        <li>点左上角头像 → <b>所有设置</b>，在「常规」或「账号」里找到<b>邮箱地址</b>（英文界面是 Email address），点<b>添加邮箱地址</b>。</li>
+        <li>填上邮箱，发送。信是从 <code>no-reply@dito.asia</code> 发过来的，主题是「[dito chat] 邮箱验证」。</li>
+        <li>打开那封信，点里面的链接。浏览器打开的页面写着 <code>Your email has now been validated</code>，看到它就说明绑好了，页面可以直接关掉。</li>
+        <li>回到 Element，设置里的邮箱这下就是已验证状态了。</li>
+      </ol>
+
+      <p style="margin-top:22px"><b>忘了密码怎么找回</b></p>
+      <ol class="steps">
+        <li>在登录页面点<b>忘记密码</b>（网页版在密码框下面，App 里是登录页的文字按钮）。</li>
+        <li>填上绑定的邮箱，收信，主题是「[dito chat] 密码重置」。</li>
+        <li>点信里的链接，打开的页面上<b>还要再点一次</b> <code>Confirm changing my password</code> 按钮，光打开页面不算确认。</li>
+        <li>看到 <code>Password reset success</code> 就回 Element，按提示设新密码。</li>
+        <li>改完密码，之前登录过的设备会被登出，用新密码重新登录一遍就好。聊天记录不会丢，那东西锁在本机加密密钥里，跟密码不是一回事。</li>
+      </ol>
+
+      <div class="tip">
+        没绑邮箱的账号，密码只能由管理员手动重置。所以能绑就趁早绑，两分钟的事。
+      </div>
+
+      <div class="note" style="margin-top:20px">
+        收不到信先做三件事：翻垃圾箱（QQ 邮箱、Outlook、Gmail 都爱把陌生域名的信丢进去）、确认邮箱没写错、把 <code>no-reply@dito.asia</code> 加进白名单。信偶尔要等几分钟才到，别一直点「发送」，点太勤会被服务器限制一会儿。邮件里的链接 30 分钟内有效，过期了重新申请一封就行。<br>
+        想换邮箱或者不想要了：设置 → 邮箱，删掉再按上面的步骤绑新的。
+      </div>
+    </div>
+  </section>
+
+  <section id="params">
+    <div class="card">
+      <h2>参数表</h2>
+      <p class="lead">客户端要你手填的时候对着抄。</p>
+      <table>
+        <tr><th>服务器地址</th><td><code>dito.asia</code>（填这个就行，会自动找到真正的服务器）</td></tr>
+        <tr><th>服务器 URL</th><td><code>https://mx.dito.asia</code>（有些客户端要的是这个）</td></tr>
+        <tr><th>网页版</th><td><a href="https://element.dito.asia" target="_blank" rel="noreferrer">https://element.dito.asia</a></td></tr>
+        <tr><th>你的 ID</th><td><code>@用户名:dito.asia</code></td></tr>
+        <tr><th>注册</th><td>需要注册令牌</td></tr>
+        <tr><th>聊天加密</th><td>默认端到端加密，服务器只存密文</td></tr>
+        <tr><th>协议</th><td>Matrix，和 matrix.org 上的账号可以互通</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="card">
+      <h2>常见问题</h2>
+      <p class="lead">点标题展开。</p>
+
+      <details>
+        <summary>为什么要注册令牌，能不能开放注册</summary>
+        <div class="body">
+          <p>服务器是自己家宽搭的，开放注册会被脚本刷号，刷出来的号会拿去做垃圾邀请，严重的话整个服务器会被别的服务器拉黑。所以留一道令牌当门槛，熟人之间传一下就够用。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>提示注册令牌无效怎么办</summary>
+        <div class="body">
+          <p>两种情况：一是令牌被用完了（这是限次的），二是抄漏了字符。先确认有没有多空格，还不行就找我要个新的。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>为什么推荐直接用本页的表单注册</summary>
+        <div class="body">
+          <p>这个表单调的就是服务器自己的注册接口，令牌由页面自己带上，你只需要填用户名和密码。手机客户端碰到「填注册令牌」这一步经常卡住或者报错，所以先在页面把账号建好、再去 App 登录最省事。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>登录时提示「未验证的会话」是什么意思</summary>
+        <div class="body">
+          <p>这是端到端加密的机制：每台新设备都是「陌生设备」，需要你从已经登录过的设备上确认一下，或者用恢复密钥自己认领。按提示点几下就好，不影响使用。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>换手机怎么把聊天记录带过去</summary>
+        <div class="body">
+          <p>靠恢复密钥。第一次登录时如果生成了恢复密钥而且你存下来了，新设备用这串密钥就能解锁历史记录。没存的话历史消息就解不开了，这是加密的必然结果，服务器也帮不了。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>服务器管理员能看我的聊天内容吗</summary>
+        <div class="body">
+          <p>看不到内容。房间是端到端加密的，服务器上只有密文，管理员能看到的只有谁在哪个房间、什么时候发了消息这些元数据。代价就是密码丢了、密钥丢了，谁都救不回来。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>能在手机上收到通知吗</summary>
+        <div class="body">
+          <p>能。系统通知权限、客户端里的通知开关、安卓再加一个推送分发器，这三样弄好就正常了，具体步骤看上面「怎么开通知」那一节。</p>
+          <p>实话实说：服务器架在自己家里、走的是家宽，通知偶尔慢几秒是正常的；国产系统的省电策略爱杀后台，把 App 加进电池白名单会好很多。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>可以语音和视频通话吗</summary>
+        <div class="body">
+          <p>服务器上装了通话中继，同一个网络下肯定能用。跨公网打电话要看家宽那边的端口转发，不保证一次就通，遇到问题告诉我。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>能和其他服务器的人聊天吗</summary>
+        <div class="body">
+          <p>可以，Matrix 是联邦制，理论上能和 matrix.org 上的账号互相加好友、进同一个房间。不过线路是家宽加代理，稳定性不如大厂，碰到联邦不通的情况反馈给我。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>能收 QQ、微信消息吗</summary>
+        <div class="body">
+          <p>不能。这是个独立服务器，跟 QQ 微信不通，消息得让对面也装上客户端才收得到。</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      <a href="https://dito.dito.asia">官网</a> ·
+      <a href="https://get.dito.asia">领 @dito.asia 邮箱</a> ·
+      <a href="https://element.dito.asia">网页版聊天</a> ·
+      <a href="https://blog.dito.asia">博客</a>
+    </p>
+    <p>dito chat · 自建于 dito.asia</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  // ---- 复制令牌
+  var btn = document.getElementById('copybtn');
+  btn.addEventListener('click', function(){
+    var t = document.getElementById('tokenval').textContent.trim();
+    var done = function(){ btn.textContent = '已复制'; setTimeout(function(){ btn.textContent = '复制'; }, 1600); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(done, fallback);
+    } else { fallback(); }
+    function fallback(){
+      var ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e){ btn.textContent = '手动选中复制'; }
+      document.body.removeChild(ta);
+    }
+  });
+
+  // ---- 客户端标签页
+  var tabs = document.querySelectorAll('.tab');
+  for (var i = 0; i < tabs.length; i++){
+    tabs[i].addEventListener('click', function(){
+      for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
+      this.classList.add('active');
+      var panes = document.querySelectorAll('.pane');
+      for (var k = 0; k < panes.length; k++) panes[k].classList.remove('active');
+      var el = document.getElementById(this.getAttribute('data-pane'));
+      if (el) el.classList.add('active');
+    });
+  }
+
+  // ---- 注册表单：直接调服务器的注册接口，令牌由页面自己带上
+  var HS = 'https://mx.dito.asia';
+  var ERRMAP = {
+    M_USER_IN_USE: '这个用户名已经有人用了，换一个再试',
+    M_INVALID_USERNAME: '用户名格式不行，只能用英文小写字母、数字、点、下划线、横线，3 到 32 位',
+    M_EXCLUSIVE: '这个用户名被服务器保留了，换一个',
+    M_WEAK_PASSWORD: '密码太弱了，换长一点的',
+    M_FORBIDDEN: '注册令牌无效，或者这串令牌的名额已经用完了，找我换新的',
+    M_THREEPID_IN_USE: '这个邮箱或手机号已经绑过别的账号了'
+  };
+  var form = document.getElementById('regform');
+  if (form){
+    var uEl = document.getElementById('ru');
+    var pEl = document.getElementById('rp');
+    var p2El = document.getElementById('rp2');
+    var btnEl = document.getElementById('rbtn');
+    var msgEl = document.getElementById('rmsg');
+
+    var say = function(kind, html){ msgEl.className = 'msg show ' + kind; msgEl.innerHTML = html; };
+    var hush = function(){ msgEl.className = 'msg'; msgEl.innerHTML = ''; };
+    var tok = function(){ return document.getElementById('tokenval').textContent.trim(); };
+
+    // 服务器可能分好几步问，看它要哪一步就给哪一步
+    var OK_STAGES = ['m.login.registration_token', 'm.login.dummy', 'm.login.terms'];
+    var pickStage = function(flows, completed){
+      // 只挑本页能走完的流程：服务器配了邮箱后，注册 flows 里会多出一条带
+      // m.login.email.identity 的，那条本页不处理，直接跳过。
+      var usable = [];
+      for (var i = 0; i < flows.length; i++){
+        var stages = flows[i].stages || [];
+        var ok = true;
+        for (var k = 0; k < stages.length; k++){
+          if (OK_STAGES.indexOf(stages[k]) === -1){ ok = false; break; }
+        }
+        if (ok) usable.push(stages);
+      }
+      if (!usable.length) throw new Error('服务器要求的注册步骤本页处理不了，请改用 element.dito.asia 注册');
+      for (var i = 0; i < usable.length; i++){
+        for (var j = 0; j < usable[i].length; j++){
+          var s = usable[i][j];
+          if (completed.indexOf(s) !== -1) continue;
+          return s;
+        }
+      }
+      return null;
+    };
+
+    var register = function(username, password){
+      var url = HS + '/_matrix/client/v3/register';
+      var auth = null;
+      var step = function(i){
+        if (i > 6) return Promise.reject(new Error('注册步骤太多，没能走完，找我看看'));
+        var body = { username: username, password: password, inhibit_login: true };
+        if (auth) body.auth = auth;
+        return fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        }).then(function(res){
+          return res.json().catch(function(){ return {}; }).then(function(data){
+            if (res.ok) return data;
+            if (res.status !== 401){
+              var e = new Error(ERRMAP[data.errcode] || data.error || ('注册失败，HTTP ' + res.status));
+              e.raw = data;
+              throw e;
+            }
+            var stage = pickStage(data.flows || [], data.completed || []);
+            if (!stage) throw new Error('注册流程卡住了，找我看看');
+            auth = { type: stage, session: data.session };
+            if (stage === 'm.login.registration_token') auth.token = tok();
+            return step(i + 1);
+          });
+        });
+      };
+      return step(0);
+    };
+    form.addEventListener('submit', function(ev){
+      ev.preventDefault();
+      hush();
+      var u = uEl.value.trim().toLowerCase();
+      var p = pEl.value, p2 = p2El.value;
+      uEl.classList.remove('bad'); pEl.classList.remove('bad'); p2El.classList.remove('bad');
+
+      if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(u)){
+        uEl.classList.add('bad');
+        say('err', '用户名要 3 到 32 位，只能用英文小写字母、数字、点、下划线、横线，开头得是字母或数字。');
+        return;
+      }
+      if (p.length < 8){ pEl.classList.add('bad'); say('err', '密码至少 8 位。'); return; }
+      if (p !== p2){ p2El.classList.add('bad'); say('err', '两遍密码不一样，再对一下。'); return; }
+
+      btnEl.disabled = true;
+      btnEl.textContent = '正在注册…';
+      register(u, p).then(function(data){
+        var uid = data.user_id || ('@' + u + ':dito.asia');
+        form.reset();
+        say('ok', '<b>注册成功。</b>你的账号是 <code>' + uid + '</code>，密码就是刚才填的。'+
+          '<br>现在去下面第二步：打开 element.dito.asia，用户名填 <code>' + u +
+          '</code>（不用带 @ 和后面的域名），密码填刚才那个，就能进去了。');
+      }).catch(function(e){
+        var extra = (e.raw && e.raw.error && e.message.indexOf(e.raw.error) === -1) ? '（' + e.raw.error + '）' : '';
+        say('err', e.message + extra);
+      }).then(function(){
+        btnEl.disabled = false;
+        btnEl.textContent = '注册';
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>

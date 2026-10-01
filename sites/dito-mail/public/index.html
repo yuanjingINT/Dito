@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>领取 @dito.asia 邮箱 — dito</title>
+<meta name="description" content="免费领取一个 @dito.asia 邮箱，附 iOS、安卓、浏览器、电脑四端配置教程。">
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#131a26; --border:#1e2a3a; --text:#d6e2f0;
+    --muted:#7d8ea3; --accent:#35d0ba; --accent2:#6ee7b7; --warn:#febc2e; --err:#e06c75;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text); line-height:1.7;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:900px; margin:0 auto; padding:0 20px}
+  code,.mono{font-family:"JetBrains Mono","SF Mono",Consolas,monospace}
+
+  header{border-bottom:1px solid var(--border); padding:16px 0; position:sticky; top:0;
+         background:rgba(10,14,20,.92); backdrop-filter:blur(10px); z-index:10}
+  header .wrap{display:flex; align-items:center; justify-content:space-between}
+  .logo{font-size:16px; font-weight:600; letter-spacing:.3px}
+  .logo span{color:var(--accent)}
+  nav a{color:var(--muted); font-size:13px; margin-left:18px}
+  nav a:hover{color:var(--accent)}
+
+  .hero{padding:64px 0 40px; text-align:center}
+  .hero h1{font-size:34px; margin:0 0 14px; font-weight:700; letter-spacing:-.5px}
+  .hero h1 em{color:var(--accent); font-style:normal}
+  .hero p{color:var(--muted); margin:0 auto; max-width:560px; font-size:15px}
+
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:26px 28px}
+  section{padding:34px 0}
+  h2{font-size:20px; margin:0 0 6px; font-weight:600}
+  .lead{color:var(--muted); font-size:14px; margin:0 0 22px}
+
+  label{display:block; font-size:13px; color:var(--muted); margin:0 0 6px}
+  input[type=text],input[type=password]{
+    width:100%; padding:11px 13px; border-radius:9px; border:1px solid var(--border);
+    background:#0d1219; color:var(--text); font-size:14px; outline:none
+  }
+  input:focus{border-color:var(--accent)}
+  .row{margin-bottom:16px}
+  .hint{font-size:12px; color:var(--muted); margin-top:6px}
+  .prefixed{display:flex; align-items:center; gap:0}
+  .prefixed input{border-radius:9px 0 0 9px}
+  .prefixed .suffix{
+    padding:11px 14px; border:1px solid var(--border); border-left:0; border-radius:0 9px 9px 0;
+    background:#0d1219; color:var(--muted); font-size:14px; white-space:nowrap
+  }
+  .hp{position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden}
+  button{
+    border:0; border-radius:9px; padding:12px 20px; font-size:14px; font-weight:600;
+    background:var(--accent); color:#06231f; cursor:pointer; transition:filter .15s
+  }
+  button:hover{filter:brightness(1.08)}
+  button:disabled{opacity:.55; cursor:not-allowed}
+  .ghost{background:transparent; border:1px solid var(--border); color:var(--text); font-weight:500}
+  .msg{margin-top:14px; font-size:14px; display:none}
+  .msg.show{display:block}
+  .msg.ok{color:var(--accent2)}
+  .msg.err{color:var(--err)}
+
+  .codebox{
+    margin-top:16px; padding:16px 18px; border-radius:10px; background:#0d1219;
+    border:1px solid var(--border); display:none
+  }
+  .codebox.show{display:block}
+  .codebox .key{font-size:24px; letter-spacing:4px; color:var(--accent2); font-weight:700}
+
+  .tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px}
+  .tab{
+    padding:9px 16px; border-radius:999px; border:1px solid var(--border);
+    background:transparent; color:var(--muted); font-size:13.5px; cursor:pointer; font-weight:500
+  }
+  .tab.active{background:var(--accent); border-color:var(--accent); color:#06231f; font-weight:600}
+  .pane{display:none}
+  .pane.active{display:block}
+  ol.steps{margin:0; padding-left:20px}
+  ol.steps li{margin-bottom:11px; font-size:14.5px}
+  ol.steps li:last-child{margin-bottom:0}
+  .tip{margin-top:16px; padding:12px 15px; border-left:3px solid var(--warn);
+       background:#1a1608; border-radius:0 8px 8px 0; font-size:13.5px; color:#e8d9a8}
+
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th,td{padding:11px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top}
+  th{color:var(--muted); font-weight:500; width:150px; white-space:nowrap}
+  tr:last-child td,tr:last-child th{border-bottom:0}
+
+  details{border-bottom:1px solid var(--border); padding:14px 0}
+  details:last-of-type{border-bottom:0}
+  summary{cursor:pointer; font-size:14.5px; font-weight:500; list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"+"; color:var(--accent); margin-right:10px; font-weight:700}
+  details[open] summary::before{content:"−"}
+  details p{margin:10px 0 0; color:var(--muted); font-size:14px; padding-left:22px}
+
+  .note{margin-top:18px; padding:16px 18px; border-radius:10px; background:#1a1210;
+        border:1px solid #3a1a1d; font-size:13.5px; color:#e8b4b8}
+  footer{border-top:1px solid var(--border); padding:28px 0; margin-top:20px;
+         color:var(--muted); font-size:13px; text-align:center}
+  footer a{color:var(--muted)}
+  @media(max-width:600px){
+    .hero h1{font-size:26px}
+    .card{padding:20px 18px}
+    th{width:110px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">dito<span>.</span>asia 邮箱</div>
+    <nav>
+      <a href="#signup">领取</a>
+      <a href="#guide">配置教程</a>
+      <a href="#params">参数表</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>领取一个 <em>@dito.asia</em> 邮箱</h1>
+    <p>自己搭的邮件服务器，支持 IMAP / SMTP，手机、电脑、浏览器都能用。填个前缀提交申请，管理员审核通过后就能收发了。</p>
+  </div>
+
+  <section id="signup">
+    <div class="card">
+      <h2>申请邮箱</h2>
+      <p class="lead">提交后你会拿到一个申请码，用它查进度。</p>
+      <form id="f">
+        <div class="row hp">
+          <input type="text" name="website" id="hp" tabindex="-1" autocomplete="off">
+        </div>
+        <div class="row">
+          <label for="prefix">想要的邮箱前缀</label>
+          <div class="prefixed">
+            <input type="text" id="prefix" name="prefix" placeholder="yourname" autocomplete="off" required>
+            <span class="suffix">@dito.asia</span>
+          </div>
+          <div class="hint">3-30 位，小写字母 / 数字 / . _ -，首尾必须是字母或数字</div>
+        </div>
+        <div class="row">
+          <label for="password">设置密码</label>
+          <input type="password" id="password" name="password" placeholder="至少 8 位" autocomplete="new-password" required>
+          <div class="hint">这个密码同时用于收信和发信，记好</div>
+        </div>
+        <div class="row">
+          <label for="password2">再输一次</label>
+          <input type="password" id="password2" placeholder="确认密码" autocomplete="new-password" required>
+        </div>
+        <button type="submit" id="submitBtn">提交申请</button>
+        <div class="msg" id="msg"></div>
+        <div class="codebox" id="codebox">
+          <div style="color:var(--muted);font-size:13px;margin-bottom:8px">你的申请码，先记下来：</div>
+          <div class="key mono" id="codeVal">--------</div>
+          <div class="hint">管理员审核通过后，NAS 会自动开号，一般几分钟内完成。用下面的查询看结果。</div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h2 style="font-size:16px">查申请进度</h2>
+      <form id="sf" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <input type="text" id="qcode" placeholder="输入申请码" style="flex:1;min-width:180px;text-transform:uppercase" autocomplete="off">
+        <button type="submit" class="ghost">查询</button>
+      </form>
+      <div class="msg" id="smsg"></div>
+    </div>
+  </section>
+
+  <section id="guide">
+    <h2>怎么在设备上配置</h2>
+    <p class="lead">选你的平台，照着做。所有平台用的都是同一套参数。</p>
+    <div class="tabs">
+      <button class="tab active" data-p="ios">iPhone / iPad</button>
+      <button class="tab" data-p="android">安卓</button>
+      <button class="tab" data-p="browser">浏览器</button>
+      <button class="tab" data-p="pc">Windows / macOS / Linux</button>
+    </div>
+
+    <div class="card">
+      <div class="pane active" data-pane="ios">
+        <ol class="steps">
+          <li>打开「设置」，下滑找到「邮件」，进「账户」→「添加账户」</li>
+          <li>选「其他」，再选「添加邮件账户」</li>
+          <li>姓名随便填，电子邮件填你的完整地址（比如 <code>yourname@dito.asia</code>），密码填注册时设的，点「下一步」</li>
+          <li>选「IMAP」。收件服务器主机名填 <code>mail.dito.asia</code>，用户名填完整邮箱地址（含 @dito.asia），密码再输一遍</li>
+          <li>往下填发件服务器 SMTP，主机名也是 <code>mail.dito.asia</code>，用户名密码同上</li>
+          <li>点右上角「存储」，完成。第一封邮件可能要等一两分钟</li>
+        </ol>
+        <div class="tip">iOS 有时会提示「无法验证服务器身份」。这是因为填了 IP 或者证书名对不上，只要主机名填的是 mail.dito.asia 就不会出现；真遇到了点「继续」即可。</div>
+      </div>
+
+      <div class="pane" data-pane="android">
+        <ol class="steps">
+          <li>打开 Gmail，点右上角头像 → 「添加其他账户」</li>
+          <li>账户类型选「其他」</li>
+          <li>输入你的完整邮箱地址，点「下一步」，然后选「IMAP」</li>
+          <li>收件服务器：<code>mail.dito.asia</code>，端口 <code>993</code>，安全类型选 <code>SSL/TLS</code></li>
+          <li>发件服务器：<code>mail.dito.asia</code>，端口 <code>465</code>，安全类型选 <code>SSL/TLS</code></li>
+          <li>用户名都填完整邮箱地址，密码填你设的，点「登录」→ 允许</li>
+        </ol>
+        <div class="tip">有些国产 ROM 的邮件 App 会强制要求 POP3，Dito 邮局不提供 POP3，只支持 IMAP。用 Gmail 客户端或者别的支持 IMAP 的 App 就行。</div>
+      </div>
+
+      <div class="pane" data-pane="browser">
+        <ol class="steps">
+          <li>直接打开 <a href="https://webmail.dito.asia" target="_blank" rel="noopener">webmail.dito.asia</a>，不用装任何东西</li>
+          <li>用户名填完整邮箱地址，密码填你设的</li>
+          <li>登录后就能收发邮件、建文件夹、管理联系人</li>
+        </ol>
+        <div class="tip">在别人电脑上临时用，浏览器是最好的选择，用完记得退出登录。</div>
+      </div>
+
+      <div class="pane" data-pane="pc">
+        <ol class="steps">
+          <li>打开 Thunderbird，进「账户设置」→「账户操作」→「添加邮件账户」</li>
+          <li>填姓名、完整邮箱地址、密码，点「手动配置」</li>
+          <li>收件：协议选 <code>IMAP</code>，主机名 <code>mail.dito.asia</code>，端口 <code>993</code>，连接安全性 <code>SSL/TLS</code>，认证方式「普通密码」</li>
+          <li>发件：主机名 <code>mail.dito.asia</code>，端口 <code>465</code>，连接安全性 <code>SSL/TLS</code>，认证方式「普通密码」</li>
+          <li>用户名填完整邮箱地址，点「完成」</li>
+        </ol>
+        <div class="tip">不建议用 Outlook 客户端，它对新域名支持很差，经常连不上还报一堆错。用 Thunderbird、KMail 或者系统自带的邮件应用都行。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="params">
+    <h2>配置参数表</h2>
+    <p class="lead">任何邮件客户端都用这几个值。</p>
+    <div class="card">
+      <table>
+        <tr><th>邮箱地址</th><td class="mono">你的前缀@dito.asia</td></tr>
+        <tr><th>用户名</th><td class="mono">完整邮箱地址（必须带 @dito.asia）</td></tr>
+        <tr><th>密码</th><td>注册时你自己设的那个</td></tr>
+        <tr><th>收件 IMAP</th><td class="mono">mail.dito.asia &nbsp;:&nbsp; 993 &nbsp; SSL/TLS</td></tr>
+        <tr><th>发件 SMTP</th><td class="mono">mail.dito.asia &nbsp;:&nbsp; 465 &nbsp; SSL/TLS<br><span style="color:var(--muted)">备选：587 + STARTTLS</span></td></tr>
+        <tr><th>网页版</th><td><a href="https://webmail.dito.asia" target="_blank" rel="noopener">webmail.dito.asia</a></td></tr>
+      </table>
+      <div class="tip" style="border-left-color:#35d0ba;background:#0c1a19;color:#9fd9d0">
+        证书用的是 Let's Encrypt 签给 <code>mail.dito.asia</code> 的，所以主机名必须写域名，别写 IP，否则会报证书错误。
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <h2>常见问题</h2>
+    <div class="card" style="padding:6px 24px">
+      <details>
+        <summary>提交后多久能用？</summary>
+        <p>申请会先进审核队列，管理员点通过后服务器自动开号。一般几分钟，最长几小时。拿申请码在页面顶部查进度。</p>
+      </details>
+      <details>
+        <summary>能收发外部邮箱吗？</summary>
+        <p>收信没问题。发信到 QQ、163、Gmail 都正常。但发到微软系邮箱（Outlook、Hotmail、Live）可能会被拒，这是家庭宽带的公网 IP 没有反向解析记录导致的，属于架构限制，改不了。</p>
+      </details>
+      <details>
+        <summary>一共能领几个？</summary>
+        <p>同一个 IP 每天最多提交 3 次申请。要更多的话找管理员。</p>
+      </details>
+      <details>
+        <summary>忘了密码怎么办？</summary>
+        <p>找管理员重置，重置后要重新在客户端里更新密码。</p>
+      </details>
+      <details>
+        <summary>能换成别的邮箱前缀吗？</summary>
+        <p>审核通过前可以重新提交；已经开通的账号要改前缀得找管理员删掉重建。</p>
+      </details>
+      <details>
+        <summary>邮件会不会丢？</summary>
+        <p>服务器跑在家里的 NAS 上，没有商业级的多副本备份。重要邮件建议在客户端里本地留一份。</p>
+      </details>
+    </div>
+
+    <div class="note">
+      <strong style="color:#e06c75">重要：别拿它发垃圾邮件。</strong>
+      整个 dito.asia 域名共用同一套发信信誉，只要你这个账号群发垃圾邮件或者被大量投诉，域名就会被拉黑名单，
+      之后<strong>所有用户</strong>的邮件都发不出去了。正常通信随便用，群发广告请换别的地方。
+    </div>
+  </section>
+
+  <footer>
+    <div>dito.asia 邮局 · 自建邮件服务</div>
+    <div style="margin-top:8px">
+      <a href="https://dito.dito.asia">官网</a> ·
+      <a href="https://webmail.dito.asia">网页邮箱</a> ·
+      <a href="https://blog.dito.asia">博客</a> ·
+      <a href="mailto:dito@dito.asia">dito@dito.asia</a>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  // ---- tab 切换
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active')});
+      document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active')});
+      t.classList.add('active');
+      document.querySelector('.pane[data-pane="'+t.dataset.p+'"]').classList.add('active');
+    });
+  });
+
+  function show(el, text, cls){
+    el.textContent = text;
+    el.className = 'msg show ' + (cls || '');
+  }
+
+  // ---- 提交申请
+  var f = document.getElementById('f');
+  var msg = document.getElementById('msg');
+  var btn = document.getElementById('submitBtn');
+  f.addEventListener('submit', async function(e){
+    e.preventDefault();
+    var prefix = document.getElementById('prefix').value.trim().toLowerCase();
+    var pw = document.getElementById('password').value;
+    var pw2 = document.getElementById('password2').value;
+    if (pw !== pw2){ show(msg, '两次密码不一样', 'err'); return; }
+
+    btn.disabled = true;
+    show(msg, '提交中…', '');
+    try{
+      var r = await fetch('/api/signup', {
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body: JSON.stringify({ prefix: prefix, password: pw, website: document.getElementById('hp').value })
+      });
+      var d = await r.json();
+      if (!r.ok){ show(msg, d.error || '提交失败', 'err'); return; }
+      show(msg, '申请已提交，等管理员审核', 'ok');
+      document.getElementById('codeVal').textContent = d.code;
+      document.getElementById('codebox').classList.add('show');
+      f.querySelector('#prefix').value = '';
+      f.querySelector('#password').value = '';
+      f.querySelector('#password2').value = '';
+    }catch(err){
+      show(msg, '网络错误，稍后再试', 'err');
+    }finally{
+      btn.disabled = false;
+    }
+  });
+
+  // ---- 查进度
+  var sf = document.getElementById('sf');
+  var smsg = document.getElementById('smsg');
+  var map = {
+    pending:  '还在审核队列里，等等',
+    approved: '管理员已通过，服务器正在开号，一两分钟后再查',
+    created:  '已开通，可以按上面的教程配置了',
+    rejected: '申请被拒绝了',
+    failed:   '开号出错了，联系管理员看看'
+  };
+  sf.addEventListener('submit', async function(e){
+    e.preventDefault();
+    var code = document.getElementById('qcode').value.trim().toUpperCase();
+    if (!code){ show(smsg, '先输申请码', 'err'); return; }
+    show(smsg, '查询中…', '');
+    try{
+      var r = await fetch('/api/status?code=' + encodeURIComponent(code));
+      var d = await r.json();
+      if (!r.ok){ show(smsg, d.error || '查询失败', 'err'); return; }
+      var text = (map[d.status] || d.status) + '（' + d.email + '）';
+      show(smsg, text, d.status === 'created' ? 'ok' : '');
+    }catch(err){
+      show(smsg, '网络错误，稍后再试', 'err');
+    }
+  });
+})();
+</script>
+</body>
+</html>

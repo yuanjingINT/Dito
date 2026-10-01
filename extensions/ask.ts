@@ -18,7 +18,7 @@ export default function askExtension(pi: ExtensionAPI): void {
       options: Type.Optional(Type.Array(Type.String(), { description: "可选的选项列表" })),
     }),
     executionMode: "sequential",
-    async execute(_id, params, _signal, _onUpdate, ctx) {
+    async execute(_id, params, signal, _onUpdate, ctx) {
       const q = params.question as string;
       const options = (params.options as string[] | undefined) ?? [];
 
@@ -31,14 +31,14 @@ export default function askExtension(pi: ExtensionAPI): void {
       }
 
       const optionText = options.length ? `\n选项：${options.join(" / ")}` : "";
-      if (ctx.mode === "tui") {
+      if (ctx.hasUI) {
         try {
           const chosen = options.length
-            ? await ctx.ui.select(q, options)
-            : await ctx.ui.select(q, ["请直接输入回答"]);
+            ? await ctx.ui.select(q, options, { signal })
+            : await ctx.ui.input(q, "请输入回答", { signal });
           return {
-            content: [{ type: "text", text: chosen ? `用户选择：${chosen}` : "用户未作答" }],
-            details: { answer: chosen ?? null, via: "tui" },
+            content: [{ type: "text", text: chosen ? `用户${options.length ? "选择" : "回答"}：${chosen}` : "用户未作答" }],
+            details: { answer: chosen || null, via: ctx.mode === "rpc" ? "rpc" : "tui" },
           };
         } catch {
           // 回退到纯文本提示

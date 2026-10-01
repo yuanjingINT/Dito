@@ -1,0 +1,11 @@
+[Unit]
+Description=每 2 分钟检查 dito.asia 邮箱开通队列
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=20s
+Unit=dito-mail-poll.service
+
+[Install]
+WantedBy=timers.target

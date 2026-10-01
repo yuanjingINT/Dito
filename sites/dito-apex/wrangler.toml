@@ -1,0 +1,7 @@
+name = "dito-apex"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[[routes]]
+pattern = "dito.asia/*"
+zone_name = "dito.asia"

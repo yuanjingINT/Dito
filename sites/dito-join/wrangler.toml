@@ -1,0 +1,13 @@
+name = "dito-join"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "404-page"
+run_worker_first = true
+
+[[routes]]
+pattern = "join.dito.asia"
+custom_domain = true

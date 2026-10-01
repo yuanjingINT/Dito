@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>dito 使用说明视频 — 1920x1080 @30fps · 204s</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0e14; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+"use strict";
+/* =====================================================================
+ * dito 使用说明视频渲染器（确定性逐帧，依据 README 制作）
+ * 章节脚本（绝对秒）：
+ *   OPEN     0   – 6     片头
+ *   CH1      6   – 36    01 安装与体检
+ *   CH2      36  – 78    02 终端对话（TUI / sudo / 权限门）
+ *   CH3      78  – 100   03 语音对话
+ *   CH4      100 – 130   04 QQ 频道 + qqadmin 管理后台
+ *   CH5      130 – 148   05 Matrix 频道
+ *   CH6      148 – 170   06 手机频道（扫码配对）
+ *   CH7      170 – 192   07 MCP 与常驻
+ *   END      192 – 204   命令速查 + 落版
+ * ===================================================================== */
+
+const W = 1920, H = 1080, FPS = 30, DUR = 204.0;
+const cv = document.getElementById("c");
+const ctx = cv.getContext("2d");
+
+const BG = "#0a0e14", BG2 = "#0f1520", PANEL = "#131a26", BORDER = "#1e2a3a";
+const TEXT = "#d6e2f0", MUTED = "#7d8ea3", ACC = "#35d0ba", ACC2 = "#6ee7b7";
+const RED = "#e06c75", DIM = "#54687f", PR = "#98c379", GREEN = "#28c840";
+const MONO = '"JetBrains Mono","Noto Sans Mono CJK SC","JetBrains Maple Mono",monospace';
+const SANS = '"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif';
+
+/* ---------- 基础工具（与宣传片同源） ---------- */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eo = (x) => 1 - Math.pow(1 - x, 3);
+const lerp = (a, b, p) => a + (b - a) * p;
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function rgba(h, a) { const c = hexRgb(h); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+
+function text(str, x, y, o) {
+  o = o || {};
+  ctx.save();
+  ctx.font = `${o.weight || 400} ${o.size || 20}px ${o.font === "sans" ? SANS : MONO}`;
+  ctx.letterSpacing = o.ls != null ? o.ls + "px" : "0px";
+  ctx.textAlign = o.align || "left";
+  ctx.textBaseline = o.baseline || "alphabetic";
+  ctx.globalAlpha *= (o.alpha == null ? 1 : o.alpha);
+  if (o.glow) { ctx.shadowColor = rgba(o.glowColor || ACC, o.glowAlpha || 0.5); ctx.shadowBlur = o.glow; }
+  ctx.fillStyle = o.color || TEXT;
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+function textWidth(str, o) {
+  o = o || {};
+  ctx.save();
+  ctx.font = `${o.weight || 400} ${o.size || 20}px ${o.font === "sans" ? SANS : MONO}`;
+  ctx.letterSpacing = o.ls != null ? o.ls + "px" : "0px";
+  const w = ctx.measureText(str).width;
+  ctx.restore();
+  return w;
+}
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function panel(x, y, w, h, r, fill, borderCol, opts) {
+  opts = opts || {};
+  ctx.save();
+  if (opts.shadow) {
+    ctx.shadowColor = "rgba(0,0,0," + (opts.shadowAlpha || 0.45) + ")";
+    ctx.shadowBlur = opts.shadowBlur || 50;
+    ctx.shadowOffsetY = opts.shadowY == null ? 18 : opts.shadowY;
+  }
+  ctx.fillStyle = fill;
+  rr(x, y, w, h, r); ctx.fill();
+  ctx.restore();
+  if (borderCol) {
+    ctx.save();
+    ctx.strokeStyle = borderCol; ctx.lineWidth = 1;
+    rr(x + 0.5, y + 0.5, w - 1, h - 1, r); ctx.stroke();
+    ctx.restore();
+  }
+}
+function rise(t, t0, dur) {
+  const p = eo(seg(t, t0, t0 + (dur || 0.6)));
+  return { p, dy: (1 - p) * 38, alpha: p };
+}
+function caretOn(t) { return (t % 1.1) < 0.55; }
+function drawCaret(x, y, h, t, alpha) {
+  if (!caretOn(t)) return;
+  ctx.save();
+  ctx.globalAlpha *= (alpha == null ? 1 : alpha);
+  ctx.fillStyle = ACC;
+  ctx.fillRect(x, y - h + 4, Math.round(h * 0.52), h - 4);
+  ctx.restore();
+}
+function typedSegs(segs, t, t0, t1) {
+  const total = segs.reduce((n, s) => n + s[1].length, 0);
+  const n = Math.floor(total * seg(t, t0, t1) + 1e-6);
+  const out = []; let used = 0;
+  for (const [c, s] of segs) {
+    if (used >= n) break;
+    const take = Math.min(s.length, n - used);
+    out.push([c, s.slice(0, take)]); used += take;
+  }
+  return out;
+}
+function segsWidth(segs, size, weight) {
+  return segs.reduce((w, s) => w + textWidth(s[1], { size, weight }), 0);
+}
+function drawSegs(segs, x, y, size, weight, alpha) {
+  ctx.save();
+  ctx.globalAlpha *= (alpha == null ? 1 : alpha);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  let cx = x;
+  for (const [c, s] of segs) {
+    ctx.font = `${weight || 400} ${size}px ${MONO}`;
+    ctx.fillStyle = c;
+    ctx.fillText(s, cx, y);
+    cx += ctx.measureText(s).width;
+  }
+  ctx.restore();
+  return cx;
+}
+const PS1 = [[RED, "yuanjing@arch"], [" ", " "], [DIM, "~"], [" ", " "], [PR, "$"], [" ", " "]];
+
+/* ---------- 背景 ---------- */
+const rng = mulberry32(20260913);
+const PARTS = [];
+for (let i = 0; i < 24; i++) PARTS.push({ x: rng() * W, y: rng() * H, spd: 5 + rng() * 12, ph: rng() * Math.PI * 2, r: 1 + rng() * 2, a: 0.04 + rng() * 0.07, sway: 12 + rng() * 22 });
+function drawBackground(t, energy) {
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  let g1 = ctx.createRadialGradient(W * 0.22, 40, 0, W * 0.22, 40, 720);
+  g1.addColorStop(0, rgba(ACC, 0.075 * energy)); g1.addColorStop(1, "rgba(53,208,186,0)");
+  ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H * 0.85);
+  let g2 = ctx.createRadialGradient(W * 0.78, 90, 0, W * 0.78, 90, 720);
+  g2.addColorStop(0, rgba(ACC2, 0.05 * energy)); g2.addColorStop(1, "rgba(110,231,183,0)");
+  ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H * 0.85);
+  ctx.save();
+  for (const p of PARTS) {
+    const y = ((p.y - t * p.spd) % H + H) % H;
+    const x = p.x + Math.sin(t * 0.3 + p.ph) * p.sway;
+    ctx.globalAlpha = p.a * (0.6 + 0.4 * Math.sin(t * 0.9 + p.ph * 3)) * energy;
+    ctx.fillStyle = ACC2;
+    ctx.beginPath(); ctx.arc(x, y, p.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+  let vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 0.98);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.4)");
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+}
+
+/* ---------- 章节头卡 ---------- */
+function chapterHead(lt, kick, title, sub) {
+  const r1 = rise(lt, 0.5, 0.55);
+  text(kick, W / 2, 232 + r1.dy, { size: 21, color: ACC, ls: 5, align: "center", alpha: r1.alpha, weight: 500 });
+  const r2 = rise(lt, 0.75, 0.65);
+  text(title, W / 2, 306 + r2.dy, { size: 58, weight: 800, font: "sans", align: "center", alpha: r2.alpha, ls: -1 });
+  const r3 = rise(lt, 1.1, 0.65);
+  text(sub, W / 2, 354 + r3.dy, { size: 23, color: MUTED, font: "sans", align: "center", alpha: r3.alpha });
+}
+/* ---------- 终端窗口（共享） ---------- */
+function termWindow(x, y, w, h, title, alpha, dy) {
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.translate(0, dy || 0);
+  panel(x, y, w, h, 12, BG2, BORDER, { shadow: true, shadowBlur: 60, shadowAlpha: 0.5, shadowY: 22 });
+  ctx.save();
+  rr(x, y, w, 48, 12); ctx.clip();
+  ctx.fillStyle = PANEL; ctx.fillRect(x, y, w, 48);
+  ctx.restore();
+  ctx.strokeStyle = BORDER;
+  ctx.beginPath(); ctx.moveTo(x, y + 48.5); ctx.lineTo(x + w, y + 48.5); ctx.stroke();
+  const dots = ["#ff5f57", "#febc2e", "#28c840"];
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = dots[i];
+    ctx.beginPath(); ctx.arc(x + 30 + i * 26, y + 24, 6.5, 0, Math.PI * 2); ctx.fill();
+  }
+  text(title, x + 122, y + 30, { size: 15, color: MUTED });
+  ctx.restore();
+}
+const TERM = { x: 420, y: 415, w: 1080, h: 550, fx: 452, fy: 507, lh: 38, fs: 19.5, pW: 0 };
+TERM.pW = segsWidth(PS1, TERM.fs, 400);
+/* 终端里的一行命令（带打字） */
+function termCmd(ly, cmdText, t, t0, t1, alpha) {
+  drawSegs(PS1, TERM.fx, ly, TERM.fs, 400, alpha);
+  const tp = typedSegs([[TEXT, cmdText]], t, t0, t1);
+  const endX = drawSegs(tp, TERM.fx + TERM.pW, ly, TERM.fs, 400, alpha);
+  if (t >= t0 && t < t1) drawCaret(endX, ly, 22, t, alpha);
+  return endX;
+}
+function termOut(ly, str, color, t, t0, alpha, xoff) {
+  if (t <= t0) return;
+  drawSegs([[color, str]], TERM.fx + (xoff || 30), ly, TERM.fs, 400, alpha * seg(t, t0, t0 + 0.28));
+}
+
+/* ---------- 警告三角 ---------- */
+function warnTriangle(x, y, s, alpha) {
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.strokeStyle = RED; ctx.lineWidth = 3; ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(x, y - s * 0.62); ctx.lineTo(x + s * 0.58, y + s * 0.42); ctx.lineTo(x - s * 0.58, y + s * 0.42);
+  ctx.closePath(); ctx.stroke();
+  text("!", x, y + s * 0.34, { size: s * 0.62, color: RED, align: "center", weight: 700 });
+  ctx.restore();
+}
+
+/* ---------- 顶部常驻栏 + 进度 ---------- */
+const CHAPTERS_META = [
+  [0, "00"], [6, "01"], [36, "02"], [78, "03"], [100, "04"], [130, "05"], [148, "06"], [170, "07"], [192, "08"],
+];
+function drawChrome(t) {
+  if (t < 4.5) return;
+  const a = seg(t, 4.5, 5.4) * (1 - eo(seg(t, 202.2, 202.8)));
+  if (a <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = ACC;
+  ctx.fillRect(0, 0, W * clamp01(t / DUR), 3);
+  text(">_", 60, 52, { size: 20, color: ACC, weight: 700 });
+  text("dito 使用说明", 100, 52, { size: 19, color: TEXT, weight: 700 });
+  let idx = "01", total = "08";
+  for (let i = CHAPTERS_META.length - 1; i >= 0; i--) { if (t >= CHAPTERS_META[i][0]) { idx = CHAPTERS_META[i][1]; break; } }
+  text(idx + " / " + total, W - 60, 52, { size: 16, color: MUTED, align: "right" });
+  ctx.restore();
+}
+
+/* =====================================================================
+ * 片头 0–6
+ * ===================================================================== */
+function scOpen(t) {
+  drawSegs(PS1, 790, 470, 21, 400, seg(t, 0.4, 0.8));
+  const cmd = "dito --help";
+  const tp = typedSegs([[TEXT, cmd]], t, 0.9, 1.8);
+  const ex = drawSegs(tp, 790 + segsWidth(PS1, 21, 400), 470, 21, 400, 1);
+  if ((t >= 0.9 && t < 1.8) || (t >= 1.8 && t < 2.2 && caretOn(t))) drawCaret(ex, 470, 24, t, 1);
+  const r1 = rise(t, 2.2, 0.85);
+  const en = "dito", zh = "使用说明";
+  const enW = textWidth(en, { size: 120, weight: 800, font: "sans" });
+  const zhW = textWidth(zh, { size: 104, weight: 600, font: "sans" });
+  const x0 = W / 2 - (enW + 32 + zhW) / 2;
+  text(en, x0, 620 + r1.dy, { size: 120, weight: 800, font: "sans", color: TEXT, ls: -2, alpha: r1.alpha });
+  text(zh, x0 + enW + 32, 620 + r1.dy, { size: 104, weight: 600, font: "sans", color: ACC, alpha: r1.alpha, glow: 28, glowAlpha: 0.35 });
+  const r2 = rise(t, 3.3, 0.6);
+  text("跟着做，几分钟上手你的虚拟生命", W / 2, 690 + r2.dy, { size: 24, color: MUTED, font: "sans", align: "center", alpha: r2.alpha });
+  const r3 = rise(t, 4.0, 0.6);
+  const pill = "v0.2.0 · 依据 README 制作";
+  const pw = textWidth(pill, { size: 15 }) + 44;
+  ctx.save(); ctx.globalAlpha = r3.alpha;
+  panel(W / 2 - pw / 2, 726 + r3.dy, pw, 38, 19, PANEL, BORDER);
+  text(pill, W / 2, 751 + r3.dy, { size: 15, color: ACC2, align: "center" });
+  ctx.restore();
+}
+
+/* =====================================================================
+ * CH1 01 安装与体检 6–36
+ * ===================================================================== */
+function scCh1(t) {
+  chapterHead(t, "// 01 · 安装与体检", "三步，把她带回家", "npm 安装 → doctor 体检 → 开聊");
+  termWindow(TERM.x, TERM.y, TERM.w, TERM.h, "yuanjing@arch — zsh", rise(t, 2.1, 0.65).alpha, rise(t, 2.1, 0.65).dy);
+  ctx.save();
+  ctx.translate(0, rise(t, 2.1, 0.65).dy);
+  ctx.globalAlpha = rise(t, 2.1, 0.65).alpha;
+  let ly = TERM.fy;
+  termCmd(ly, "npm i -g dito", t, 3.4, 5.0, 1); ly += TERM.lh;
+  termOut(ly, "added 1 package in 2.1s", ACC2, t, 5.4); ly += TERM.lh;
+  termOut(ly, "# 装好了，先体检一次", DIM, t, 5.9); ly += TERM.lh;
+  termCmd(ly, "dito doctor", t, 7.0, 8.0, 1); ly += TERM.lh;
+  const checks = [
+    ["✓ Node v26.8.2", "（要求 ≥ 22.5）"],
+    ["✓ 配置", " · ~/.pi/agent/dito/config.json"],
+    ["✓ 模型连通", " · opencode-free（keyless 开箱即用）"],
+    ["✓ 录音 pw-record", " · STT whisper-cli · TTS espeak-ng"],
+    ["– 频道未启用", "（QQ / Matrix / 手机，可选）"],
+    ["✓ MCP server", " · :3878 就绪"],
+  ];
+  for (let ci = 0; ci < checks.length; ci++) {
+    const [ok, tail] = checks[ci];
+    const t0 = 8.4 + ci * 0.42;
+    if (t > t0) {
+      const good = ok.startsWith("✓");
+      drawSegs([[good ? PR : DIM, ok], [DIM, tail]], TERM.fx + 30, ly, TERM.fs - 1, 400, seg(t, t0, t0 + 0.3));
+    }
+    ly += TERM.lh - 2;
+  }
+  termOut(ly, "全部通过 · 环境就绪", ACC, t, 11.6);
+  if (t > 12.0 && caretOn(t)) {
+    const w = textWidth("全部通过 · 环境就绪", { size: TERM.fs });
+    drawCaret(TERM.fx + 30 + w + 6, ly, 22, t, 1);
+  }
+  ctx.restore();
+  const r = rise(t, 12.6, 0.6);
+  text("任何环境问题，doctor 都会给出修复提示；dito doctor --ci 适合脚本/CI", W / 2, TERM.y + TERM.h + 52 + r.dy, { size: 18, color: MUTED, align: "center", alpha: r.alpha });
+}
+
+/* =====================================================================
+ * CH2 02 终端对话 36–78
+ * ===================================================================== */
+function scCh2(t) {
+  chapterHead(t, "// 02 · 终端对话", "最常用的打开方式", "单次问答 · 管道输入 · 全屏 TUI");
+  const tuiIn = seg(t, 11.0, 11.6);      // 47–47.6 TUI 切入
+  const termOutA = 1 - seg(t, 10.4, 11.0);
+  // 终端阶段
+  if (termOutA > 0) {
+    termWindow(TERM.x, TERM.y, TERM.w, TERM.h, "yuanjing@arch — zsh", termOutA, 0);
+    ctx.save(); ctx.globalAlpha = termOutA;
+    let ly = TERM.fy;
+    termCmd(ly, 'dito "帮我看看哪些包能升级"', t, 3.2, 5.6, 1); ly += TERM.lh;
+    if (t > 6.0 && t < 6.8) text("…", TERM.fx + 30, ly, { size: TERM.fs, color: ACC, alpha: (Math.floor(t * 3) % 3 + 1) / 3 });
+    if (t > 6.9) drawSegs([[ACC2, "有 12 个包可升级，其中 linux 内核在列。"]], TERM.fx + 30, ly, TERM.fs, 400, seg(t, 6.9, 7.2)); ly += TERM.lh;
+    if (t > 7.4) drawSegs([[ACC2, "要我直接 sudo pacman -Syu 吗？[y/N]"]], TERM.fx + 30, ly, TERM.fs, 400, seg(t, 7.4, 7.7)); ly += TERM.lh;
+    if (t > 8.9) drawSegs([[DIM, "# 单次问答会直接退出；想持续聊，进全屏 TUI"]], TERM.fx + 30, ly, TERM.fs, 400, seg(t, 8.9, 9.2)); ly += TERM.lh;
+    termCmd(ly, "dito", t, 9.2, 9.8, 1);
+    ctx.restore();
+  }
+  // TUI 阶段
+  if (tuiIn > 0) {
+    const tw = { x: TERM.x, y: TERM.y, w: TERM.w, h: TERM.h };
+    termWindow(tw.x, tw.y, tw.w, tw.h, "dito — 全屏对话 TUI", tuiIn, (1 - tuiIn) * 30);
+    ctx.save();
+    ctx.globalAlpha = tuiIn;
+    ctx.translate(0, (1 - tuiIn) * 30);
+    const bx = tw.x + 34, bw = tw.w - 68;
+    // 用户消息（右对齐气泡）
+    if (t > 12.2) {
+      const a = seg(t, 12.2, 12.5);
+      const m = "帮我看看哪些包能升级";
+      const mw = textWidth(m, { size: 19, font: "sans" }) + 44;
+      panel(bx + bw - mw, tw.y + 70, mw, 44, 10, "#1c2736");
+      text("> " + m, bx + bw - mw + 22, tw.y + 99, { size: 18, font: "sans", color: TEXT, alpha: a });
+    }
+    // 蒂特回复（左侧 accent 竖条）
+    if (t > 13.0) {
+      const a = seg(t, 13.0, 13.4);
+      ctx.save(); ctx.globalAlpha = a;
+      panel(bx, tw.y + 130, bw - 40, 84, 10, "rgba(53,208,186,0.07)", "rgba(53,208,186,0.3)");
+      ctx.fillStyle = ACC; ctx.fillRect(bx, tw.y + 141, 3, 62);
+      text("有 12 个包可升级，其中 linux 内核在列。", bx + 24, tw.y + 161, { size: 18.5, font: "sans", color: TEXT });
+      text("要我直接 sudo pacman -Syu 吗？[y/N]", bx + 24, tw.y + 191, { size: 18.5, font: "sans", color: TEXT });
+      ctx.restore();
+    }
+    // Tab 模式切换 chips
+    if (t > 17.2 && t < 20.8) {
+      const aIn = seg(t, 17.2, 17.5) * (1 - seg(t, 20.3, 20.8));
+      const modes = ["闲聊", "标准", "计划"];
+      const desc = ["纯聊天 · 不调用工具", "完整助手", "只读探索 · 产出计划"];
+      const cw = 200, gap = 20, x0 = tw.x + tw.w / 2 - (cw * 3 + gap * 2) / 2, cy = tw.y + 252;
+      ctx.save(); ctx.globalAlpha = aIn;
+      text("Tab 循环切换运行模式", tw.x + tw.w / 2, cy - 12, { size: 15, color: MUTED, align: "center" });
+      const hi = t < 18.8 ? 1 : 2; // 高亮：标准 → 计划
+      for (let i = 0; i < 3; i++) {
+        const on = i === hi;
+        panel(x0 + i * (cw + gap), cy, cw, 84, 12, on ? "rgba(53,208,186,0.12)" : PANEL, on ? "rgba(53,208,186,0.6)" : BORDER);
+        text(modes[i], x0 + i * (cw + gap) + cw / 2, cy + 38, { size: 22, color: on ? ACC : MUTED, align: "center", weight: 600, font: "sans" });
+        text(desc[i], x0 + i * (cw + gap) + cw / 2, cy + 66, { size: 13, color: on ? ACC2 : DIM, align: "center", font: "sans" });
+      }
+      ctx.restore();
+    }
+    // 快捷键条（模式 chips 淡出后同位置）
+    if (t > 20.9) {
+      const keys = [["alt+d", "新会话"], ["alt+w", "会话列表"], ["esc", "中断 / 直接插话"], ["/sudo on", "提权模式"]];
+      let kx = bx;
+      for (let i = 0; i < keys.length; i++) {
+        const a = seg(t, 20.9 + i * 0.25, 21.15 + i * 0.25);
+        if (a <= 0) continue;
+        const kw = textWidth(keys[i][0], { size: 15, weight: 600 }) + textWidth(" " + keys[i][1], { size: 15, font: "sans" }) + 40;
+        ctx.save(); ctx.globalAlpha = a;
+        panel(kx, tw.y + 252, kw, 40, 8, PANEL, BORDER);
+        text(keys[i][0], kx + 20, tw.y + 278, { size: 15, color: ACC, weight: 600 });
+        text(" " + keys[i][1], kx + 20 + textWidth(keys[i][0], { size: 15, weight: 600 }), tw.y + 278, { size: 15, color: MUTED, font: "sans" });
+        ctx.restore();
+        kx += kw + 14;
+      }
+    }
+    // 权限门演示
+    if (t > 22.2) {
+      const y3 = tw.y + 330;
+      const m = "把根目录清一清";
+      if (t > 22.2) {
+        const mw = textWidth(m, { size: 18, font: "sans" }) + 44;
+        const a = seg(t, 22.2, 22.5);
+        panel(bx + bw - mw, y3, mw, 42, 10, "#1c2736");
+        text("> " + m, bx + bw - mw + 22, y3 + 28, { size: 18, font: "sans", color: TEXT, alpha: a });
+      }
+      if (t > 23.2) drawSegs([[DIM, "$ "], [RED, "rm -rf /"]], bx, y3 + 60, 18, 400, seg(t, 23.2, 23.5));
+      if (t > 24.2) {
+        const a = seg(t, 24.2, 24.6);
+        const bwarn = bw - 40;
+        ctx.save(); ctx.globalAlpha = a;
+        panel(bx, y3 + 86, bwarn, 58, 10, "rgba(224,108,117,0.08)", "rgba(224,108,117,0.45)");
+        warnTriangle(bx + 32, y3 + 115, 24, 1);
+        text("权限门：已拦截高危命令 rm -rf /", bx + 58, y3 + 110, { size: 18, color: RED, weight: 600, font: "sans" });
+        text("改动类命令需确认；/sudo on 进入提权模式", bx + 58, y3 + 133, { size: 15, color: MUTED, font: "sans" });
+        ctx.restore();
+      }
+    }
+    // 底部状态栏
+    {
+      const sy = tw.y + tw.h - 52;
+      ctx.save();
+      ctx.globalAlpha = tuiIn * seg(t, 16.2, 16.5);
+      ctx.strokeStyle = BORDER;
+      ctx.beginPath(); ctx.moveTo(tw.x, sy + 0.5); ctx.lineTo(tw.x + tw.w, sy + 0.5); ctx.stroke();
+      panel(tw.x + 24, sy + 12, 92, 30, 6, "rgba(53,208,186,0.14)", "rgba(53,208,186,0.4)");
+      text("标准", tw.x + 70, sy + 33, { size: 14, color: ACC, align: "center", weight: 600 });
+      text("glm-4-flash", tw.x + 134, sy + 33, { size: 14, color: MUTED });
+      text("sudo on", tw.x + 258, sy + 33, { size: 14, color: PR });
+      text("会话 #42", tw.x + tw.w - 24, sy + 33, { size: 14, color: DIM, align: "right" });
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  const r = rise(t, 26.8, 0.6);
+  text("权限门默认开启：高危命令直接拦截，改动类命令弹确认", W / 2, TERM.y + TERM.h + 52 + r.dy, { size: 18, color: MUTED, align: "center", alpha: r.alpha });
+}
+
+/* =====================================================================
+ * CH3 03 语音对话 78–100
+ * ===================================================================== */
+function scCh3(t) {
+  chapterHead(t, "// 03 · 语音对话", "喊一声她就应", "全屏水波界面 · 唤醒词 → STT → 大模型 → TTS");
+  termWindow(TERM.x, TERM.y, TERM.w, TERM.h, "dito voice — 水波界面", rise(t, 2.1, 0.65).alpha, rise(t, 2.1, 0.65).dy);
+  ctx.save();
+  ctx.globalAlpha = rise(t, 2.1, 0.65).alpha;
+  ctx.translate(0, rise(t, 2.1, 0.65).dy);
+  // 水波（窗口内）
+  const cx = TERM.x + TERM.w / 2, cy = TERM.y + 210;
+  for (let wv = 0; wv < 3; wv++) {
+    ctx.beginPath();
+    for (let x = 0; x <= TERM.w - 68; x += 6) {
+      const ph = t * (1.7 + wv * 0.5) + wv * 2.1;
+      const amp = (26 + wv * 12) * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 1.1 + wv)));
+      const y = cy + Math.sin(x * 0.016 + ph) * amp * 0.5 + Math.sin(x * 0.004 - ph * 0.6) * amp * 0.3;
+      if (x === 0) ctx.moveTo(TERM.x + 34 + x, y); else ctx.lineTo(TERM.x + 34 + x, y);
+    }
+    ctx.strokeStyle = wv === 0 ? rgba(ACC, 0.9) : wv === 1 ? rgba(ACC2, 0.45) : rgba(MUTED, 0.25);
+    ctx.lineWidth = wv === 0 ? 3 : 1.5;
+    ctx.stroke();
+  }
+  // 状态 chip
+  const states = [[2.8, "待机 · 监听唤醒词「蒂特」"], [5.2, "听写中…"], [7.4, "思考中"], [9.0, "朗读中：「在的啊，主人。」"]];
+  let cur = states[0][1];
+  for (const [tt, s] of states) if (t >= tt) cur = s;
+  const cw2 = textWidth(cur, { size: 19, font: "sans" }) + 56;
+  panel(cx - cw2 / 2, cy + 74, cw2, 48, 24, PANEL, "rgba(53,208,186,0.4)");
+  text(cur, cx, cy + 104, { size: 19, font: "sans", color: ACC2, align: "center" });
+  // 唤醒链路
+  const flow = [["唤醒词", "本地 whisper 轮询"], ["STT", "whisper-cli / MiMo"], ["大模型", "本地知识库+工具"], ["TTS", "espeak / piper / MiMo"]];
+  const fw = 242, fg = 26, fx0 = TERM.x + 34 + (TERM.w - 68 - (fw * 4 + fg * 3)) / 2, fy2 = TERM.y + 356;
+  for (let i = 0; i < 4; i++) {
+    const a = seg(t, 13.0 + i * 0.55, 13.3 + i * 0.55);
+    if (a <= 0) break;
+    ctx.save(); ctx.globalAlpha = a;
+    panel(fx0 + i * (fw + fg), fy2, fw, 84, 12, PANEL, BORDER);
+    text(flow[i][0], fx0 + i * (fw + fg) + fw / 2, fy2 + 36, { size: 20, color: ACC, align: "center", weight: 600, font: "sans" });
+    text(flow[i][1], fx0 + i * (fw + fg) + fw / 2, fy2 + 64, { size: 13, color: MUTED, align: "center", font: "sans" });
+    if (i < 3) text("→", fx0 + i * (fw + fg) + fw + fg / 2, fy2 + 48, { size: 18, color: DIM, align: "center" });
+    ctx.restore();
+  }
+  ctx.restore();
+  const r = rise(t, 16.6, 0.6);
+  text("空格手动说话 · 唤醒词命中应一声「在的啊」· 本地唤醒零 API 成本 · continuous 开连续对话", W / 2, TERM.y + TERM.h + 52 + r.dy, { size: 18, color: MUTED, align: "center", alpha: r.alpha });
+}
+
+/* =====================================================================
+ * CH4 04 QQ 频道 + 管理后台 100–130
+ * ===================================================================== */
+function scCh4(t) {
+  chapterHead(t, "// 04 · QQ 频道 与 管理后台", "把她拉进 QQ 群", "SnowLuma 协议 · dito qq 自动拉起 · qqadmin 网页管理");
+  // 阶段一：终端 dito qq（100–111.5）
+  const webIn = seg(t, 11.5, 12.2);
+  if (webIn < 1) {
+    const fade = 1 - seg(t, 10.8, 11.5);
+    if (fade > 0) {
+      termWindow(TERM.x, TERM.y, TERM.w, TERM.h, "yuanjing@arch — zsh", fade, 0);
+      ctx.save(); ctx.globalAlpha = fade;
+      let ly = TERM.fy;
+      termCmd(ly, "dito qq", t, 3.0, 4.4, 1); ly += TERM.lh;
+      termOut(ly, "探测端口 3001 … 未发现 SnowLuma，自动拉起", DIM, t, 4.8); ly += TERM.lh;
+      termOut(ly, "已连接 ws://127.0.0.1:3001 ✓", ACC2, t, 5.6); ly += TERM.lh;
+      termOut(ly, "184 个 OneBot 动作已注册为工具（snowluma_*）", ACC2, t, 6.4); ly += TERM.lh;
+      termOut(ly, "私聊全量工具 · 群聊白名单+唤醒词+概率回复", MUTED, t, 7.2);
+      ctx.restore();
+    }
+  }
+  // 阶段二：qqadmin 浏览器线框（112.5–）
+  if (webIn > 0) {
+    const bx = 280, by = 255, bw = 1360, bh = 630;
+    ctx.save();
+    ctx.globalAlpha = webIn;
+    ctx.translate(0, (1 - webIn) * 34);
+    panel(bx, by, bw, bh, 14, BG2, BORDER, { shadow: true, shadowBlur: 60, shadowAlpha: 0.5, shadowY: 22 });
+    // 浏览器 chrome
+    ctx.save(); rr(bx, by, bw, 54, 14); ctx.clip();
+    ctx.fillStyle = PANEL; ctx.fillRect(bx, by, bw, 54);
+    ctx.restore();
+    const dots = ["#ff5f57", "#febc2e", "#28c840"];
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = dots[i]; ctx.beginPath(); ctx.arc(bx + 28 + i * 24, by + 27, 6, 0, Math.PI * 2); ctx.fill(); }
+    // URL pill（打字输入）
+    const url = "http://127.0.0.1:3880/";
+    const pw = 520;
+    panel(bx + 110, by + 12, pw, 32, 16, "#070b10", BORDER);
+    const utp = typedSegs([[ACC2, url]], t, 12.4, 14.2);
+    drawSegs(utp, bx + 134, by + 34, 15, 400, 1);
+    if (t >= 12.4 && t < 14.2) drawCaret(bx + 134 + segsWidth(utp, 15, 400), by + 34, 16, t, 1);
+    text("dito qqadmin", bx + bw - 28, by + 34, { size: 14, color: DIM, align: "right" });
+    ctx.strokeStyle = BORDER;
+    ctx.beginPath(); ctx.moveTo(bx, by + 54.5); ctx.lineTo(bx + bw, by + 54.5); ctx.stroke();
+    // 侧栏
+    const items = ["总览", "消息流", "聊天", "好友", "群列表", "好感度", "表情包", "Matrix", "配置", "动作台"];
+    for (let i = 0; i < items.length; i++) {
+      const a = seg(t, 14.6 + i * 0.09, 14.85 + i * 0.09);
+      if (a <= 0) break;
+      ctx.save(); ctx.globalAlpha = a;
+      const iy = by + 80 + i * 42;
+      if (i === 0) panel(bx + 16, iy - 24, 216, 38, 8, "rgba(53,208,186,0.12)", "rgba(53,208,186,0.35)");
+      text("> " + items[i], bx + 34, iy + 2, { size: 16, color: i === 0 ? ACC : MUTED, weight: i === 0 ? 600 : 400 });
+      ctx.restore();
+    }
+    // 主区统计卡
+    const cards = [["登录号", "● 在线", PR], ["表情包", "128 张", ACC2], ["活跃会话", "12 个", ACC2]];
+    for (let i = 0; i < 3; i++) {
+      const a = seg(t, 15.8 + i * 0.2, 16.1 + i * 0.2);
+      if (a <= 0) break;
+      ctx.save(); ctx.globalAlpha = a;
+      const cx = bx + 268 + i * 292, cyy = by + 84;
+      panel(cx, cyy, 268, 92, 12, PANEL, BORDER);
+      text(cards[i][0], cx + 22, cyy + 32, { size: 14, color: MUTED });
+      text(cards[i][1], cx + 22, cyy + 70, { size: 24, color: cards[i][2], weight: 700 });
+      ctx.restore();
+    }
+    // 快捷开关
+    const toggles = [["私聊响应", true], ["戳回", true], ["自动表情", true], ["自动同意", true]];
+    for (let i = 0; i < toggles.length; i++) {
+      const a = seg(t, 16.6 + i * 0.15, 16.85 + i * 0.15);
+      if (a <= 0) break;
+      ctx.save(); ctx.globalAlpha = a;
+      const tx = bx + 268 + i * 220, ty = by + 200;
+      panel(tx, ty, 200, 44, 10, PANEL, BORDER);
+      text(toggles[i][0], tx + 18, ty + 28, { size: 14.5, color: TEXT, font: "sans" });
+      ctx.fillStyle = PR; ctx.beginPath(); ctx.arc(tx + 168, ty + 22, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    // 消息流面板
+    if (t > 17.6) {
+      const a = seg(t, 17.6, 17.9);
+      const px = bx + 268, py = by + 272, pw2 = bw - 300, ph2 = bh - 300;
+      ctx.save(); ctx.globalAlpha = a;
+      panel(px, py, pw2, ph2, 12, "#070b10", BORDER);
+      text("消息流 · SSE 实时推送", px + 22, py + 34, { size: 15, color: ACC });
+      const lines = [
+        [[DIM, "[群] "], [TEXT, "技术交流群 · 群友: "], [ACC2, "@蒂特"], [TEXT, " 今天 AUR 有啥新版"]],
+        [[DIM, "[私聊] "], [TEXT, "主人: 中午吃什么"]],
+        [[DIM, "[通知] "], [MUTED, "好友请求已自动同意"]],
+        [[DIM, "[群] "], [TEXT, "游戏群 · "], [ACC2, "蒂特: "], [MUTED, "红绿灯审查通过，已升好 yt-dlp"]],
+      ];
+      for (let i = 0; i < lines.length; i++) {
+        const la = seg(t, 18.2 + i * 0.55, 18.5 + i * 0.55);
+        if (la > 0) drawSegs(lines[i], px + 22, py + 76 + i * 40, 15.5, 400, la);
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+    const r = rise(t, 21.0, 0.6);
+    text("后台改动即时生效：owners / 群白名单 / 概率 / 开关，每条消息热读配置，无需重启", W / 2, by + bh + 46 + r.dy, { size: 18, color: MUTED, align: "center", alpha: r.alpha });
+  }
+}
+
+/* =====================================================================
+ * CH5 05 Matrix 频道 130–148
+ * ===================================================================== */
+function scCh5(t) {
+  chapterHead(t, "// 05 · Matrix 频道", "端到端加密房间", "megolm · cross-signing · 受邀自动进房");
+  const smallTerm = { x: 420, y: 400, w: 1080, h: 282 };
+  termWindow(smallTerm.x, smallTerm.y, smallTerm.w, smallTerm.h, "yuanjing@arch — zsh", rise(t, 2.1, 0.65).alpha, rise(t, 2.1, 0.65).dy);
+  ctx.save();
+  ctx.globalAlpha = rise(t, 2.1, 0.65).alpha;
+  ctx.translate(0, rise(t, 2.1, 0.65).dy);
+  let ly = smallTerm.y + 48 + 42;
+  const pW = segsWidth(PS1, TERM.fs, 400);
+  drawSegs(PS1, smallTerm.x + 32, ly, TERM.fs, 400, 1);
+  const tp = typedSegs([[TEXT, "dito matrix"]], t, 3.2, 4.6);
+  drawSegs(tp, smallTerm.x + 32 + pW, ly, TERM.fs, 400, 1);
+  if (t >= 3.2 && t < 4.6) drawCaret(smallTerm.x + 32 + pW + segsWidth(typedSegs([[TEXT, "dito matrix"]], t, 3.2, 4.6), TERM.fs, 400), ly, 22, t, 1);
+  ly += TERM.lh;
+  termOut(ly, "E2EE 就绪 · crypto store 已加载（跨重启稳定）", ACC2, t, 5.0, 1, 0); ly += TERM.lh;
+  termOut(ly, "已加入 3 个房间 · 受邀自动进房 · 主人 DM 全量工具", MUTED, t, 5.8, 1, 0);
+  ctx.restore();
+  // 大锁
+  if (t > 7.4) {
+    const a = seg(t, 7.4, 8.2);
+    const kx = W / 2, ky = 810;
+    ctx.save();
+    ctx.globalAlpha = a;
+    let g = ctx.createRadialGradient(kx, ky, 0, kx, ky, 260);
+    g.addColorStop(0, rgba(ACC, 0.1 * a)); g.addColorStop(1, "rgba(53,208,186,0)");
+    ctx.fillStyle = g; ctx.fillRect(kx - 280, ky - 220, 560, 440);
+    ctx.strokeStyle = ACC; ctx.lineWidth = 7; ctx.lineCap = "round";
+    const openP = eo(seg(t, 7.6, 8.4));
+    ctx.beginPath();
+    ctx.arc(kx, ky - 44, 34, Math.PI, Math.PI * (1 + openP));
+    ctx.stroke();
+    ctx.fillStyle = rgba(ACC, 0.16); ctx.strokeStyle = ACC;
+    rr(kx - 52, ky - 44, 104, 84, 14);
+    ctx.fill(); ctx.lineWidth = 5; ctx.stroke();
+    ctx.fillStyle = ACC;
+    ctx.beginPath(); ctx.arc(kx, ky + 2, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(kx - 4, ky + 2, 8, 24);
+    const r2 = rise(t, 9.0, 0.6);
+    text("密文进，密文出", kx, ky + 130 + r2.dy, { size: 38, color: TEXT, weight: 700, align: "center", font: "sans", alpha: r2.alpha });
+    const r3 = rise(t, 9.5, 0.6);
+    text("主人在 DM 里拥有全量工具 · 其余房间受限（与 QQ 语义一致）", kx, ky + 176 + r3.dy, { size: 17, color: MUTED, align: "center", font: "sans", alpha: r3.alpha });
+    ctx.restore();
+  }
+}
+
+/* =====================================================================
+ * CH6 06 手机频道 148–170
+ * ===================================================================== */
+function scCh6(t) {
+  chapterHead(t, "// 06 · 手机频道", "出门在外，连回家", "Android App / iPhone PWA · 扫码配对");
+  // 终端 + 二维码（左）
+  const term = { x: 420, y: 400, w: 700, h: 282 };
+  termWindow(term.x, term.y, term.w, term.h, "yuanjing@arch — zsh", rise(t, 2.1, 0.65).alpha, rise(t, 2.1, 0.65).dy);
+  ctx.save();
+  ctx.globalAlpha = rise(t, 2.1, 0.65).alpha;
+  ctx.translate(0, rise(t, 2.1, 0.65).dy);
+  let ly = term.y + 48 + 42;
+  const pW = segsWidth(PS1, TERM.fs, 400);
+  drawSegs(PS1, term.x + 32, ly, TERM.fs, 400, 1);
+  const tp = typedSegs([[TEXT, "dito mobile"]], t, 3.2, 4.6);
+  drawSegs(tp, term.x + 32 + pW, ly, TERM.fs, 400, 1);
+  if (t >= 3.2 && t < 4.6) drawCaret(term.x + 32 + pW + segsWidth(tp, TERM.fs, 400), ly, 22, t, 1);
+  ly += TERM.lh;
+  termOut(ly, "配对二维码已生成（一次性令牌）", ACC2, t, 5.0, 1, 0); ly += TERM.lh;
+  termOut(ly, "内嵌中继 :8787 · MCP 隧道已挂载", MUTED, t, 5.8, 1, 0);
+  ctx.restore();
+  // 二维码面板
+  if (t > 5.6) {
+    const a = seg(t, 5.6, 6.2);
+    const qx = 480, qy = 726, qs = 236, m = 21;
+    ctx.save(); ctx.globalAlpha = a;
+    panel(qx - 14, qy - 14, qs + 28, qs + 28, 12, "#f5f7fa", null, { shadow: true, shadowBlur: 40, shadowAlpha: 0.4 });
+    const qr = mulberry32(1337);
+    const mods = [];
+    for (let r = 0; r < m; r++) for (let c = 0; c < m; c++) {
+      const inFinder = (r < 8 && c < 8) || (r < 8 && c >= m - 8) || (r >= m - 8 && c < 8);
+      if (!inFinder) mods.push([r, c, qr() < 0.44]);
+    }
+    const cell = qs / m;
+    const sweep = eo(seg(t, 5.8, 7.2));
+    const shown = Math.floor(mods.length * sweep);
+    ctx.fillStyle = "#10151d";
+    for (let i = 0; i < shown; i++) {
+      const [r, c, on] = mods[i];
+      if (on) ctx.fillRect(qx + c * cell, qy + r * cell, cell * 0.92, cell * 0.92);
+    }
+    // 三个定位框
+    const finder = (fx, fy) => {
+      ctx.fillStyle = "#10151d";
+      ctx.fillRect(qx + fx * cell, qy + fy * cell, cell * 7, cell * 7);
+      ctx.fillStyle = "#f5f7fa";
+      ctx.fillRect(qx + (fx + 1) * cell, qy + (fy + 1) * cell, cell * 5, cell * 5);
+      ctx.fillStyle = "#10151d";
+      ctx.fillRect(qx + (fx + 2) * cell, qy + (fy + 2) * cell, cell * 3, cell * 3);
+    };
+    if (sweep > 0.15) finder(0, 0);
+    if (sweep > 0.3) finder(m - 7, 0);
+    if (sweep > 0.45) finder(0, m - 7);
+    // 中心 d 标
+    panel(qx + qs / 2 - 24, qy + qs / 2 - 24, 48, 48, 10, ACC);
+    text("d", qx + qs / 2, qy + qs / 2 + 12, { size: 30, color: "#06231e", align: "center", weight: 700 });
+    ctx.restore();
+    // 步骤（右）
+    const steps = [["1", "手机扫码"], ["2", "电脑按 y 确认"], ["3", "每设备独立持久会话"]];
+    for (let i = 0; i < 3; i++) {
+      const sa = seg(t, 7.4 + i * 0.4, 7.7 + i * 0.4);
+      if (sa <= 0) continue;
+      ctx.save(); ctx.globalAlpha = sa;
+      const sy = 726 + i * 62;
+      ctx.strokeStyle = ACC; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(800, sy - 6, 15, 0, Math.PI * 2); ctx.stroke();
+      text(steps[i][0], 800, sy, { size: 16, color: ACC, align: "center" });
+      text(steps[i][1], 832, sy + 1, { size: 19, color: TEXT, font: "sans" });
+      ctx.restore();
+    }
+  }
+  // 模式 chips
+  if (t > 9.6) {
+    const chips = [["局域网", "内嵌中继 :8787 · 零外部服务"], ["公网", "relay 出站连接 · 无需公网 IP"]];
+    for (let i = 0; i < 2; i++) {
+      const a = seg(t, 9.6 + i * 0.4, 9.9 + i * 0.4);
+      if (a <= 0) continue;
+      ctx.save(); ctx.globalAlpha = a;
+      const cx = 1170 + i * 360, cyy = 470;
+      panel(cx, cyy, 330, 76, 12, PANEL, BORDER);
+      text(chips[i][0], cx + 22, cyy + 32, { size: 19, color: ACC, weight: 600, font: "sans" });
+      text(chips[i][1], cx + 22, cyy + 60, { size: 13.5, color: MUTED, font: "sans" });
+      ctx.restore();
+    }
+  }
+  // 手机 mockup（右）
+  if (t > 11.4) {
+    const a = seg(t, 11.4, 12.1);
+    const phx = 1360, phy = 560, phw = 260, phh = 440;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(0, (1 - a) * 40);
+    panel(phx, phy, phw, phh, 30, "#0d1420", "rgba(53,208,186,0.4)", { shadow: true, shadowBlur: 50, shadowAlpha: 0.5 });
+    panel(phx + 100, phy + 14, 60, 8, 4, "#1e2a3a");
+    text("已配对 ✓", phx + phw / 2, phy + 56, { size: 15, color: PR, align: "center", weight: 600 });
+    // dito 气泡
+    if (t > 12.6) {
+      const b = seg(t, 12.6, 12.9);
+      panel(phx + 22, phy + 84, 190, 66, 12, "rgba(53,208,186,0.1)", "rgba(53,208,186,0.35)");
+      text("在的啊，主人。", phx + 38, phy + 112, { size: 15, color: TEXT, font: "sans", alpha: b });
+      text("桌面一切正常。", phx + 38, phy + 136, { size: 15, color: TEXT, font: "sans", alpha: b });
+    }
+    if (t > 13.8) {
+      const b = seg(t, 13.8, 14.1);
+      panel(phx + phw - 172, phy + 174, 150, 46, 12, "#1c2736", null);
+      text("帮我搜下 AUR 新闻", phx + phw - 156, phy + 203, { size: 13.5, color: TEXT, font: "sans", alpha: b });
+    }
+    if (t > 15.0) {
+      const b = seg(t, 15.0, 15.3);
+      panel(phx + 22, phy + 244, 196, 66, 12, "rgba(53,208,186,0.1)", "rgba(53,208,186,0.35)");
+      text("搜好了，要念给", phx + 38, phy + 272, { size: 15, color: TEXT, font: "sans", alpha: b });
+      text("你听吗？", phx + 38, phy + 296, { size: 15, color: TEXT, font: "sans", alpha: b });
+    }
+    // 工具执行可见
+    if (t > 16.0) {
+      const b = seg(t, 16.0, 16.3);
+      text("⚙ web_search · 工具执行可见", phx + 24, phy + 348, { size: 12.5, color: ACC2, alpha: b });
+    }
+    text("主人级权限 · deviceToken 可吊销", phx + phw / 2, phy + phh - 24, { size: 12, color: DIM, align: "center" });
+    ctx.restore();
+  }
+  const r = rise(t, 17.6, 0.6);
+  text("公网模式把 relay/ 部署到 VPS 即可，电脑侧只做出站连接 · iPhone PWA 可添加到主屏幕", W / 2, 1010 + r.dy, { size: 18, color: MUTED, align: "center", alpha: r.alpha });
+}
+
+/* =====================================================================
+ * CH7 07 MCP 与常驻 170–192
+ * ===================================================================== */
+function scCh7(t) {
+  chapterHead(t, "// 07 · MCP 与常驻服务", "工具进，工具出", "MCP Server @3878 · systemd 开机自启");
+  const term = { x: 420, y: 400, w: 1080, h: 540 };
+  termWindow(term.x, term.y, term.w, term.h, "yuanjing@arch — zsh", rise(t, 2.1, 0.65).alpha, rise(t, 2.1, 0.65).dy);
+  ctx.save();
+  ctx.globalAlpha = rise(t, 2.1, 0.65).alpha;
+  ctx.translate(0, rise(t, 2.1, 0.65).dy);
+  let ly = term.y + 48 + 42;
+  const pW = segsWidth(PS1, TERM.fs, 400);
+  drawSegs(PS1, term.x + 32, ly, TERM.fs, 400, 1);
+  const tp = typedSegs([[TEXT, "dito mcp"]], t, 3.2, 4.4);
+  drawSegs(tp, term.x + 32 + pW, ly, TERM.fs, 400, 1);
+  if (t >= 3.2 && t < 4.4) drawCaret(term.x + 32 + pW + segsWidth(tp, TERM.fs, 400), ly, 22, t, 1);
+  ly += TERM.lh;
+  termOut(ly, "streamable HTTP @ http://127.0.0.1:3878", ACC2, t, 4.8, 1, 0);
+  // 工具 chips
+  const tools = [["kb_search", false], ["kb_read", false], ["kb_upload", false], ["memory_remember", false], ["memory_recall", false], ["web_search", false], ["system_info", false], ["pc_bash", true]];
+  const cwd = 240, chg = 18, chx0 = term.x + 32 + (term.w - 64 - (cwd * 4 + chg * 3)) / 2, chy = term.y + 48 + 42 + 108;
+  for (let i = 0; i < tools.length; i++) {
+    const a = seg(t, 5.6 + i * 0.22, 5.85 + i * 0.22);
+    if (a <= 0) break;
+    const col = i % 4, row = (i / 4) | 0;
+    ctx.save(); ctx.globalAlpha = a;
+    const cx = chx0 + col * (cwd + chg), cyy = chy + row * 66;
+    panel(cx, cyy, cwd, 52, 10, PANEL, tools[i][1] ? "rgba(224,108,117,0.4)" : "rgba(53,208,186,0.3)");
+    text(tools[i][0], cx + cwd / 2, cyy + 25, { size: 15, color: tools[i][1] ? RED : ACC2, align: "center" });
+    text(tools[i][1] ? "需 allowBash" : "内置工具", cx + cwd / 2, cyy + 44, { size: 11, color: DIM, align: "center" });
+    ctx.restore();
+  }
+  // 手机接入提示
+  if (t > 8.0) {
+    const a = seg(t, 8.0, 8.3);
+    text("手机 MCP 客户端 → https://<中继>/t/<房间>/mcp/ · Bearer = deviceToken", term.x + 32, chy + 156, { size: 15.5, color: MUTED, alpha: a });
+  }
+  // systemd
+  if (t > 10.4) {
+    const pW2 = segsWidth(PS1, TERM.fs, 400);
+    const ly2 = chy + 210;
+    drawSegs(PS1, term.x + 32, ly2, TERM.fs, 400, seg(t, 10.4, 10.6));
+    const tp2 = typedSegs([[TEXT, "systemctl --user enable --now dito-qq"]], t, 10.6, 12.6);
+    const ex = drawSegs(tp2, term.x + 32 + pW2, ly2, TERM.fs, 400, 1);
+    if (t >= 10.6 && t < 12.6) drawCaret(ex, ly2, 22, t, 1);
+    if (t > 13.0) drawSegs([[PR, "● dito-qq.service — active (running)"]], term.x + 32, ly2 + TERM.lh, TERM.fs, 400, seg(t, 13.0, 13.3));
+    if (t > 13.6) drawSegs([[DIM, "开机自启 · 崩溃自动重启 · matrix / qqadmin 同理各一份"]], term.x + 32, ly2 + TERM.lh * 2, TERM.fs, 400, seg(t, 13.6, 13.9));
+  }
+  ctx.restore();
+  const r = rise(t, 15.6, 0.6);
+  text("dito mobile 会自动内嵌 MCP；外部 MCP 服务器可在 dito config →「MCP 服务」接入", W / 2, term.y + term.h + 48 + r.dy, { size: 18, color: MUTED, align: "center", alpha: r.alpha });
+}
+
+/* =====================================================================
+ * END 192–204 命令速查 + 落版
+ * ===================================================================== */
+function scEnd(t) {
+  const r0 = rise(t, 0.4, 0.55);
+  text("// 命令速查", W / 2, 262 + r0.dy, { size: 21, color: ACC, ls: 5, align: "center", alpha: r0.alpha, weight: 500 });
+  const cmds = [
+    ["dito", "全屏对话 TUI"], ["dito voice", "语音对话"], ["dito qq", "QQ 频道"], ["dito qqadmin", "网页管理后台"],
+    ["dito matrix", "Matrix E2EE"], ["dito mobile", "手机配对"], ["dito mcp", "MCP Server"], ["dito doctor", "环境体检"],
+  ];
+  for (let i = 0; i < 8; i++) {
+    const a = rise(t, 0.7 + i * 0.16, 0.55);
+    if (a.alpha <= 0) continue;
+    const col = i % 4, row = (i / 4) | 0;
+    const x = 330 + col * 330, y = 330 + row * 116;
+    ctx.save();
+    ctx.globalAlpha = a.alpha;
+    ctx.translate(0, a.dy);
+    panel(x, y, 300, 92, 12, PANEL, BORDER);
+    text(cmds[i][0], x + 24, y + 40, { size: 19, color: ACC, weight: 600 });
+    text(cmds[i][1], x + 24, y + 68, { size: 13.5, color: MUTED, font: "sans" });
+    ctx.restore();
+  }
+  // 落版
+  const r1 = rise(t, 3.6, 0.8);
+  const en = ">_ dito", zh = "蒂特";
+  const enW = textWidth(en, { size: 84, weight: 800, font: "sans" });
+  const zhW = textWidth(zh, { size: 74, weight: 600, font: "sans" });
+  const x0 = W / 2 - (enW + 24 + zhW + 46) / 2;
+  let g = ctx.createRadialGradient(W / 2, 690, 0, W / 2, 690, 560);
+  g.addColorStop(0, rgba(ACC, 0.09 * r1.alpha)); g.addColorStop(1, "rgba(53,208,186,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, 380, W, 620);
+  text(en, x0, 716 + r1.dy, { size: 84, weight: 800, font: "sans", color: TEXT, ls: -1, alpha: r1.alpha });
+  text(zh, x0 + enW + 24, 716 + r1.dy, { size: 74, weight: 600, font: "sans", color: ACC, alpha: r1.alpha, glow: 26, glowAlpha: 0.35 });
+  if (t > 4.4 && caretOn(t)) {
+    ctx.save(); ctx.globalAlpha = r1.alpha; ctx.fillStyle = ACC;
+    ctx.fillRect(x0 + enW + 24 + zhW + 20, 716 + r1.dy - 56, 24, 60);
+    ctx.restore();
+  }
+  const r2 = rise(t, 4.5, 0.6);
+  text("dito.dito.asia · 完整手册 docs/使用说明.html", W / 2, 796 + r2.dy, { size: 22, color: ACC2, align: "center", alpha: r2.alpha, weight: 600 });
+  const r3 = rise(t, 4.9, 0.6);
+  text("© 2026 · 有猫，有冰淇淋，有可口可乐", W / 2, 840 + r3.dy, { size: 16, color: DIM, align: "center", alpha: r3.alpha });
+}
+
+/* =====================================================================
+ * 主循环
+ * ===================================================================== */
+const SCENES = [
+  { a: 0, b: 6, draw: scOpen },
+  { a: 6, b: 36, draw: scCh1 },
+  { a: 36, b: 78, draw: scCh2 },
+  { a: 78, b: 100, draw: scCh3 },
+  { a: 100, b: 130, draw: scCh4 },
+  { a: 130, b: 148, draw: scCh5 },
+  { a: 148, b: 170, draw: scCh6 },
+  { a: 170, b: 192, draw: scCh7 },
+  { a: 192, b: DUR, draw: scEnd },
+];
+function render(t) {
+  let energy = 0.72 + 0.2 * Math.sin(t * 0.4);
+  if (t < 1.2) energy *= seg(t, 0.1, 1.2);
+  drawBackground(t, energy);
+  for (const s of SCENES) {
+    if (t < s.a - 0.001 || t > s.b + 0.001) continue;
+    const lt = t - s.a;
+    const exitP = eo(seg(t, s.b - 0.7, s.b - 0.05));
+    ctx.save();
+    ctx.globalAlpha = 1 - exitP;
+    if (exitP > 0) ctx.translate(0, -20 * exitP);
+    s.draw(lt);
+    ctx.restore();
+  }
+  drawChrome(t);
+  const black = seg(t, DUR - 1.2, DUR - 0.05);
+  if (black > 0) { ctx.fillStyle = `rgba(0,0,0,${black})`; ctx.fillRect(0, 0, W, H); }
+  const fadeIn = seg(t, 0, 0.35);
+  if (fadeIn < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - fadeIn})`; ctx.fillRect(0, 0, W, H); }
+}
+window.__render = render;
+window.__ready = (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => true);
+
+const qs = new URLSearchParams(location.search);
+if (qs.has("t")) render(parseFloat(qs.get("t")) || 0);
+</script>
+</body>
+</html>

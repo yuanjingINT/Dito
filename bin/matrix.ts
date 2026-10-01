@@ -41,12 +41,26 @@ async function isOwnerRoom(client: MatrixClient, roomId: string, ch: MatrixChann
   const owners = ch.owners ?? [];
   if (owners.length === 0) return false;
   try {
-    const members = Object.keys(await client.getJoinedRoomMembers(roomId));
+    // 注意：SDK 的 getJoinedRoomMembers 已经返回 string[]，别再套 Object.keys（会拿到下标）
+    const joined = (await client.getJoinedRoomMembers(roomId)) as unknown;
+    const members: string[] = Array.isArray(joined) ? joined : Object.keys(joined as Record<string, unknown>);
     return members.every((m) => m === client.userId || owners.includes(m))
       && members.some((m) => owners.includes(m));
   } catch {
     return false;
   }
+}
+
+/** 是否被 @ 了：先信任标准字段 m.mentions / formatted_body，再退回纯文本里的 @dito */
+function isMentioned(event: Record<string, any>, selfId: string): boolean {
+  const c: Record<string, any> = event?.content ?? {};
+  const ids: unknown = c["m.mentions"]?.user_ids;
+  if (Array.isArray(ids) && ids.includes(selfId)) return true;
+  if (typeof c.formatted_body === "string" && c.formatted_body.includes(selfId)) return true;
+  const body: string = typeof c.body === "string" ? c.body : "";
+  if (body.includes(selfId)) return true;
+  const alias = selfId.split(":")[0]; // 形如 @dito
+  return new RegExp(`${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w.-])`, "i").test(body);
 }
 
 export async function runMatrixChannel(): Promise<void> {
@@ -96,6 +110,15 @@ export async function runMatrixChannel(): Promise<void> {
         if (content.msgtype !== "m.text") return; // m.notice / m.emote 等暂不处理
         const body = (content.body ?? "").trim();
         if (!body) return;
+        // 「只在被 @ 时回复」的房间：没被点名就装死（主人的 /命令 例外）
+        const mentionOnly = ch.mentionOnly === true || (ch.mentionOnlyRooms ?? []).includes(roomId);
+        if (mentionOnly && !isMentioned(event, selfId)) {
+          const ownerCmd = body.startsWith("/") && (ch.owners ?? []).includes(event.sender ?? "");
+          if (!ownerCmd) {
+            console.log(`[dito matrix] ${roomId} 仅 @ 回复，忽略 ${event.sender} 的消息`);
+            return;
+          }
+        }
         const key = roomKey(roomId);
         // /whatnew 开新对话：丢弃缓存会话并强制重开，指令本身不进对话
         const isNewChat = body.toLowerCase() === "/whatnew";

@@ -3,6 +3,7 @@
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { hasPromptBundle, listEncryptedPromptNames, namespaceForDir, readEncryptedPrompt } from "./prompt-crypto.js";
@@ -17,6 +18,15 @@ const HERE = typeof import.meta !== "undefined" && typeof import.meta.url === "s
 export const ROOT_DIR = join(HERE, "..");
 export const PERSONAS_DIR = join(ROOT_DIR, "personas");
 export const IDENTITIES_DIR = join(ROOT_DIR, "identities");
+
+/** 包版本号（直连模型 API 的 User-Agent 归属用） */
+export const DITO_VERSION: string = (() => {
+  try {
+    return (JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf-8")) as { version?: string }).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 /** 用户可写目录：~/.pi/agent/dito/ */
 export function agentDir(): string {
@@ -97,6 +107,10 @@ export interface MatrixChannelConfig {
   rooms: string[];
   /** 主人 Matrix 用户 ID（如 @alice:example.org）；DM 且成员仅主人时解锁全量工具 */
   owners?: string[];
+  /** true = 所有房间都只在被 @ 时才回复（群聊防刷屏） */
+  mentionOnly?: boolean;
+  /** 只在这些房间 ID 里"被 @ 才回复"；可与 mentionOnly 叠加 */
+  mentionOnlyRooms?: string[];
 }
 
 export interface MobileDeviceConfig {
@@ -469,6 +483,36 @@ export function resolveApiKey(key: string): string {
   if (k.startsWith("${") && k.endsWith("}")) return process.env[k.slice(2, -1)] ?? "";
   if (k.startsWith("$")) return process.env[k.slice(1)] ?? "";
   return k;
+}
+
+/** 直连模型 API 的进程级会话标识（opencode 端点按会话做路由与缓存） */
+let providerSessionId = "";
+
+/**
+ * 直连模型 API 的请求头（绕开 pi 自己发请求时用）。
+ * opencode 系端点强制要求 x-opencode-session，否则 400 MissingSessionID；UA 也要表明客户端身份。
+ */
+export function providerRequestHeaders(
+  p: Pick<ProviderConfig, "baseUrl" | "apiKey">,
+  extra?: Record<string, string>,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": `dito-agent/${DITO_VERSION}`,
+    ...extra,
+  };
+  try {
+    const host = new URL(p.baseUrl).hostname;
+    if (host === "opencode.ai" || host.endsWith(".opencode.ai")) {
+      if (!providerSessionId) providerSessionId = randomUUID();
+      headers["x-opencode-session"] = providerSessionId;
+    }
+  } catch {
+    /* baseUrl 不合法：不加归属头 */
+  }
+  const key = resolveApiKey(p.apiKey);
+  if (key) headers.Authorization = `Bearer ${key}`;
+  return headers;
 }
 
 export interface ModelInfo {

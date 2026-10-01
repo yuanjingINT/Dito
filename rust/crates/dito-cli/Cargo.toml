@@ -1,0 +1,13 @@
+[package]
+name = "dito-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dito"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+dito-core = { path = "../dito-core" }

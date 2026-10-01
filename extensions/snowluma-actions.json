@@ -191,7 +191,7 @@
  },
  {
   "name": ".get_word_slices",
-  "tool": ".get_word_slices",
+  "tool": "get_word_slices",
   "summary": "分词（未实现）",
   "returns": "",
   "readOnly": true,

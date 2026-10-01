@@ -8,7 +8,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig, resolveApiKey } from "../extensions/util.js";
+import { loadConfig, providerRequestHeaders, type ProviderConfig } from "../extensions/util.js";
+import { detectImageMime, toVisionImage } from "../extensions/image.js";
 
 export interface MemeEntry {
   id: string;
@@ -143,18 +144,13 @@ export class MemeStore {
   }
 }
 
-/** 从 dito 配置里找到视觉模型的调用凭据 */
-function visionEndpoint(): { baseUrl: string; apiKey: string; model: string } | null {
+/** 从 dito 配置里找到视觉模型的调用凭据（免 Key 供应商也允许，请求头按需带鉴权） */
+function visionEndpoint(): { provider: ProviderConfig; model: string } | null {
   const cfg = loadConfig();
   const visionId = cfg.model.vision;
   if (!visionId) return null;
   for (const p of cfg.providers) {
-    const m = p.models.find((x) => x.id === visionId);
-    if (m) {
-      const apiKey = resolveApiKey(p.apiKey);
-      if (!apiKey) return null;
-      return { baseUrl: p.baseUrl.replace(/\/+$/, ""), apiKey, model: visionId };
-    }
+    if (p.models.some((x) => x.id === visionId)) return { provider: p, model: visionId };
   }
   return null;
 }
@@ -166,15 +162,17 @@ const ANALYZE_PROMPT = `分析这张图片，严格输出一行 JSON（不要输
 - emotion 从这些里选一个：开心、搞笑、生气、难过、无语、惊讶、疑惑、鄙视、害怕、无奈、装酷、委屈、认可、疑问
 - tags 是 2-4 个内容关键词（画面里的事物/文字主题）`;
 
-/** 用配置的视觉模型分析图片（识别是否表情包 + 情绪 + 内容） */
+/** 用配置的视觉模型分析图片（识别是否表情包 + 情绪 + 内容）；GIF 自动取首帧转 PNG */
 export async function analyzeImage(buf: Buffer, mime: string): Promise<MemeAnalysis | null> {
   const ep = visionEndpoint();
   if (!ep) return null;
-  const b64 = `data:${mime || "image/png"};base64,${buf.toString("base64")}`;
+  const img = toVisionImage(buf, mime);
+  if (img.mime === "image/gif") console.error("[dito qq] GIF 首帧解析失败，按原格式尝试识别");
+  const b64 = `data:${img.mime};base64,${img.buf.toString("base64")}`;
   try {
-    const res = await fetch(`${ep.baseUrl}/chat/completions`, {
+    const res = await fetch(`${ep.provider.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ep.apiKey}` },
+      headers: providerRequestHeaders(ep.provider),
       body: JSON.stringify({
         model: ep.model,
         messages: [
@@ -187,11 +185,25 @@ export async function analyzeImage(buf: Buffer, mime: string): Promise<MemeAnaly
           },
         ],
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(60_000),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const text = data.choices?.[0]?.message?.content ?? "";
+    const raw = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status}（模型 ${ep.model}）${raw.replace(/\s+/g, " ").slice(0, 160)}`);
+    let text = "";
+    try {
+      const data = JSON.parse(raw) as { choices?: { message?: { content?: unknown } }[] };
+      const content = data.choices?.[0]?.message?.content;
+      text =
+        typeof content === "string"
+          ? content
+          : Array.isArray(content)
+            ? content
+                .map((c) => (typeof c === "string" ? c : typeof (c as { text?: unknown })?.text === "string" ? (c as { text: string }).text : ""))
+                .join("")
+            : "";
+    } catch {
+      return null;
+    }
     const jsonText = /\{[\s\S]*\}/.exec(text)?.[0];
     if (!jsonText) return null;
     const parsed = JSON.parse(jsonText) as Partial<MemeAnalysis>;
@@ -207,7 +219,7 @@ export async function analyzeImage(buf: Buffer, mime: string): Promise<MemeAnaly
   }
 }
 
-/** 下载图片（带大小限制），返回 buffer + 扩展名猜测 */
+/** 下载图片（带大小限制），按魔数判断格式（URL 的 content-type 常不可靠） */
 export async function downloadImage(url: string): Promise<{ buf: Buffer; ext: string; mime: string } | null> {
   try {
     const res = await fetch(url, {
@@ -217,8 +229,9 @@ export async function downloadImage(url: string): Promise<{ buf: Buffer; ext: st
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length === 0 || buf.length > IMAGE_LIMIT_BYTES) return null;
-    const mime = res.headers.get("content-type") ?? "";
-    const ext = mime.includes("gif") ? ".gif" : mime.includes("jpeg") || mime.includes("jpg") ? ".jpg" : mime.includes("webp") ? ".webp" : ".png";
+    const headerMime = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+    const mime = detectImageMime(buf) ?? (headerMime.startsWith("image/") ? headerMime : "");
+    const ext = mime === "image/gif" ? ".gif" : mime === "image/jpeg" ? ".jpg" : mime === "image/webp" ? ".webp" : mime === "image/bmp" ? ".bmp" : ".png";
     return { buf, ext, mime: mime || "image/png" };
   } catch {
     return null;
