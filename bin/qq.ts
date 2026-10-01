@@ -23,6 +23,7 @@ import { makeChannelChat, applySessionToolPolicy, runWithTaskSlot, type ChannelC
 import { Affinity } from "./affinity.js";
 import { analyzeImage, downloadImage, MemeStore } from "./memes.js";
 import { probeWs } from "../extensions/snowluma-tools.js";
+import { DitoReEngine, looksLikeDitoConversation } from "../extensions/plugins/dito-re.js";
 
 type Bot = SnowLumaWebSocketClient;
 
@@ -523,6 +524,11 @@ export async function runQqChannel(): Promise<void> {
   const chats = new Map<string, ChannelChat>();
   const affinity = new Affinity(join(CHAT_SESSIONS_DIR, "affinity.json"));
   const memes = new MemeStore(join(CHAT_SESSIONS_DIR, "memes"));
+  const ditoRe = new DitoReEngine({
+    config: cfg.plugins["dito-re"],
+    historyFile: join(CHAT_SESSIONS_DIR, "dito-re-context.json"),
+  });
+  process.once("exit", () => ditoRe.flush());
   const seenMessageIds = new Set<number>();
   const seenOnce = (id: number | undefined): boolean => {
     if (id === undefined) return false;
@@ -571,6 +577,7 @@ export async function runQqChannel(): Promise<void> {
         }
       }
     }
+    if (type === "qq-group") ditoRe.markBotReply(Number(id), reply);
   };
 
   const sessionFor = async (key: string, forceNew = false): Promise<ChannelChat> => {
@@ -638,7 +645,9 @@ export async function runQqChannel(): Promise<void> {
 
   // 群聊（仅 allowlist 内的群；含唤醒词或 @机器人 才响应）
   const onGroup = async (event: Parameters<Parameters<Bot["onGroupMessage"]>[0]>[0]): Promise<void> => {
-    ch = loadConfig().channels.qq;
+    const currentConfig = loadConfig();
+    ch = currentConfig.channels.qq;
+    ditoRe.setConfig(currentConfig.plugins["dito-re"]);
     if (!ch.groups.includes(event.group_id)) return;
     if (seenOnce(event.message_id)) return;
     // qqadmin 后台可能改过好感度/表情包索引：先同步外部修改
@@ -648,13 +657,27 @@ export async function runQqChannel(): Promise<void> {
     let content = extractPlainText(event.raw_message);
     const keywords = ch.wakeKeywords.filter(Boolean);
     const self = await safeSelfId(bot);
+    if (event.user_id === self) return;
     const segments = Array.isArray(event.message) ? event.message : [];
     const atMe = segments.some(
       (s) => s?.type === "at" && String((s.data as { qq?: string })?.qq ?? "") === String(self),
     );
+    const replySegment = segments.some((s) => s?.type === "reply");
+    const replyToDito = replySegment && ditoRe.hasRecentBotReply(event.group_id);
 
     // 偷表情包：不受唤醒与概率影响，图照收
     stealMemes(Array.isArray(event.message) ? event.message : [], `群-${event.group_id}`, memes);
+
+    // 所有群消息都先进入 dito-re 的短上下文，即使这条消息最终没有触发回复。
+    // 这样下一次回复时模型看到的是完整群聊，而不是只有触发过 Dito 的消息。
+    ditoRe.remember({
+      messageId: event.message_id,
+      groupId: event.group_id,
+      userId: event.user_id,
+      name,
+      text: content || "（非文字消息）",
+      atMe,
+    });
 
     // 好感度门：低于 20 的群友完全无视（不贴表情也不回话）
     const score = affinity.get(`${event.group_id}:${event.user_id}`);
@@ -672,8 +695,9 @@ export async function runQqChannel(): Promise<void> {
       return;
     }
 
-    // 唤醒判定：@机器人 或包含唤醒词 → 必答
-    const woken = atMe || (keywords.length > 0 && keywords.some((k) => content.toLowerCase().includes(k.toLowerCase())));
+    // 唤醒判定：@机器人、唤醒词或明显点名 Dito 的说法 → 必答
+    const explicitlyAddressed = looksLikeDitoConversation(content, { atMe, replyToDito });
+    const woken = atMe || explicitlyAddressed || (keywords.length > 0 && keywords.some((k) => content.toLowerCase().includes(k.toLowerCase())));
     // 纯表情/图片消息（没字）：只有唤醒时才回话，否则无事发生
     if (!content && !woken) return;
     if (woken && keywords.length > 0) {
@@ -683,12 +707,35 @@ export async function runQqChannel(): Promise<void> {
       if (stripped) content = stripped;
     }
     // 剥完为空（纯表情/图片的 @ 或打招呼）：给模型一个可回应的提示
-    if (!content) content = atMe ? "（对方@了你，发的是一个表情/图片，没有文字）" : "（对方发了一个表情/图片，没有文字）";
+    if (!content) {
+      content = atMe
+        ? "（对方@了你，发的是一个表情/图片，没有文字）"
+        : woken
+          ? "（对方呼叫了你，没有留下其它文字）"
+          : "（对方发了一个表情/图片，没有文字）";
+    }
 
-    // 文字回复概率：被唤醒必答；被动群（wakeOnlyGroups）不参与概率回复；其余按概率回复（默认 0.2）
-    const chance = woken ? 1 : (ch.wakeOnlyGroups.includes(event.group_id) ? 0 : (ch.groupReplyChance ?? 0.2));
-    if (Math.random() >= chance) {
-      console.log(`[dito qq] 群 ${event.group_id} 消息未命中回复概率（${chance}），忽略：${content.slice(0, 30)}`);
+    const key = `qq-group-${event.group_id}`;
+    const reEnabled = ditoRe.getConfig().enabled;
+    const decision = reEnabled
+      ? ditoRe.decide({
+        groupId: event.group_id,
+        userId: event.user_id,
+        name,
+        text: content,
+        atMe,
+        woken,
+        wakeOnly: ch.wakeOnlyGroups.includes(event.group_id),
+        replyToDito,
+      })
+      : {
+        shouldReply: Math.random() < (woken ? 1 : (ch.wakeOnlyGroups.includes(event.group_id) ? 0 : (ch.groupReplyChance ?? 0.2))),
+        reason: "default" as const,
+        chance: woken ? 1 : (ch.wakeOnlyGroups.includes(event.group_id) ? 0 : (ch.groupReplyChance ?? 0.2)),
+      };
+    if (!decision.shouldReply) {
+      const topic = decision.matchedTopic ? `，主题「${decision.matchedTopic.name}」` : "";
+      console.log(`[dito qq] 群 ${event.group_id} 未命中自动回复概率（${decision.chance}${topic}），忽略：${content.slice(0, 30)}`);
       return;
     }
 
@@ -705,9 +752,12 @@ export async function runQqChannel(): Promise<void> {
       }
     }
 
-    const key = `qq-group-${event.group_id}`;
     const chat = await sessionFor(key);
-    await promptWithWatchdog(chat, `[QQ群 ${event.group_id} 来自 ${name}｜好感度 ${score}/100] ${content}`, "dito qq");
+    const currentMessage = `[QQ群 ${event.group_id} 来自 ${name}｜好感度 ${score}/100] ${content}`;
+    const prompt = reEnabled
+      ? `${currentMessage}\n\n${ditoRe.promptContext(event.group_id, content, decision)}`
+      : currentMessage;
+    await promptWithWatchdog(chat, prompt, "dito qq");
   };
 
   // 戳一戳：被戳就戳回去

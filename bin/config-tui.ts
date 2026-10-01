@@ -25,6 +25,7 @@ import {
   type DitoConfig,
   type ProviderConfig,
 } from "../extensions/util.js";
+import { resolveDitoReConfig } from "../extensions/plugins/dito-re.js";
 
 // ── ANSI 与主题（天青色系，保留 Dito 视觉） ──────────────────────
 
@@ -1082,6 +1083,57 @@ async function permissionScreen(cfg: DitoConfig): Promise<void> {
   persist(cfg);
 }
 
+async function ditoReScreen(cfg: DitoConfig): Promise<void> {
+  const re = cfg.plugins["dito-re"];
+  const result = await formScreen({
+    crumbParts: ["配置", "QQ 智能自动回复"],
+    panelTitle: "QQ 智能自动回复（dito-re）",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(re.enabled), kind: "bool", hint: "关闭后退回 QQ 原来的群聊回复概率逻辑" },
+      { label: "普通消息概率", value: String(re.defaultReplyChance), kind: "text", hint: "0-1；未命中爱好主题、也没有直接点名 Dito 时使用" },
+      { label: "直接对话概率", value: String(re.directReplyChance), kind: "text", hint: "明显在和 Dito 说话时使用，默认 1（必答）" },
+      { label: "每群上下文消息数", value: String(re.contextMessages), kind: "number", hint: "所有群消息都会进入滚动上下文，包括没有触发回复的消息" },
+      { label: "每群上下文字符数", value: String(re.contextChars), kind: "number", hint: "触发回复时交给模型的最大字符数，较早消息超限后裁剪" },
+      { label: "爱好主题 JSON", value: JSON.stringify(re.topics), kind: "text", hint: "数组元素：{id,name,keywords,replyChance}；replyChance 为 0-1；填 [] 可关闭主题命中" },
+      { label: "追加爱好主题", value: "", kind: "text", hint: "填一个对象或数组，例如 {\"id\":\"摄影\",\"name\":\"摄影\",\"keywords\":[\"相机\",\"镜头\"],\"replyChance\":0.6}" },
+      { label: "删除主题 ID", value: "", kind: "text", hint: "可填多个 ID，用逗号分隔；留空不删除" },
+    ],
+  });
+  if (!result) return;
+  let topics = re.topics;
+  try {
+    const parsed = JSON.parse(result[5].value || "[]");
+    if (Array.isArray(parsed)) topics = parsed;
+  } catch {
+    /* JSON 不合法时保留旧主题列表 */
+  }
+  const additions = result[6].value.trim();
+  if (additions) {
+    try {
+      const parsed = JSON.parse(additions);
+      const next = Array.isArray(parsed) ? parsed : [parsed];
+      topics = [...topics, ...next];
+    } catch {
+      /* 追加项 JSON 不合法时保留原主题列表 */
+    }
+  }
+  const removedIds = new Set(result[7].value.split(/[,，\s]+/).map((id) => id.trim()).filter(Boolean));
+  if (removedIds.size > 0) {
+    topics = topics.filter((topic) => !removedIds.has(typeof topic?.id === "string" ? topic.id : ""));
+  }
+  cfg.plugins["dito-re"] = resolveDitoReConfig({
+    ...re,
+    enabled: parseBool(result[0].value),
+    defaultReplyChance: Number(result[1].value),
+    directReplyChance: Number(result[2].value),
+    contextMessages: Number(result[3].value),
+    contextChars: Number(result[4].value),
+    topics,
+  });
+  persist(cfg);
+}
+
 function parseNumberList(v: string): number[] {
   return v
     .split(/[,，\s]+/)
@@ -1359,6 +1411,14 @@ async function mainMenu(cfg: DitoConfig): Promise<void> {
             : "停用",
       hint: "dito qq 连 SnowLuma 收发 QQ（含戳一戳/空间）；dito matrix 连 Matrix 房间；dito mobile 扫码连手机",
       onEnter: () => channelsScreen(cfg),
+    },
+    {
+      label: "QQ 智能自动回复",
+      detail: cfg.plugins["dito-re"].enabled
+        ? `启用 · 普通 ${Math.round(cfg.plugins["dito-re"].defaultReplyChance * 100)}% · ${cfg.plugins["dito-re"].topics.length} 个爱好主题`
+        : "停用",
+      hint: "dito-re：爱好主题概率、直接对话识别、全群上下文",
+      onEnter: () => ditoReScreen(cfg),
     },
     {
       label: "MCP 服务",

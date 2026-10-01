@@ -10,6 +10,7 @@ import { hasPromptBundle, listEncryptedPromptNames, namespaceForDir, readEncrypt
 import { channelDataDir, migrateChannelData, userDataDir, writePrivateJson, type UserChannel } from "./user-data.js";
 import { DEFAULT_CONTEXT_COMPACTION, type ContextCompactionConfig } from "./context-compaction.js";
 import { DEFAULT_MEMORY_CONFIG, resolveMemoryConfig, type MemoryConfig } from "./memory-config.js";
+import { DEFAULT_DITO_RE_CONFIG, type DitoReConfig } from "./plugins/dito-re.js";
 
 const HERE = typeof import.meta !== "undefined" && typeof import.meta.url === "string"
   ? dirname(fileURLToPath(import.meta.url))
@@ -260,6 +261,8 @@ export interface DitoConfig {
       server: McpServerConfig;
       clients: McpClientConfig[];
     };
+    /** QQ 智能自动回复：爱好主题概率、直接对话识别和群聊上下文。 */
+    "dito-re": DitoReConfig;
   };
 }
 
@@ -498,6 +501,10 @@ export function defaultConfig(): DitoConfig {
         enabled: true,
         server: { enabled: true, port: 3878, token: "", allowBash: false },
         clients: [],
+      },
+      "dito-re": {
+        ...DEFAULT_DITO_RE_CONFIG,
+        topics: DEFAULT_DITO_RE_CONFIG.topics.map((topic) => ({ ...topic, keywords: [...topic.keywords] })),
       },
     },
   };

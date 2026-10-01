@@ -59,6 +59,7 @@ export const PLUGIN_CATALOG: readonly PluginSpec[] = [
   { id: "ask", name: "交互提问", description: "工具需要决定时弹出选择和确认。", kind: "capability", configKey: "ask", defaultInstalled: true },
   { id: "voice", name: "语音对话", description: "录音、语音识别和语音合成。", kind: "capability", configKey: "voice", defaultInstalled: true },
   { id: "snowluma", name: "SnowLuma 工具", description: "QQ OneBot 动作、表情和群操作工具。", kind: "integration", configKey: "snowluma", defaultInstalled: false },
+  { id: "dito-re", name: "QQ 智能自动回复", description: "按爱好主题概率回复、识别对 Dito 的直接对话、整合群聊上下文。", kind: "capability", configKey: "dito-re", defaultInstalled: true },
   { id: "mcp", name: "MCP", description: "接入外部 MCP，并可运行 MCP 服务端。", kind: "integration", configKey: "mcp", defaultInstalled: true },
   { id: "qq", name: "QQ 频道", description: "通过 OneBot/SnowLuma 收发 QQ 私聊和群消息。", kind: "channel", dependencies: ["snowluma"], defaultInstalled: false },
   { id: "matrix", name: "Matrix 频道", description: "连接 Matrix 房间，支持 E2EE。", kind: "channel", defaultInstalled: false },

@@ -93,6 +93,8 @@ dito                           # 进入全屏对话 TUI
 
 自动压缩默认参考 DeepSeek Harness：上下文达到 `min(窗口 × 0.8, 窗口 - 最大输出 - 65536)` 时触发，并原样保留最近约 16% 的对话。可以在 `~/.pi/agent/dito/config.json` 的 `contextCompaction` 中调整 `enabled`、`thresholdRatio`、`retainRatio` 和 `headroomTokens`；摘要、工具调用边界、溢出恢复和会话落盘由 pi-coding-agent 负责。
 
+QQ 的 `dito-re` 配置位于 `~/.pi/agent/dito/config.json` 的 `plugins["dito-re"]`：`defaultReplyChance` 是普通消息概率，`topics` 中每个主题配置 `keywords` 与 `replyChance`，主题数组可以自由添加和删除，不受固定枚举限制；`contextMessages` / `contextChars` 控制每个群注入的上下文上限。`dito config` →「QQ 智能自动回复」可直接追加一个主题 JSON 或按 ID 删除主题。群上下文保存在 QQ 私有数据目录的 `dito-re-context.json`，只在本机使用。
+
 **长记忆**参考 laozhou 的“短日记 → 长期整理 → 自动联想”流程。每轮结束会按聊天 scope 保存短日记；“请记住”“我喜欢”“我的目标”等明确的稳定信息会整理为知识点，重要或反复被回忆的经历会升级为长期记忆。下一轮提问前，相关知识和经历会自动作为不可信历史资料注入上下文，并按回忆次数强化、按半衰期衰减。运行 `/memory-stats` 查看统计，运行 `/memory-clear` 清空；`dito config` →「记忆」可调整自动联想、短日记保留天数、联想条数和遗忘策略。记忆库仍保存在各聊天隔离的 `memory.db` / `memory-<scope>.db` 中，旧版数据库会自动迁移。
 
 **权限门**：`rm -rf /`、fork 炸弹、格式化等高危命令直接拦截；改动类命令弹确认。sudo 模式（`/sudo on`）下权限门关闭、需要 root 的命令自动加 `sudo`（Windows 无 sudo，自动跳过）。
@@ -129,6 +131,7 @@ dito config
 - 被戳自动戳回去；按消息情绪自动贴表情回应；回复超 100 字自动转图片；概率附赠随机表情包
 - **群聊好感度**：每个群友 0-100 分，模型自主加减（单次 ±20），语气随分数变化；**低于 20 分直接忽略其消息**
 - 群聊白名单 + 唤醒词 + 概率回复（被 @/唤醒词必答）；好友/群请求自动同意可选
+- **dito-re 智能自动回复**：命中 Dito 的爱好主题使用主题专属概率；明显在和 Dito 对话时直接回复；每条群消息先进入该群滚动上下文，触发回复时把未触发的消息和 Dito 最近回复一起交给模型
 - **行为字段（owners/groups/概率/开关）后台改动即时生效**——频道进程每条消息重读配置，无需重启
 
 ## QQ / 频道管理后台（dito qqadmin）

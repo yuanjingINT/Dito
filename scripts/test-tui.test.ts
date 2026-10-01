@@ -4,7 +4,7 @@ import { test, after } from "node:test";
 import { stripTerminalSequences, visibleWidth, type Terminal } from "@earendil-works/pi-tui";
 import type { SessionSummary, TuiSession } from "../bin/session.js";
 import { runTui, type TuiSessionSource } from "../bin/tui.js";
-import { BashLog, ConversationView, SessionPicker, TabsBar } from "../bin/tui-components.js";
+import { BashLog, compactBashProgress, ConversationView, SessionPicker, TabsBar } from "../bin/tui-components.js";
 import { getMode, setMode } from "../extensions/mode.js";
 
 const previousMode = getMode();
@@ -85,6 +85,15 @@ test("Bash restores history, bounds output, streams snapshots and clears on sess
   assert.ok(output.length < 10000);
   bash.restore([]);
   assert.ok(!bash.render(40).join("\n").includes("hello"));
+});
+
+test("Bash collapses captured spinner progress instead of repeating it", () => {
+  assert.equal(compactBashProgress("⠋ 执行中\n⠙ 执行中\n⠹ 执行中\n完成"), "执行中\n完成");
+  const bash = new BashLog();
+  bash.start("progress", "dito send");
+  bash.update("progress", { content: [{ type: "text", text: "执行中\n执行中\n执行中" }] });
+  const rendered = stripTerminalSequences(bash.render(40).join("\n"));
+  assert.equal((rendered.match(/执行中/g) ?? []).length, 1);
 });
 
 test("conversation finishes providers that only emit a final message and caches older messages", () => {

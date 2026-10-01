@@ -80,6 +80,25 @@ export function toolOutput(result: unknown): string {
   return messageText(r);
 }
 
+/**
+ * Bash commands launched through another TUI can expose their spinner frames
+ * as ordinary output lines. Keep one progress marker instead of filling the
+ * sidebar with dozens of identical rows.
+ */
+export function compactBashProgress(text: string): string {
+  const lines = text.split("\n");
+  const compacted: string[] = [];
+  let previousProgress = false;
+  for (const line of lines) {
+    const normalized = line.replace(/^[⠋-⣿]\s*/, "").trim();
+    const progress = normalized === "执行中";
+    if (progress && previousProgress) continue;
+    compacted.push(progress ? line.replace(/^[⠋-⣿]\s*/, "") : line);
+    previousProgress = progress;
+  }
+  return compacted.join("\n");
+}
+
 class MessageBlock implements Component {
   readonly body: Markdown;
   private text = "";
@@ -245,7 +264,7 @@ export class BashLog implements Component {
     const entry = this.entries.find((item) => item.id === id);
     if (!entry) return;
     if (state) entry.state = state;
-    const output = toolOutput(result).replace(/\r\n?/g, "\n");
+    const output = compactBashProgress(toolOutput(result).replace(/\r\n?/g, "\n"));
     if (output) {
       const bounded = output.slice(-32000).split("\n").slice(-300).join("\n");
       entry.output = (bounded.length < output.length ? "…（前面的输出已省略）\n" : "") + bounded;

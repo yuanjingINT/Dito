@@ -568,6 +568,23 @@
     },
     "snowluma": {
       "enabled": true
+    },
+    "dito-re": {
+      "enabled": true,
+      "defaultReplyChance": 0.2,
+      "directReplyChance": 1,
+      "contextMessages": 120,
+      "contextChars": 16000,
+      "followUpWindowSeconds": 150,
+      "topics": [
+        { "id": "cats", "name": "撸猫 / 橘猫 aicoy", "keywords": ["撸猫", "猫", "橘猫", "aicoy", "猫咪", "小猫"], "replyChance": 0.72 },
+        { "id": "cities-skylines", "name": "都市天际线", "keywords": ["都市天际线", "cities skylines", "城市天际线", "cs2", "城市建造"], "replyChance": 0.68 },
+        { "id": "arch-linux", "name": "Arch Linux", "keywords": ["arch linux", "archlinux", "arch", "pacman", "aur", "wayland", "linux"], "replyChance": 0.64 },
+        { "id": "open-source", "name": "开源软件", "keywords": ["开源", "github", "gitlab", "自由软件", "linux 软件"], "replyChance": 0.58 },
+        { "id": "ice-cream", "name": "巧克力冰淇淋", "keywords": ["巧克力冰淇淋", "巧克力味", "冰淇淋", "雪糕"], "replyChance": 0.55 },
+        { "id": "cola", "name": "3 摄氏度可口可乐", "keywords": ["可口可乐", "可乐", "3摄氏度", "三摄氏度", "冰可乐"], "replyChance": 0.52 },
+        { "id": "mcdonalds", "name": "麦当劳薯条", "keywords": ["麦当劳", "麦麦", "薯条", "麦当劳薯条"], "replyChance": 0.52 }
+      ]
     }
   }
 }
