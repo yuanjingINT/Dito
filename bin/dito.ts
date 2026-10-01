@@ -7,7 +7,9 @@
  *   dito send "你好"   # 显式从终端直接发消息给 Dito（同 dito msg / dito message / -m）
  *   dito voice        # 语音对话（水波界面 + 朗读/录音）
  *   dito config       # 配置页面（TUI）
+ *   dito plugins      # 安装/停用插件
  *   dito web          # Web UI（对话 + 图形化配置 + 知识库/记忆）
+ *   dito bridge       # 桥接：把 Matrix 房间和 QQ 群连成一个聊天室
  *
  * 通过 pi SDK 起会话，加载 Dito 扩展，默认模型走 opencode 免费公共模型（免 Key 开箱即用），
  * 内置智谱 GLM-4-Flash 等国内直连免费模型可选。
@@ -22,6 +24,7 @@ import { runVoiceMode, type VoiceConfig } from "../extensions/voice.js";
 import { runConfigTui } from "./config-tui.js";
 import { runTui } from "./tui.js";
 import { loadConfig } from "../extensions/util.js";
+import { ensurePluginInstallation } from "./plugin-manager.js";
 import { createSession, type SessionBundle } from "./session.js";
 
 // ── 配色 ────────────────────────────────────────────────────────
@@ -169,30 +172,58 @@ async function sendOneMessage(text: string, fresh = false): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
+  // 插件状态在首次启动时统一初始化。doctor 保持纯诊断，plugins 用于显式重选。
+  if (args[0] === "plugins") {
+    await ensurePluginInstallation({ force: true });
+    return;
+  }
+  if (args[0] !== "doctor") await ensurePluginInstallation();
+
+  const requirePlugin = (id: string): boolean => {
+    const cfg = loadConfig();
+    const installed = cfg.plugins.manager.installed.includes(id)
+      || ((id === "qq" || id === "matrix" || id === "mobile") && cfg.channels[id].enabled);
+    if (installed) return true;
+    console.error(`插件「${id}」尚未安装。请在终端运行：dito plugins`);
+    process.exitCode = 1;
+    return false;
+  };
+
   if (args[0] === "config") {
     await runConfigTui();
     return;
   }
 
   if (args[0] === "qq") {
+    if (!requirePlugin("qq")) return;
     const { runQqChannel } = await import("./qq.js");
     await runQqChannel();
     return;
   }
 
   if (args[0] === "qqadmin") {
+    if (!requirePlugin("qq")) return;
     const { runQqAdminChannel } = await import("./qq-admin.js");
     await runQqAdminChannel(args.slice(1));
     return;
   }
 
   if (args[0] === "matrix") {
+    if (!requirePlugin("matrix")) return;
     const { runMatrixChannel } = await import("./matrix.js");
     await runMatrixChannel();
     return;
   }
 
+  if (args[0] === "bridge") {
+    if (!requirePlugin("bridge")) return;
+    const { runBridgeChannel } = await import("./bridge.js");
+    await runBridgeChannel();
+    return;
+  }
+
   if (args[0] === "mobile") {
+    if (!requirePlugin("mobile")) return;
     const { runMobileChannel } = await import("./mobile.js");
     await runMobileChannel(args.slice(1));
     return;
@@ -205,12 +236,14 @@ async function main(): Promise<void> {
   }
 
   if (args[0] === "mcp") {
+    if (!requirePlugin("mcp")) return;
     const { runMcpServerMain } = await import("./mcp-server.js");
     await runMcpServerMain();
     return;
   }
 
   if (args[0] === "voice") {
+    if (!requirePlugin("voice")) return;
     const voicePlugin = loadConfig().plugins.voice;
     if (voicePlugin.enabled === false) {
       console.error("语音插件已在配置中停用。请先在 `dito config` 或 Web UI 的配置页启用「语音对话」插件。");

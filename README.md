@@ -63,7 +63,14 @@ dito doctor --ci     # CI/脚本用：失败项不改变退出码
 | `dito matrix` | Matrix 频道守护进程（E2EE 加密房间） |
 | `dito mobile` | 手机频道（终端显示二维码，扫码配对；自动内嵌中继与 MCP 隧道） |
 | `dito mcp` | MCP Server 独立运行（默认 `dito mobile` 会内嵌启动） |
+| `dito plugins` | 插件安装器：选择启用的能力、QQ、Matrix、Bridge、手机和 MCP 模块 |
 | `dito doctor` | 环境体检 |
+
+## 插件安装
+
+Dito 的能力和频道统一由插件目录管理。安装包已经包含插件代码，首次启动 `dito`、`dito config` 或频道命令时会显示选择器；用方向键移动、Space 勾选、Enter 保存。选择 `QQ ↔ Matrix Bridge` 会自动安装并启用 QQ 与 Matrix 依赖。
+
+之后可运行 `dito plugins` 重新选择。插件状态保存在用户配置的 `plugins.manager` 节中，QQ、Matrix 和 Bridge 的账号令牌仍分别保存在 `user/qq`、`user/matrix` 与 `user/bridge`，不会写入仓库。
 
 ## 终端对话
 

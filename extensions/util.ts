@@ -195,6 +195,12 @@ export interface DitoConfig {
     mobile: MobileChannelConfig;
   };
   plugins: {
+    /** 插件安装器状态；首次启动时由 bin/plugin-manager.ts 初始化。 */
+    manager: {
+      version: number;
+      initialized: boolean;
+      installed: string[];
+    };
     provider: { enabled: boolean };
     persona: { enabled: boolean };
     system: { enabled: boolean };
@@ -442,6 +448,7 @@ export function defaultConfig(): DitoConfig {
       },
     },
     plugins: {
+      manager: { version: 1, initialized: false, installed: ["tui"] },
       provider: { enabled: true },
       persona: { enabled: true },
       system: { enabled: true },
