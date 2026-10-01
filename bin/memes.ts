@@ -2,7 +2,7 @@
  * 表情包库：自动"偷"来的表情包都存在这里。
  *
  * 每张入库前先由视觉模型识别——情绪 + 内容标签，检索时按情绪/内容匹配。
- * 图片本体存 ~/.pi/agent/dito/memes/，索引在 memes.json。
+ * 图片本体存 user/qq/memes/，索引在 memes.json。
  * 发送用 base64 段（SnowLuma 在容器里，宿主机路径 file:// 对它无效）。
  */
 import { createHash } from "node:crypto";

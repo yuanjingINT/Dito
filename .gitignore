@@ -36,6 +36,8 @@ docs/
 .zcode/
 
 # 本机部署凭据不入仓库
+/user/**
+!/user/README.md
 sites/dito-mail/.secrets/
 sites/dito-matrix/nas/homeserver.yaml
 

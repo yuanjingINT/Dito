@@ -2,7 +2,7 @@
  * Dito Matrix 频道：matrix-bot-sdk + Rust E2EE。
  *
  * 支持解密加密房间消息（Element 私聊默认加密）：设备密钥经 RustSdkCryptoStorageProvider
- * 持久化于 ~/.pi/agent/dito/matrix-crypto-store/，跨重启稳定。
+ * 持久化于 user/matrix/matrix-crypto-store/，跨重启稳定。
  *
  * 用法：dito matrix（需先在 config 的 channels.matrix 里启用，
  * 填 homeserver + accessToken）
@@ -12,7 +12,6 @@
  * - bot 上线前已加密的历史消息因 megolm 前向保密无法解密；上线后新消息均可解密
  */
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
 import {
   MatrixClient,
@@ -22,14 +21,11 @@ import {
   LogService,
   LogLevel,
 } from "matrix-bot-sdk";
-import { loadConfig, type MatrixChannelConfig } from "../extensions/util.js";
+import { ditoChannelDir, loadConfig, type MatrixChannelConfig } from "../extensions/util.js";
 import { openChannelSession } from "./session.js";
 import { makeChannelChat, applySessionToolPolicy, runWithTaskSlot, type ChannelChat } from "./channel-chat.js";
 
-const CHAT_SESSIONS_DIR = join(
-  process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
-  "dito",
-);
+const CHAT_SESSIONS_DIR = ditoChannelDir("matrix");
 const CRYPTO_STORE_DIR = join(CHAT_SESSIONS_DIR, "matrix-crypto-store");
 
 function roomKey(roomId: string): string {
@@ -67,7 +63,7 @@ export async function runMatrixChannel(): Promise<void> {
   const cfg = loadConfig();
   const ch: MatrixChannelConfig = cfg.channels.matrix;
   if (!ch.enabled || !ch.accessToken) {
-    console.error("Matrix 频道未启用：在 ~/.pi/agent/dito/config.json 的 channels.matrix 里设 enabled=true 并填 homeserver 与 accessToken。");
+    console.error("Matrix 频道未启用：用 `dito config` 启用 Matrix，填写 homeserver 与 accessToken（保存在 user/matrix/config.json）。");
     process.exit(1);
   }
 

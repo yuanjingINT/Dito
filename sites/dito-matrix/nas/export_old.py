@@ -6,9 +6,12 @@ import os
 import sqlite3
 import time
 
-SRC = "/volume1/matrix/homeserver.db"
-COPY = "/tmp/hs-copy.db"
-OUT = "/volume1/backups/matrix-chat-export.txt"
+USER_DIR = os.environ.get("DITO_USER_DIR", os.path.expanduser("~/.pi/agent/dito/user"))
+MATRIX_DIR = os.path.join(USER_DIR, "matrix")
+SRC = os.environ.get("DITO_MATRIX_DATABASE", os.path.join(MATRIX_DIR, "homeserver.db"))
+COPY = os.path.join(MATRIX_DIR, "hs-copy.db")
+OUT = os.environ.get("DITO_MATRIX_EXPORT", os.path.join(MATRIX_DIR, "matrix-chat-export.txt"))
+os.makedirs(MATRIX_DIR, mode=0o700, exist_ok=True)
 
 # 1) 用 sqlite 官方 backup API 做一致性快照（在线库也安全）
 if os.path.exists(COPY):

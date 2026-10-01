@@ -9,7 +9,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
 import { openDatabase } from "./db.js";
-import { ditoDataDir, ROOT_DIR } from "./util.js";
+import { ditoDataDir, ROOT_DIR, scopedDataDir } from "./util.js";
 import { countOccurrences, snippetAround, tokenize } from "./text.js";
 
 interface KbEntry {
@@ -31,7 +31,7 @@ export function setKbScope(scope?: string): void {
 
 function kbDbPath(): string {
   return kbScope
-    ? join(ditoDataDir(), `kb-${kbScope}.db`)
+    ? join(scopedDataDir(kbScope), `kb-${kbScope}.db`)
     : join(ditoDataDir(), "kb.db");
 }
 

@@ -233,11 +233,13 @@ WantedBy=default.target
 | 知识库 | `~/.pi/agent/dito/kb.db`（每聊天隔离：`kb-<scope>.db`） |
 | 记忆 | `~/.pi/agent/dito/memory.db`（每聊天隔离：`memory-<scope>.db`） |
 | 终端会话 | `~/.pi/agent/dito/sessions/*.jsonl` |
-| QQ 会话映射 / 会话 | `~/.pi/agent/dito/qq-chats.json` / `qq-sessions/` |
-| Matrix 会话映射 / 会话 / 加密库 | `matrix-chats.json` / `matrix-sessions/` / `matrix-crypto-store/` |
+| QQ 私有配置 / 会话 / 记忆 | `~/.pi/agent/dito/user/qq/` |
+| Matrix 私有配置 / 会话 / 加密库 | `~/.pi/agent/dito/user/matrix/` |
 | 手机会话映射 / 会话 | `~/.pi/agent/dito/mobile/mobile-chats.json` / `mobile/mobile-sessions/` |
-| 群聊好感度 | `~/.pi/agent/dito/affinity.json` |
-| 表情包库 | `~/.pi/agent/dito/memes/`（索引 `memes.json`） |
+| 群聊好感度 | `~/.pi/agent/dito/user/qq/affinity.json` |
+| 表情包库 | `~/.pi/agent/dito/user/qq/memes/`（索引 `memes.json`） |
+
+QQ / Matrix 的账号、群号、房间、令牌及运行数据集中存入 `user/`，与公共配置分开。源码开发可设置 `DITO_USER_DIR="$PWD/user"` 使用项目内的目录；该目录仅 README 受 Git 跟踪，个人数据不会提交或打包。新版自动复制旧数据并更新会话索引，保留旧文件作为备份。迁移前停止旧频道进程，详见 [用户数据说明](user/README.md)。
 
 ## 默认模型说明
 

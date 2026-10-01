@@ -17,7 +17,7 @@ import { basename, extname, join, resolve, sep } from "node:path";
 
 import { SnowLumaWebSocketClient, message } from "@snowluma/sdk";
 
-import { loadConfig, saveConfig, ditoDataDir, ROOT_DIR, type QqChannelConfig } from "../extensions/util.js";
+import { loadConfig, saveConfig, ditoChannelDir, ROOT_DIR, type QqChannelConfig } from "../extensions/util.js";
 import { Affinity } from "./affinity.js";
 import { MemeStore } from "./memes.js";
 import { renderTextPng } from "./qq.js";
@@ -36,7 +36,7 @@ function formatDuration(seconds: number): string {
   return d > 0 ? `${d}天${h}小时` : h > 0 ? `${h}小时${m}分` : `${m}分钟`;
 }
 
-const DITO_DIR = ditoDataDir();
+const DITO_DIR = ditoChannelDir("qq");
 const CHAT_SESSIONS_DIR = join(DITO_DIR);
 const QQ_CHATS_INDEX = join(DITO_DIR, "qq-chats.json");
 const QQ_SESSIONS_DIR = join(DITO_DIR, "qq-sessions");

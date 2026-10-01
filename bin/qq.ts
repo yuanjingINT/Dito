@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { Type } from "typebox";
 import { SnowLumaWebSocketClient, message, text } from "@snowluma/sdk";
-import { loadConfig, readPersona, ROOT_DIR, saveConfig, type QqChannelConfig } from "../extensions/util.js";
+import { loadConfig, readPersona, ROOT_DIR, saveConfig, ditoChannelDir, type QqChannelConfig } from "../extensions/util.js";
 import { openChannelSession } from "./session.js";
 import { makeChannelChat, applySessionToolPolicy, runWithTaskSlot, type ChannelChat } from "./channel-chat.js";
 import { Affinity } from "./affinity.js";
@@ -457,10 +457,7 @@ async function ensureSnowLuma(ch: QqChannelConfig): Promise<AutoStartResult> {
 
 // ── 频道运行时 ───────────────────────────────────────────────────
 
-const CHAT_SESSIONS_DIR = join(
-  process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
-  "dito",
-);
+const CHAT_SESSIONS_DIR = ditoChannelDir("qq");
 
 /** 任务看门狗：单轮处理超过 3 分钟强制 abort（防流式挂死占住任务槽，后续全部静默排队） */
 const TASK_TIMEOUT_MS = 180_000;
@@ -522,7 +519,7 @@ export async function runQqChannel(): Promise<void> {
     process.exit(1);
   }
 
-  mkdirSync(join(CHAT_SESSIONS_DIR, "sessions"), { recursive: true });
+  mkdirSync(join(CHAT_SESSIONS_DIR, "qq-sessions"), { recursive: true, mode: 0o700 });
   const chats = new Map<string, ChannelChat>();
   const affinity = new Affinity(join(CHAT_SESSIONS_DIR, "affinity.json"));
   const memes = new MemeStore(join(CHAT_SESSIONS_DIR, "memes"));

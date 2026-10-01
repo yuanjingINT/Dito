@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { openDatabase } from "./db.js";
-import { ditoDataDir, loadConfig } from "./util.js";
+import { ditoDataDir, loadConfig, scopedDataDir } from "./util.js";
 import { countOccurrences, snippetAround, tokenize } from "./text.js";
 
 interface MemoryRow {
@@ -30,7 +30,7 @@ export function setMemoryScope(scope?: string): void {
 
 function memoryDbPath(): string {
   return memoryScope
-    ? join(ditoDataDir(), `memory-${memoryScope}.db`)
+    ? join(scopedDataDir(memoryScope), `memory-${memoryScope}.db`)
     : join(ditoDataDir(), "memory.db");
 }
 

@@ -1,5 +1,5 @@
 // join.dito.asia —— dito chat 入坑教程页
-// 纯静态资源，Worker 只负责兜一层响应头（禁索引）
+// 注册令牌由部署环境 MATRIX_REGISTRATION_TOKEN 提供，不写进仓库。
 
 const NOINDEX = "noindex, nofollow, noarchive";
 
@@ -17,6 +17,14 @@ export default {
     headers.set("Referrer-Policy", "no-referrer");
     headers.set("X-Content-Type-Options", "nosniff");
 
-    return new Response(res.body, { status: res.status, headers });
+    const response = new Response(res.body, { status: res.status, headers });
+    if (res.headers.get("content-type")?.includes("text/html")) {
+      return new HTMLRewriter().on("#tokenval", {
+        element(element) {
+          element.setInnerContent(env.MATRIX_REGISTRATION_TOKEN || "");
+        },
+      }).transform(response);
+    }
+    return response;
   },
 };

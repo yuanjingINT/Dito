@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { hasPromptBundle, listEncryptedPromptNames, namespaceForDir, readEncryptedPrompt } from "./prompt-crypto.js";
+import { channelDataDir, migrateChannelData, userDataDir, writePrivateJson, type UserChannel } from "./user-data.js";
 
 const HERE = typeof import.meta !== "undefined" && typeof import.meta.url === "string"
   ? dirname(fileURLToPath(import.meta.url))
@@ -37,6 +38,20 @@ export function ditoDataDir(): string {
 }
 export function ditoConfigPath(): string {
   return join(ditoDataDir(), "config.json");
+}
+
+/** QQ / Matrix 私有配置和运行数据，DITO_USER_DIR 可指向源码里的 user/。 */
+export function ditoUserDir(): string {
+  return userDataDir(ditoDataDir());
+}
+export function ditoChannelDir(channel: UserChannel): string {
+  return channelDataDir(ditoDataDir(), channel);
+}
+export function scopedDataDir(scope?: string): string {
+  const channel = scope?.startsWith("qq-") ? "qq" : scope?.startsWith("matrix-") ? "matrix" : undefined;
+  if (!channel) return ditoDataDir();
+  migrateChannelData(ditoDataDir());
+  return ditoChannelDir(channel);
 }
 
 export interface ProviderModelConfig {
@@ -641,24 +656,55 @@ function sanitizeProvider(p: ProviderConfig): void {
 
 export function loadConfig(): DitoConfig {
   const path = ditoConfigPath();
+  let config = defaultConfig();
+  let legacyChannels: Partial<DitoConfig["channels"]> = {};
+  let shouldRewritePublicConfig = false;
   if (existsSync(path)) {
     try {
       const raw = JSON.parse(readFileSync(path, "utf-8")) as Partial<DitoConfig>;
+      legacyChannels = raw.channels ?? {};
+      shouldRewritePublicConfig = "qq" in legacyChannels || "matrix" in legacyChannels;
       const merged = deepMerge(defaultConfig(), raw);
       // 按 id 合并供应商：保留用户已有配置，追加预置里新增的供应商（而非整体替换）。
       mergePresetProviders(merged);
       for (const p of merged.providers) sanitizeProvider(p);
-      return merged;
+      config = merged;
     } catch (err) {
       console.error(`[dito] 配置解析失败，使用默认配置：${(err as Error).message}`);
     }
   }
-  return defaultConfig();
+  migrateChannelData(ditoDataDir());
+  for (const channel of ["qq", "matrix"] as const) {
+    const channelPath = join(ditoChannelDir(channel), "config.json");
+    if (existsSync(channelPath)) {
+      // 文件损坏时明确报错，避免静默切换到另一套账号或权限。
+      const raw = JSON.parse(readFileSync(channelPath, "utf-8"));
+      config.channels[channel] = deepMerge(config.channels[channel], raw) as never;
+    } else {
+      // 首次升级时，旧总配置里的账号、房间和令牌必须先进入私有目录，不能丢失。
+      const legacy = legacyChannels[channel];
+      if (legacy && typeof legacy === "object") {
+        config.channels[channel] = deepMerge(config.channels[channel], legacy) as never;
+      }
+      writePrivateJson(channelPath, config.channels[channel]);
+      shouldRewritePublicConfig = true;
+    }
+  }
+  if (shouldRewritePublicConfig) {
+    mkdirSync(ditoDataDir(), { recursive: true });
+    writePrivateJson(ditoConfigPath(), { ...config, channels: { mobile: config.channels.mobile } });
+  }
+  return config;
 }
 
 export function saveConfig(config: DitoConfig): void {
+  migrateChannelData(ditoDataDir());
+  for (const channel of ["qq", "matrix"] as const) {
+    writePrivateJson(join(ditoChannelDir(channel), "config.json"), config.channels[channel]);
+  }
   mkdirSync(ditoDataDir(), { recursive: true });
-  writeFileSync(ditoConfigPath(), JSON.stringify(config, null, 2), "utf-8");
+  const publicConfig = { ...config, channels: { mobile: config.channels.mobile } };
+  writePrivateJson(ditoConfigPath(), publicConfig);
 }
 
 /** 列出目录下的某个扩展名文件（去掉扩展名，按文件名排序）。若存在加密提示词包，优先返回加密包内的名称。 */

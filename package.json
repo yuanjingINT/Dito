@@ -37,7 +37,8 @@
     "ws": "^8.21.3"
   },
   "scripts": {
-    "test:ask": "node --import tsx scripts/test-ask-question.test.ts"
+    "test:ask": "node --import tsx scripts/test-ask-question.test.ts",
+    "test:user": "node --import tsx scripts/test-user-data.test.ts"
   },
   "author": "yuanjingINT",
   "devDependencies": {
