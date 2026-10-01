@@ -35,13 +35,13 @@
 要求 Node ≥ 22.5（`node:sqlite`）。三种安装方式：
 
 ```bash
-npm i -g dito-agent@preview       # npm 安装（预览版；正式版后直接 npm i -g dito-agent）
+npm i -g dito-agent@alpha         # 当前 alpha 版：dito-agent@0.2.1-alpha
 ./packaging/build-portable.sh    # 或本地打包 AppImage / exe / .app（见下文打包章节）
 git clone ... && npm install && ./bin/dito   # 源码直接跑
 ```
 
 > 注：npm 上的 `dito` 包名属于无关第三方，Dito 发布为 `dito-agent`。
-> 打包：`./packaging/build-npm.sh` 组装并冒烟 npm 包（`--publish` 直接以 `preview` tag 发布）。
+> 当前版本为 `v0.2.1-alpha`，终端和配置界面会显示 `ALPHA` 标记；该标记随版本号自动消失。打包：`./packaging/build-npm.sh` 组装并冒烟 npm 包（`--publish` 按版本通道发布）。
 
 装完先体检一次，任何环境问题都会给出修复提示：
 

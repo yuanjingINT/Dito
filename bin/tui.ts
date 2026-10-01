@@ -6,6 +6,7 @@ import {
 import { basename } from "node:path";
 import { MODE_DEFS, getMode, nextMode, readOnlyTools, setMode, type DitoMode } from "../extensions/mode.js";
 import { sudoModeEnabled, toggleSudoMode } from "../extensions/permission.js";
+import { DITO_IS_ALPHA } from "../extensions/util.js";
 import { createSession, listSessions, type SessionSummary, type TuiSession } from "./session.js";
 import { TuiDialogs } from "./tui-dialogs.js";
 import {
@@ -322,7 +323,8 @@ export async function runTui(
     const mode = MODE_DEFS[getMode()];
     const state = switching ? `${C.yellow}正在切换…` : current.session.isStreaming ? `${C.green}● 运行中 · Esc 中断` : `${mode.color}${mode.label}`;
     const help = width >= 100 ? "  Tab 模式 · Ctrl+Tab 会话 · Ctrl+Shift+B Bash" : width >= 55 ? "  / 命令 · Alt+W 历史" : "";
-    const left = ` ${state}${C.reset}${C.muted}${help}${C.reset}`;
+    const alpha = DITO_IS_ALPHA ? ` ${C.yellow}${C.bold}ALPHA${C.reset}` : "";
+    const left = ` ${state}${alpha}${C.reset}${C.muted}${help}${C.reset}`;
     const usage = current.session.getContextUsage?.();
     const percent = usage?.percent == null ? "--" : String(Math.max(0, Math.min(100, Math.round(usage.percent))));
     const context = `${C.dim}上下文 ${percent}%${C.reset}`;

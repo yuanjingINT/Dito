@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dito NPM 打包脚本：组装 dito-agent npm 包树 → 模块冒烟 → 生成 tarball。
 # 用法：./packaging/build-npm.sh          # 产物 dist/<name>-<version>.tgz
-#       ./packaging/build-npm.sh --publish  # 冒烟通过后直接 npm publish --tag preview
+#       ./packaging/build-npm.sh --publish  # 冒烟通过后按版本通道发布（alpha/preview）
 # 包名与描述取自 packaging/npm-dist/package.json；版本取自根 package.json。
 set -euo pipefail
 
@@ -40,8 +40,11 @@ find "$PKG" -name node_modules -prune -exec rm -rf {} +
 (cd "$PKG" && node --import tsx -e "Promise.all([import('./bin/session.ts'),import('./bin/qq-admin.ts'),import('./bin/mobile.ts'),import('./bin/mcp-server.ts'),import('./bin/doctor.ts'),import('./relay/server.mjs')]).then(()=>{const fs=require('node:fs');for(const file of ['index.html','style.css','app.js']){if(!fs.statSync('web-ui/qq-admin/'+file).isFile())throw new Error('QQ 管理后台静态资源缺失：'+file)}console.log('[build-npm] modules and web UI OK')}).catch(e=>{console.error(e);process.exit(1)})")
 
 if [[ "${1:-}" == "--publish" ]]; then
-  npm publish "$PKG" --tag preview
-  echo "[build-npm] 已发布：$NPM_NAME@$VERSION（tag: preview）"
+  # alpha 版本只进入 alpha 通道；旧版 preview 行为保持不变。
+  NPM_TAG="preview"
+  if [[ "$VERSION" == *-alpha ]]; then NPM_TAG="alpha"; fi
+  npm publish "$PKG" --tag "$NPM_TAG"
+  echo "[build-npm] 已发布：$NPM_NAME@$VERSION（tag: $NPM_TAG）"
 else
   npm pack "$PKG" --pack-destination "$OUT" >/dev/null
   echo "[build-npm] 完成：$OUT/$NPM_NAME-$VERSION.tgz（加 --publish 直接发布）"

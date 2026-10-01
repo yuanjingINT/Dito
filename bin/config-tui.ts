@@ -22,6 +22,7 @@ import {
   fetchModelList,
   applyFetchedModels,
   backfillPresetModels,
+  DITO_IS_ALPHA,
   type DitoConfig,
   type ProviderConfig,
 } from "../extensions/util.js";
@@ -267,9 +268,10 @@ function drawShell(o: ShellOpts): void {
   const lines: string[] = [];
 
   // 顶栏：◈ Dito 配置 ……… 当前模型
-  const brandPlain = " ◈ Dito 配置";
+  const alphaPlain = DITO_IS_ALPHA ? " [ALPHA]" : "";
+  const brandPlain = ` ◈ Dito 配置${alphaPlain}`;
   const statusText = o.status ? truncPlain(o.status, Math.max(0, cols - 2 - visualWidth(brandPlain))) : "";
-  const brand = `${C.skyBright}${C.bold} ◈ Dito${C.reset}${C.dimmer} 配置${C.reset}`;
+  const brand = `${C.skyBright}${C.bold} ◈ Dito${C.reset}${C.dimmer} 配置${C.reset}${DITO_IS_ALPHA ? ` ${C.yellow}${C.bold}[ALPHA]${C.reset}` : ""}`;
   const headGap = Math.max(1, cols - 1 - visualWidth(brandPlain) - visualWidth(statusText));
   lines.push(`${brand}${" ".repeat(headGap)}${C.dimmer}${statusText}${C.reset}`);
 

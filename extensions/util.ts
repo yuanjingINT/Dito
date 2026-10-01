@@ -33,6 +33,9 @@ export const DITO_VERSION: string = (() => {
   }
 })();
 
+/** 仅 alpha 预发布版本显示的 UI/发行标记；后续版本改版本号后自动消失。 */
+export const DITO_IS_ALPHA = DITO_VERSION.endsWith("-alpha");
+
 /** 用户可写目录：~/.pi/agent/dito/ */
 export function agentDir(): string {
   return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
