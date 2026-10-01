@@ -245,7 +245,7 @@ export async function runQqAdminChannel(argv: string[] = []): Promise<void> {
   }
 
   // ── 静态资源 ────────────────────────────────────────────────────
-  const WEB_DIR = resolve(import.meta.dirname ?? ".", "..", "web-ui", "qq-admin");
+  const WEB_DIR = join(ROOT_DIR, "web-ui", "qq-admin");
   function serveStatic(res: ServerResponse, rel: string): boolean {
     const target = resolve(WEB_DIR, rel === "" ? "index.html" : rel);
     if (!target.startsWith(WEB_DIR + sep) && target !== WEB_DIR) return false;

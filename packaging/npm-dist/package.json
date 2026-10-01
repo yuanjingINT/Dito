@@ -25,6 +25,7 @@
     "system-prompts/",
     "skills/",
     "config/",
+    "web-ui/",
     "kb/",
     "extensions/",
     "docs/",

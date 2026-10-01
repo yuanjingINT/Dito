@@ -19,7 +19,7 @@ mkdir -p "$PKG/docs"
 
 # ── 组装发布树 ──────────────────────────────────────────────
 # 私有数据不入包：kb/ 混有个人笔记，docs/ 含私人聊天存档（只带 protocol.md）。
-cp -a bin extensions relay personas identities system-prompts skills config "$PKG"/
+cp -a bin extensions relay personas identities system-prompts skills config web-ui "$PKG"/
 cp -a docs/protocol.md "$PKG/docs/"
 cp -a LICENSE NOTICE README.md "$PKG"/
 
@@ -37,7 +37,7 @@ find "$PKG" -name node_modules -prune -exec rm -rf {} +
 
 # ── 冒烟：装生产依赖 + 与 CI 相同的模块加载检查 ──────────────
 (cd "$PKG" && npm install --omit=dev --no-audit --no-fund --silent)
-(cd "$PKG" && node --import tsx -e "Promise.all([import('./bin/dito.ts'),import('./bin/mobile.ts'),import('./bin/mcp-server.ts'),import('./bin/doctor.ts'),import('./relay/server.mjs')]).then(()=>console.log('[build-npm] modules OK')).catch(e=>{console.error(e);process.exit(1)})")
+(cd "$PKG" && node --import tsx -e "Promise.all([import('./bin/session.ts'),import('./bin/qq-admin.ts'),import('./bin/mobile.ts'),import('./bin/mcp-server.ts'),import('./bin/doctor.ts'),import('./relay/server.mjs')]).then(()=>{const fs=require('node:fs');for(const file of ['index.html','style.css','app.js']){if(!fs.statSync('web-ui/qq-admin/'+file).isFile())throw new Error('QQ 管理后台静态资源缺失：'+file)}console.log('[build-npm] modules and web UI OK')}).catch(e=>{console.error(e);process.exit(1)})")
 
 if [[ "${1:-}" == "--publish" ]]; then
   npm publish "$PKG" --tag preview

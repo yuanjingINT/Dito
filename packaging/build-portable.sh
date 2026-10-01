@@ -26,7 +26,7 @@ payload() { # $1 = 目标根
   cp dist/dito.mjs "$d/dist/"
   cp dist/dito.cjs "$d/dist/"
   cp extensions/snowluma-actions.json "$d/extensions/"
-  for dir in personas identities system-prompts kb config skills docs; do
+  for dir in personas identities system-prompts kb config skills docs web-ui; do
     [ -e "$dir" ] && cp -r "$dir" "$d/"
   done
 }

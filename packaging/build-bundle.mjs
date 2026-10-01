@@ -7,7 +7,7 @@
  *     → dist/dito.cjs  (CJS，Node SEA 单文件 exe 用；import.meta.url → __filename shim)
  *
  * 数据目录约定：bundle 放在 <包根>/dist/ 下，ROOT_DIR = <包根>
- * （personas/ identities/ system-prompts/ kb/ config/ skills/ extensions/snowluma-actions.json
+ * （personas/ identities/ system-prompts/ kb/ config/ skills/ web-ui/ extensions/snowluma-actions.json
  *   需与 dist/ 同级放置）。
  * GPL-3.0-only，见仓库 LICENSE。
  */

@@ -22,7 +22,7 @@ mkdir -p "$RPMBUILD"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 SRC="$STAGE/$NAME-$RPM_VERSION"
 mkdir -p "$SRC"
 cp -a \
-  bin extensions kb config skills .pi personas identities system-prompts \
+  bin extensions kb config skills .pi personas identities system-prompts web-ui \
   package.json package-lock.json README.md \
   "$SRC"/
 

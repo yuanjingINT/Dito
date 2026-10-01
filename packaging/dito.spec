@@ -44,7 +44,7 @@ npm ci --omit=dev --no-audit --no-fund
 %install
 # 应用整体安装到 %{_libexecdir}/dito（私有可执行目录），
 install -d %{buildroot}%{_libexecdir}/%{name}
-cp -a bin extensions kb config skills .pi personas identities system-prompts \
+cp -a bin extensions kb config skills .pi personas identities system-prompts web-ui \
       package.json package-lock.json \
       %{buildroot}%{_libexecdir}/%{name}/
 cp -a node_modules %{buildroot}%{_libexecdir}/%{name}/

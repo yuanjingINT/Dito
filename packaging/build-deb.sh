@@ -19,7 +19,7 @@ mkdir -p "$OUT" "$SRC"
 
 # ── 2. 组装源码树（排除明文 personas / identities / system-prompts）──
 cp -a \
-  bin extensions kb config skills .pi personas identities system-prompts \
+  bin extensions kb config skills .pi personas identities system-prompts web-ui \
   package.json package-lock.json README.md \
   "$SRC"/
 
@@ -33,7 +33,7 @@ cp -a "$SRC/." "$DEBROOT/"
 cp -a "$ROOT/README.md" "$PKGROOT/usr/share/doc/$NAME/"
 
 # 规范化自有文件权限（目录 755、文件 644、可执行脚本保持可执行）
-for d in bin extensions kb config skills .pi; do
+for d in bin extensions kb config skills .pi web-ui; do
   chmod -R u=rwX,go=rX "$DEBROOT/$d"
 done
 chmod 0755 "$DEBROOT/bin/dito"
