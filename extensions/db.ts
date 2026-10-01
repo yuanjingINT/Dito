@@ -23,6 +23,7 @@ export interface DitoDB {
   run(sql: string, ...params: unknown[]): void;
   get(sql: string, ...params: unknown[]): Row | undefined;
   all(sql: string, ...params: unknown[]): Row[];
+  close(): void;
 }
 
 function createBunDB(path: string): DitoDB {
@@ -30,6 +31,7 @@ function createBunDB(path: string): DitoDB {
   const { Database } = require("bun:sqlite") as { Database: new (p: string) => any };
   const db = new Database(path);
   return {
+    close() { db.close(); },
     exec(sql: string) {
       db.exec(sql);
     },
@@ -50,6 +52,7 @@ function createNodeDB(path: string): DitoDB {
   const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (p: string) => any };
   const db = new DatabaseSync(path);
   return {
+    close() { db.close(); },
     exec(sql: string) {
       db.exec(sql);
     },

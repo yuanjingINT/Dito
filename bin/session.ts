@@ -14,6 +14,7 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   SessionManager,
+  SettingsManager,
   type AgentSession,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
@@ -27,6 +28,7 @@ import { getBuiltinModels, type BuiltinProvider } from "@earendil-works/pi-ai/pr
 
 import { isPiBuiltinProvider } from "../extensions/provider.js";
 import { loadConfig, resolveApiKey } from "../extensions/util.js";
+import { resolveCompactionBudget } from "../extensions/context-compaction.js";
 
 const DITO_DIR = join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"), "dito");
 const DITO_SESSIONS_DIR = join(DITO_DIR, "sessions");
@@ -237,8 +239,12 @@ export interface TuiSession {
   getActiveToolNames(): string[];
   setActiveToolsByName(toolNames: string[]): void;
   setThinkingLevel(level: string): void;
+  /** 手动压缩当前会话上下文。 */
+  compact(customInstructions?: string): Promise<unknown>;
   /** 是否有任务在跑（流式输出中）。 */
   readonly isStreaming: boolean;
+  /** 当前上下文估算；压缩后尚未收到下一次模型响应时 percent 可能为空。 */
+  getContextUsage?: () => { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
   /** 中断当前任务（pi AgentSession.abort）。 */
   abort(): Promise<void>;
   /** 当前会话文件路径（新会话在落盘前为 undefined）。 */
@@ -348,13 +354,28 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
     throw new Error("没有可用模型。请检查 API Key 或稍后重试（opencode 免费额度可能限流）。");
   }
 
+  // pi 原生负责摘要、切分、会话落盘和溢出重试；Dito 只把 DeepSeek Harness
+  // 的比例策略换算成 pi 的 token 预算，并通过运行时覆盖注入，避免写入用户的全局设置。
+  const settingsManager = SettingsManager.create(process.cwd(), getAgentDir());
+  const compaction = resolveCompactionBudget(model, cfg.contextCompaction);
+
   const resourceLoader = new DefaultResourceLoader({
     cwd: process.cwd(),
     agentDir: getAgentDir(),
+    settingsManager,
     extensionFactories: [makeExtensionFactory(options.skipPluginIds), ...(options.extraExtensions ?? [])],
     systemPrompt: options.systemPrompt ?? buildDitoSystemPrompt(),
   });
   await resourceLoader.reload();
+  // resourceLoader.reload() refreshes settings from disk, so apply the Dito
+  // runtime override afterwards and keep the user's global settings untouched.
+  settingsManager.applyOverrides({
+    compaction: {
+      enabled: compaction.enabled,
+      reserveTokens: compaction.reserveTokens,
+      keepRecentTokens: compaction.keepRecentTokens,
+    },
+  });
 
   const sessionManager = resolveSessionManager(!!options.fresh, options.sessionFile, options.sessionsDir);
 
@@ -364,6 +385,7 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
     modelRuntime,
     resourceLoader,
     sessionManager,
+    settingsManager,
   });
   return {
     session: session as unknown as TuiSession,

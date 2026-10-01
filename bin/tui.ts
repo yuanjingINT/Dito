@@ -70,13 +70,25 @@ export async function runTui(
     if (tui.hasOverlay() || terminal.rows < 5) return false;
     const mouse = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/.exec(data);
     if (!mouse || Number(mouse[3]) !== 1 || (Number(mouse[1]) & 3) !== 0 || Number(mouse[1]) >= 32) return false;
-    if (mouse[4] === "M") {
-      const hit = tabs.hitAt(Number(mouse[2]) - 1);
-      if (hit?.action === "new") void startNewSession();
-      else if (hit?.action === "history") openSessionPicker();
-      else if (hit?.path) void openPath(hit.path);
+    const row = Number(mouse[3]);
+    if (row === 1) {
+      if (mouse[4] === "M") {
+        const hit = tabs.hitAt(Number(mouse[2]) - 1);
+        if (hit?.action === "new") void startNewSession();
+        else if (hit?.action === "history") openSessionPicker();
+        else if (hit?.path) void openPath(hit.path);
+      }
+      return true;
     }
-    return true;
+    // The conversation sits below the tab and optional context rows. Convert
+    // the terminal row back to ConversationView's unscrolled content row.
+    const bodyTop = (terminal.rows >= 5 ? 1 : 0) + (terminal.columns >= 80 && terminal.rows >= 18 ? 1 : 0);
+    const contentRow = row - 1 - bodyTop + scroll.scrollTop;
+    if (conversation.isThinkingAt(contentRow)) {
+      if (mouse[4] === "M") { conversation.toggleThinkingAt(contentRow); redraw(); }
+      return true;
+    }
+    return false;
   });
   const tui = new TuiAltScreen(routed, true);
   const redraw = (): void => { if (!shutdownRequested) tui.requestRender(); };
@@ -171,6 +183,7 @@ export async function runTui(
         type: string; message?: MessageLike & { stopReason?: string; errorMessage?: string };
         assistantMessageEvent?: { type: string; delta?: string };
         toolName?: string; toolCallId?: string; args?: unknown; partialResult?: unknown; result?: unknown; isError?: boolean;
+        reason?: "manual" | "threshold" | "overflow"; aborted?: boolean; errorMessage?: string;
       };
       const ame = e.assistantMessageEvent;
       if (e.type === "message_start" && e.message?.role === "assistant") conversation.beginAssistant();
@@ -188,6 +201,12 @@ export async function runTui(
         if (e.message.stopReason === "error" && e.message.errorMessage) {
           notice(/429|rate limit|限流/i.test(e.message.errorMessage) ? "opencode 免费额度限流，稍后再试" : `出错：${e.message.errorMessage}`);
         }
+      } else if (e.type === "compaction_start") {
+        notice(e.reason === "overflow" ? "上下文超限，正在压缩后重试…" : "上下文较长，正在自动压缩…");
+      } else if (e.type === "compaction_end") {
+        if (e.aborted) notice("上下文压缩已取消");
+        else if (e.result) notice("上下文已压缩，已保留最近对话");
+        else if (e.errorMessage) notice(`上下文压缩失败：${e.errorMessage}`);
       } else if (e.type === "agent_end" || e.type === "agent_settled") refreshTabs();
       redraw();
     });
@@ -267,6 +286,11 @@ export async function runTui(
     if (lower === "/bash") { openBash(); return; }
     const modes: Record<string, DitoMode> = { "/chat": "chat", "/闲聊": "chat", "/standard": "standard", "/标准": "standard", "/plan": "plan", "/计划": "plan" };
     if (modes[lower]) { applyMode(modes[lower]); return; }
+    if (["/compact", "/压缩上下文"].includes(lower)) {
+      try { await current.session.compact(); }
+      catch (error) { notice(`上下文压缩失败：${error instanceof Error ? error.message : String(error)}`); }
+      return;
+    }
     if (/^\/mode(?:\s|$)/.test(lower)) {
       const arg = lower.slice(5).trim();
       const aliases: Record<string, DitoMode> = { chat: "chat", standard: "standard", plan: "plan", 闲聊: "chat", 标准: "standard", 计划: "plan" };
@@ -299,7 +323,10 @@ export async function runTui(
     const state = switching ? `${C.yellow}正在切换…` : current.session.isStreaming ? `${C.green}● 运行中 · Esc 中断` : `${mode.color}${mode.label}`;
     const help = width >= 100 ? "  Tab 模式 · Ctrl+Tab 会话 · Ctrl+Shift+B Bash" : width >= 55 ? "  / 命令 · Alt+W 历史" : "";
     const left = ` ${state}${C.reset}${C.muted}${help}${C.reset}`;
-    const right = width >= 85 ? `${C.dim}${singleLine(current.modelName)}${C.reset} ${sudoModeEnabled() ? C.yellow + "sudo" : C.muted + "权限门"}${C.reset} ` : "";
+    const usage = current.session.getContextUsage?.();
+    const percent = usage?.percent == null ? "--" : String(Math.max(0, Math.min(100, Math.round(usage.percent))));
+    const context = `${C.dim}上下文 ${percent}%${C.reset}`;
+    const right = width >= 85 ? `${context} ${C.dim}${singleLine(current.modelName)}${C.reset} ${sudoModeEnabled() ? C.yellow + "sudo" : C.muted + "权限门"}${C.reset} ` : "";
     return filledLine(balancedLine(left, right, width), width);
   });
   const context = new RenderLine((width) => filledLine(balancedLine(

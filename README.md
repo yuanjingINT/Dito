@@ -86,8 +86,14 @@ dito                           # 进入全屏对话 TUI
 - 顶部标签栏显示当前会话与历史会话：**Ctrl+Tab** 切换，**Alt+1…9** 直接选择，鼠标点击标签也可切换；输入框为空时也可用 **Alt+←→**；**Ctrl+T** / **alt+d** 新会话
 - **alt+a** 上一会话；**alt+w** 会话选择器（↑↓ / j-k 移动、enter 恢复）；**Ctrl+Shift+B** 展开 Bash 活动
 - **esc** 中断当前任务；任务运行中可直接打字插话（排队为 followUp）
+- 思考过程默认以灰色标题折叠；点击「◇ 思考」展开或收起，底部模型名左侧显示当前上下文使用率
+- `/compact` 手动压缩上下文；达到上下文压力阈值时也会自动压缩，并在上下文溢出后压缩重试
 - `/sudo on` / `/sudo off` 切换 sudo 权限模式；`/persona`、`/identity` 切换人设与用户身份；`/model` 切换模型
 - 启动自动恢复上次会话；宽窗口右侧显示 Bash 命令和实时输出，窄窗口自动隐藏侧栏与次要状态信息
+
+自动压缩默认参考 DeepSeek Harness：上下文达到 `min(窗口 × 0.8, 窗口 - 最大输出 - 65536)` 时触发，并原样保留最近约 16% 的对话。可以在 `~/.pi/agent/dito/config.json` 的 `contextCompaction` 中调整 `enabled`、`thresholdRatio`、`retainRatio` 和 `headroomTokens`；摘要、工具调用边界、溢出恢复和会话落盘由 pi-coding-agent 负责。
+
+**长记忆**参考 laozhou 的“短日记 → 长期整理 → 自动联想”流程。每轮结束会按聊天 scope 保存短日记；“请记住”“我喜欢”“我的目标”等明确的稳定信息会整理为知识点，重要或反复被回忆的经历会升级为长期记忆。下一轮提问前，相关知识和经历会自动作为不可信历史资料注入上下文，并按回忆次数强化、按半衰期衰减。运行 `/memory-stats` 查看统计，运行 `/memory-clear` 清空；`dito config` →「记忆」可调整自动联想、短日记保留天数、联想条数和遗忘策略。记忆库仍保存在各聊天隔离的 `memory.db` / `memory-<scope>.db` 中，旧版数据库会自动迁移。
 
 **权限门**：`rm -rf /`、fork 炸弹、格式化等高危命令直接拦截；改动类命令弹确认。sudo 模式（`/sudo on`）下权限门关闭、需要 root 的命令自动加 `sudo`（Windows 无 sudo，自动跳过）。
 

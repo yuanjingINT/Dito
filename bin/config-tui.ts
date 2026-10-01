@@ -967,13 +967,29 @@ async function memoryScreen(cfg: DitoConfig): Promise<void> {
     panelTitle: "记忆",
     status: () => statusOf(cfg),
     fields: [
-      { label: "启用", value: String(memory.enabled), kind: "bool", hint: "知识点 + 历史对话，跨会话持久（memory.db）" },
-      { label: "自动日记", value: String(memory.autoDiary), kind: "bool", hint: "每轮任务完成后自动把「用户消息 + 回复」写入短日记（保留 7 天）" },
+      { label: "启用", value: String(memory.enabled), kind: "bool", hint: "跨会话长期记忆（按聊天隔离）" },
+      { label: "自动日记", value: String(memory.autoDiary), kind: "bool", hint: "每轮完成后记录短日记，并自动整理稳定信息" },
+      { label: "自动联想", value: String(memory.associationEnabled), kind: "bool", hint: "回答前把相关知识和经历注入上下文" },
+      { label: "自动知识点", value: String(memory.autoFact), kind: "bool", hint: "从“记住/我喜欢/我的目标”等明确表述提取长期事实" },
+      { label: "短日记保留天数", value: String(memory.shortDiaryRetentionDays), kind: "number", hint: "未升级的短日记到期后删除" },
+      { label: "回忆升级次数", value: String(memory.diaryPromotionRecalls), kind: "number", hint: "短日记被联想达到次数后升级为长期经历" },
+      { label: "联想知识条数", value: String(memory.associationFacts), kind: "number", hint: "每轮自动注入的知识点上限" },
+      { label: "联想经历条数", value: String(memory.associationEpisodes), kind: "number", hint: "每轮自动注入的经历上限" },
+      { label: "遗忘衰减", value: String(memory.forgettingEnabled), kind: "bool", hint: "按半衰期降低长期记忆强度，过弱记忆不再联想" },
+      { label: "记忆半衰期（天）", value: String(memory.forgettingHalfLifeDays), kind: "number", hint: "被再次回忆会按回忆强化" },
     ],
   });
   if (!result) return;
   memory.enabled = parseBool(result[0].value);
   memory.autoDiary = parseBool(result[1].value);
+  memory.associationEnabled = parseBool(result[2].value);
+  memory.autoFact = parseBool(result[3].value);
+  memory.shortDiaryRetentionDays = Math.max(1, Number(result[4].value) || 14);
+  memory.diaryPromotionRecalls = Math.max(1, Number(result[5].value) || 3);
+  memory.associationFacts = Math.max(0, Number(result[6].value) || 5);
+  memory.associationEpisodes = Math.max(0, Number(result[7].value) || 3);
+  memory.forgettingEnabled = parseBool(result[8].value);
+  memory.forgettingHalfLifeDays = Math.max(0.1, Number(result[9].value) || 7);
   persist(cfg);
 }
 
@@ -1305,7 +1321,7 @@ async function mainMenu(cfg: DitoConfig): Promise<void> {
     {
       label: "记忆",
       detail: cfg.plugins.memory.enabled
-        ? `启用 · 自动日记${cfg.plugins.memory.autoDiary ? "开" : "关"}`
+        ? `启用 · 自动日记${cfg.plugins.memory.autoDiary ? "开" : "关"} · 自动联想${cfg.plugins.memory.associationEnabled ? "开" : "关"}`
         : "停用",
       hint: "知识点 + 历史对话，自动记忆、跨会话持久",
       onEnter: () => memoryScreen(cfg),

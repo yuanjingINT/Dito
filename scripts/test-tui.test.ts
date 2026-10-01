@@ -100,6 +100,17 @@ test("conversation finishes providers that only emit a final message and caches 
   assert.deepEqual(second.slice(0, first.length), first);
 });
 
+test("thinking output is gray and collapsed until its header is clicked", () => {
+  const view = new ConversationView();
+  view.beginAssistant();
+  view.appendThinking("内部推理内容");
+  const collapsed = stripTerminalSequences(view.render(80).join("\n"));
+  assert.match(collapsed, /思考.*点击展开/);
+  assert.doesNotMatch(collapsed, /内部推理内容/);
+  assert.equal(view.toggleThinkingAt(1), true);
+  assert.match(stripTerminalSequences(view.render(80).join("\n")), /内部推理内容/);
+});
+
 test("the history picker scrolls to the last item and remains usable after resize", () => {
   let rows = 30;
   let opened: string | undefined;

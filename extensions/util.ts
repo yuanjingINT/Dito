@@ -8,6 +8,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir } from "node:os";
 import { hasPromptBundle, listEncryptedPromptNames, namespaceForDir, readEncryptedPrompt } from "./prompt-crypto.js";
 import { channelDataDir, migrateChannelData, userDataDir, writePrivateJson, type UserChannel } from "./user-data.js";
+import { DEFAULT_CONTEXT_COMPACTION, type ContextCompactionConfig } from "./context-compaction.js";
+import { DEFAULT_MEMORY_CONFIG, resolveMemoryConfig, type MemoryConfig } from "./memory-config.js";
 
 const HERE = typeof import.meta !== "undefined" && typeof import.meta.url === "string"
   ? dirname(fileURLToPath(import.meta.url))
@@ -184,6 +186,8 @@ export interface DitoConfig {
     vision: string;
   };
   providers: ProviderConfig[];
+  /** 上下文自动压缩策略（参考 DeepSeek Harness）。 */
+  contextCompaction: ContextCompactionConfig;
   persona: {
     active: string;
     identity: string;
@@ -206,7 +210,7 @@ export interface DitoConfig {
     system: { enabled: boolean };
     mode: { enabled: boolean };
     knowledge_base: { enabled: boolean; dataDir: string };
-    memory: { enabled: boolean; autoDiary: boolean };
+    memory: MemoryConfig;
     web_search: {
       enabled: boolean;
       tavilyKeys: string[];
@@ -410,6 +414,7 @@ export function defaultConfig(): DitoConfig {
     version: 1,
     model: { provider: "opencode-free", chat: "big-pickle", vision: "mimo-v2.5-free" },
     providers: defaultProviders(),
+    contextCompaction: { ...DEFAULT_CONTEXT_COMPACTION },
     persona: { active: "dito", identity: "默认" },
     channels: {
       qq: {
@@ -454,7 +459,7 @@ export function defaultConfig(): DitoConfig {
       system: { enabled: true },
       mode: { enabled: true },
       knowledge_base: { enabled: true, dataDir: "" },
-      memory: { enabled: true, autoDiary: true },
+      memory: { ...DEFAULT_MEMORY_CONFIG },
       web_search: {
         enabled: true,
         tavilyKeys: [],
@@ -701,6 +706,7 @@ export function loadConfig(): DitoConfig {
     mkdirSync(ditoDataDir(), { recursive: true });
     writePrivateJson(ditoConfigPath(), { ...config, channels: { mobile: config.channels.mobile } });
   }
+  config.plugins.memory = resolveMemoryConfig(config.plugins.memory);
   return config;
 }
 

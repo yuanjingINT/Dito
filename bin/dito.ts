@@ -46,30 +46,39 @@ interface ConsolePrinter {
   attach(session: { subscribe(cb: (event: unknown) => void): unknown }): void;
 }
 
+interface PrinterOutput {
+  readonly isTTY?: boolean;
+  write(chunk: string): unknown;
+}
+
 /**
  * 会话输出：彩色前缀 + 流式正文 + dim 工具提示 + braille 转圈。
  */
-function createPrinter(): ConsolePrinter {
+export function createPrinter(output: PrinterOutput = process.stdout): ConsolePrinter {
   let spinner: ReturnType<typeof setInterval> | null = null;
   let prefixWritten = false;
   let inThinking = false;
   const seenTools = new Set<string>();
+  // A captured child process cannot safely redraw a spinner: each carriage
+  // return may be rendered as a new log line by the parent TUI/Bash panel.
+  const animateSpinner = output.isTTY === true && process.env.TERM !== "dumb";
 
   function stopSpinner(): void {
     if (spinner) {
       clearInterval(spinner);
       spinner = null;
-      process.stdout.write("\r\x1b[2K");
+      output.write("\r\x1b[2K");
     }
   }
 
   function startSpinner(label: string): void {
     stopSpinner();
+    if (!animateSpinner) return;
     let i = 0;
-    process.stdout.write(`\r${C.dim}${BRAILLE[0]} ${label}${C.reset}`);
+    output.write(`\r${C.dim}${BRAILLE[0]} ${label}${C.reset}`);
     spinner = setInterval(() => {
       i = (i + 1) % BRAILLE.length;
-      process.stdout.write(`\r\x1b[2K${C.dim}${BRAILLE[i]} ${label}${C.reset}`);
+      output.write(`\r\x1b[2K${C.dim}${BRAILLE[i]} ${label}${C.reset}`);
     }, 80);
   }
 
@@ -77,14 +86,14 @@ function createPrinter(): ConsolePrinter {
     if (!prefixWritten) {
       stopSpinner();
       const modeColor = MODE_DEFS[getMode()].color;
-      process.stdout.write(`${modeColor}${C.bold}蒂特 ›${C.reset} `);
+      output.write(`${modeColor}${C.bold}蒂特 ›${C.reset} `);
       prefixWritten = true;
     }
   }
 
   function resetTurn(): void {
     stopSpinner();
-    if (prefixWritten) process.stdout.write("\n");
+    if (prefixWritten) output.write("\n");
     prefixWritten = false;
     inThinking = false;
     seenTools.clear();
@@ -99,6 +108,10 @@ function createPrinter(): ConsolePrinter {
         toolCallId?: string;
         args?: unknown;
         message?: { role?: string; stopReason?: string; errorMessage?: string };
+        reason?: "manual" | "threshold" | "overflow";
+        aborted?: boolean;
+        result?: unknown;
+        errorMessage?: string;
       };
       const ame = e.assistantMessageEvent;
 
@@ -107,16 +120,16 @@ function createPrinter(): ConsolePrinter {
         if (ame.type === "thinking_start") {
           stopSpinner();
           inThinking = true;
-          process.stdout.write(`\n${C.dim}${C.bold}◇ 思考中…${C.reset}\n${C.italic}${C.dim}`);
+          output.write(`\n${C.dim}${C.bold}◇ 思考中…${C.reset}\n${C.italic}${C.dim}`);
         } else if (ame.type === "thinking_delta") {
-          process.stdout.write(ame.delta ?? "");
+          output.write(ame.delta ?? "");
         } else if (ame.type === "thinking_end") {
-          if (inThinking) process.stdout.write(`${C.reset}\n`);
+          if (inThinking) output.write(`${C.reset}\n`);
           inThinking = false;
         } else if (ame.type === "text_delta") {
-          if (inThinking) { process.stdout.write(`${C.reset}\n`); inThinking = false; }
+          if (inThinking) { output.write(`${C.reset}\n`); inThinking = false; }
           ensurePrefix();
-          process.stdout.write(ame.delta ?? "");
+          output.write(ame.delta ?? "");
         }
         return;
       }
@@ -124,27 +137,36 @@ function createPrinter(): ConsolePrinter {
       if (e.type === "tool_execution_start" && e.toolName) {
         if (e.toolCallId && seenTools.has(e.toolCallId)) return;
         if (e.toolCallId) seenTools.add(e.toolCallId);
-        if (inThinking) { process.stdout.write(`${C.reset}\n`); inThinking = false; }
+        if (inThinking) { output.write(`${C.reset}\n`); inThinking = false; }
         ensurePrefix();
         const args = e.args == null ? "" : (() => {
           const s = typeof e.args === "string" ? e.args : (() => { try { return JSON.stringify(e.args); } catch { return String(e.args); } })();
           const flat = s.replace(/\s+/g, " ").trim();
           return flat.length > 160 ? flat.slice(0, 160) + "…" : flat;
         })();
-        process.stdout.write(
+        output.write(
           `\n${C.yellow}${C.bold}⚙ 指令：${e.toolName}${C.reset}` +
           (args ? `  ${C.dim}${args}${C.reset}` : "") + `\n`,
         );
         startSpinner("执行中");
+      } else if (e.type === "compaction_start") {
+        stopSpinner();
+        output.write(`\n${C.dim}${e.reason === "overflow" ? "上下文超限，正在压缩后重试…" : "上下文较长，正在自动压缩…"}${C.reset}\n`);
+        startSpinner("压缩中");
+      } else if (e.type === "compaction_end") {
+        stopSpinner();
+        if (e.aborted) output.write(`${C.dim}上下文压缩已取消${C.reset}\n`);
+        else if (e.result) output.write(`${C.dim}上下文已压缩，已保留最近对话${C.reset}\n`);
+        else if (e.errorMessage) output.write(`${C.yellow}上下文压缩失败：${e.errorMessage}${C.reset}\n`);
       } else if (e.type === "message_end" && e.message?.role === "assistant") {
         if (e.message.stopReason === "error" && e.message.errorMessage) {
           stopSpinner();
-          if (inThinking) { process.stdout.write(`${C.reset}\n`); inThinking = false; }
+          if (inThinking) { output.write(`${C.reset}\n`); inThinking = false; }
           const msg = e.message.errorMessage;
           if (/429|rate limit|限流/i.test(msg)) {
-            process.stdout.write(`\n${C.yellow}[opencode 免费额度限流，稍后再试]${C.reset}\n`);
+            output.write(`\n${C.yellow}[opencode 免费额度限流，稍后再试]${C.reset}\n`);
           } else {
-            process.stdout.write(`\n${C.red}[出错] ${msg}${C.reset}\n`);
+            output.write(`\n${C.red}[出错] ${msg}${C.reset}\n`);
           }
         }
       } else if (e.type === "agent_end") {

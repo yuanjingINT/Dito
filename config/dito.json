@@ -5,6 +5,12 @@
     "chat": "big-pickle",
     "vision": "mimo-v2.5-free"
   },
+  "contextCompaction": {
+    "enabled": true,
+    "thresholdRatio": 0.8,
+    "retainRatio": 0.16,
+    "headroomTokens": 65536
+  },
   "providers": [
     {
       "id": "opencode-free",
@@ -524,7 +530,20 @@
     },
     "memory": {
       "enabled": true,
-      "autoDiary": true
+      "autoDiary": true,
+      "associationEnabled": true,
+      "autoFact": true,
+      "diaryBatchSize": 14,
+      "shortDiaryRetentionDays": 14,
+      "diaryPromotionRecalls": 3,
+      "organizerTimeoutSeconds": 120,
+      "associationFacts": 5,
+      "associationEpisodes": 3,
+      "associationMaxChars": 1800,
+      "forgettingEnabled": true,
+      "forgettingHalfLifeDays": 7,
+      "forgettingMinStrength": 0.15,
+      "forgettingReviewBoost": 0.35
     },
     "web_search": {
       "enabled": true,

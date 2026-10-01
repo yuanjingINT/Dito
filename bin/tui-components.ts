@@ -21,6 +21,13 @@ export const markdownTheme = {
   listBullet: color(C.accent), bold: color(C.bold), italic: color(C.italic),
   strikethrough: color("\x1b[9m"), underline: color("\x1b[4m"),
 };
+const thinkingMarkdownTheme = {
+  heading: color(C.dim + C.bold), link: color(C.dim), linkUrl: color(C.muted),
+  code: color(C.dim), codeBlock: color(C.dim), codeBlockBorder: color(C.muted),
+  quote: color(C.dim), quoteBorder: color(C.muted), hr: color(C.muted),
+  listBullet: color(C.muted), bold: color(C.dim + C.bold), italic: color(C.dim + C.italic),
+  strikethrough: color("\x1b[9m" + C.dim), underline: color("\x1b[4m" + C.dim),
+};
 
 /** 外部文本不允许改变终端状态；保留换行与缩进。 */
 export function plainText(text: string): string {
@@ -76,17 +83,23 @@ export function toolOutput(result: unknown): string {
 class MessageBlock implements Component {
   readonly body: Markdown;
   private text = "";
+  private thinkingExpanded = false;
   constructor(private readonly kind: "user" | "assistant" | "thinking", text = "") {
-    this.body = new Markdown("", 0, 0, markdownTheme);
+    this.body = new Markdown("", 0, 0, kind === "thinking" ? thinkingMarkdownTheme : markdownTheme);
     this.setText(text);
   }
   setText(text: string): void { this.text = text; this.body.setText(plainText(text)); }
   append(text: string): void { this.setText(this.text + text); }
+  get isThinking(): boolean { return this.kind === "thinking"; }
+  toggleThinking(): void { if (this.isThinking) this.thinkingExpanded = !this.thinkingExpanded; }
   invalidate(): void { this.body.invalidate(); }
   render(width: number): string[] {
     const inner = Math.max(1, width - 4);
     const label = this.kind === "user" ? `${C.accent}${C.bold}你${C.reset}`
       : this.kind === "thinking" ? `${C.dim}◇ 思考${C.reset}` : `${C.text}${C.bold}Dito${C.reset}`;
+    if (this.isThinking && !this.thinkingExpanded) {
+      return ["", ` ${label} ${C.muted}（点击展开）${C.reset}`, ""];
+    }
     const lines = [` ${label}`, ...this.body.render(inner).map((line) => ` ${line}`)];
     if (this.kind === "user") return ["", ...lines.map((line) => filledLine(line, width, C.panelBg)), ""];
     return ["", ...lines.map((line) => truncateToWidth(line, width, "…")), ""];
@@ -98,6 +111,7 @@ export class ConversationView implements Component {
   private blocks: Component[] = [];
   private assistant: MessageBlock | undefined;
   private thinking: MessageBlock | undefined;
+  private thinkingHits: Array<{ start: number; end: number; block: MessageBlock }> = [];
   reset(messages: readonly unknown[]): void {
     this.blocks = [];
     this.beginAssistant();
@@ -139,6 +153,17 @@ export class ConversationView implements Component {
     this.blocks.push(new Text(`${C.dim}  ◇ ${name}${detail ? `  ${truncateToWidth(detail, 100, "…")}` : ""}${C.reset}`, 0, 0));
   }
   notice(text: string): void { this.blocks.push(new Text(`${C.dim}  ${plainText(text)}${C.reset}`, 0, 0)); }
+  /** Toggle only when the click lands on a thinking header in the rendered content. */
+  toggleThinkingAt(row: number): boolean {
+    const hit = this.thinkingHits.find((item) => row >= item.start && row < item.end);
+    if (!hit) return false;
+    hit.block.toggleThinking();
+    this.invalidate();
+    return true;
+  }
+  isThinkingAt(row: number): boolean {
+    return this.thinkingHits.some((item) => row >= item.start && row < item.end);
+  }
   invalidate(): void { this.blocks.forEach((block) => block.invalidate()); }
   render(width: number): string[] {
     if (!this.blocks.length) {
@@ -148,7 +173,19 @@ export class ConversationView implements Component {
       if (width >= 55) lines.push(center(`${C.muted}输入消息开始 · / 命令 · Alt+W 历史${C.reset}`));
       return lines.map((line) => truncateToWidth(line, width, "…"));
     }
-    return this.blocks.flatMap((block) => block.render(width));
+    this.thinkingHits = [];
+    const lines: string[] = [];
+    for (const block of this.blocks) {
+      const rendered = block.render(width);
+      const start = lines.length;
+      if (block instanceof MessageBlock && block.isThinking) {
+        // The leading blank line and the gray header are clickable; the body is
+        // left selectable when expanded.
+        this.thinkingHits.push({ start, end: Math.min(start + 2, start + rendered.length), block });
+      }
+      lines.push(...rendered);
+    }
+    return lines;
   }
 }
 

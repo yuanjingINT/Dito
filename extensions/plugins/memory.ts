@@ -8,9 +8,9 @@ import memoryExtension from "../memory.js";
 export const memoryPlugin: DitoPlugin = {
   id: "memory",
   name: "记忆",
-  description: "跨会话记忆：remember_fact、recall_memories、recall_past_events 工具与自动日记。",
+  description: "长记忆：短日记整理、知识点/经历升级、自动联想、遗忘衰减与记忆工具。",
   icon: "memory",
-  version: "1.0.0",
+  version: "2.0.0",
   apply(ctx) {
     memoryExtension(ctx.pi);
   },
