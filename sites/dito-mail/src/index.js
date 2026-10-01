@@ -366,7 +366,16 @@ async function handleAck(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const p = url.pathname;
+
+    // 尾斜杠规范化：/admin/ -> /admin，否则会交给静态资源并落到 404 页
+    const rawPath = url.pathname;
+    let p = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
+
+    // 管理后台别名：/manage、/audit、/review 等价于 /admin
+    const ADMIN_ALIAS = { '/manage': '/admin', '/audit': '/admin', '/review': '/admin' };
+    if (ADMIN_ALIAS[p]) p = ADMIN_ALIAS[p];
+
+    if (p !== rawPath) url.pathname = p;
 
     try {
       if (p === '/api/signup') return await handleSignup(request, env);
@@ -379,6 +388,12 @@ export default {
       return json({ error: '服务器内部错误', detail: String(e && e.message) }, 500);
     }
 
-    return env.ASSETS.fetch(request);
+    // 静态资源兜底。注意：CF 的边缘对未匹配路径会返回可缓存的 404 兜底页，
+    // 所以这里显式把 4xx/5xx 改成 no-store，避免边缘缓存住 404。
+    const res = await env.ASSETS.fetch(request);
+    if (res.status < 400) return res;
+    const headers = new Headers(res.headers);
+    headers.set('cache-control', 'no-store');
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
   },
 };
