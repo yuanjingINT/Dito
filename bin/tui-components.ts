@@ -287,8 +287,8 @@ export class SessionPicker implements Component {
     else if (key === "down" || key === "j") this.selected = Math.min(this.sessions.length - 1, this.selected + 1);
     else if (key === "home") this.selected = 0;
     else if (key === "end") this.selected = this.sessions.length - 1;
-    else if (key === "pageup") this.selected = Math.max(0, this.selected - 10);
-    else if (key === "pagedown") this.selected = Math.min(this.sessions.length - 1, this.selected + 10);
+    else if (key === "pageUp") this.selected = Math.max(0, this.selected - 10);
+    else if (key === "pageDown") this.selected = Math.min(this.sessions.length - 1, this.selected + 10);
     else if (key === "enter" && this.sessions[this.selected]) this.open(this.sessions[this.selected]);
     else if (key === "escape") this.close();
     this.redraw();
@@ -298,6 +298,8 @@ export class SessionPicker implements Component {
 /** 在小窗口中也能查看 Bash；显示窗口可独立滚动。 */
 export class BashDialog implements Component {
   private offset: number | undefined;
+  private lastStart = 0;
+  private lastEnd = 0;
   constructor(private readonly log: BashLog, private readonly rows: () => number,
     private readonly close: () => void, private readonly redraw: () => void) {}
   invalidate(): void {}
@@ -306,6 +308,8 @@ export class BashDialog implements Component {
     const height = Math.max(1, Math.floor(this.rows() * 0.85) - 2);
     const end = Math.max(0, content.length - height);
     const start = Math.min(this.offset ?? end, end);
+    this.lastStart = start;
+    this.lastEnd = end;
     return [filledLine(`${C.accent}${C.bold} Bash 活动${C.reset}`, width, C.panelBg),
       ...content.slice(start, start + height).map((line) => filledLine(line, width)),
       filledLine(`${C.muted} ↑↓ / PgUp PgDn 滚动 · End 跟随 · Esc 返回${C.reset}`, width)];
@@ -316,11 +320,9 @@ export class BashDialog implements Component {
     if (key === "escape" || key === "ctrl+shift+b" || key === "shift+ctrl+b") this.close();
     else if (key === "end") this.offset = undefined;
     else if (key === "home") this.offset = 0;
-    else if (["up", "down", "pageup", "pagedown"].includes(key)) {
-      // 初次滚动从最新输出开始；实际上界在下一次 render 中按尺寸计算。
-      const end = Math.max(0, this.log.render(60).length - Math.max(1, Math.floor(this.rows() * 0.85) - 2));
-      const delta = key === "up" ? -1 : key === "down" ? 1 : key === "pageup" ? -10 : 10;
-      this.offset = Math.max(0, (this.offset ?? end) + delta);
+    else if (["up", "down", "pageUp", "pageDown"].includes(key)) {
+      const delta = key === "up" ? -1 : key === "down" ? 1 : key === "pageUp" ? -10 : 10;
+      this.offset = Math.max(0, Math.min(this.lastEnd, (this.offset ?? this.lastStart) + delta));
     }
     this.redraw();
   }

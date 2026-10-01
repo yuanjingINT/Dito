@@ -130,7 +130,16 @@ test("real TUI streams Bash into the sidebar, hides it in small windows and allo
     assert.ok(!terminal.text().includes("Offline"), "model hidden on narrow windows");
     terminal.send("\x1b[98;6u");
     await until(() => terminal.text().includes("finished-bash-output"), "narrow Bash dialog");
+    session.emit({ type: "tool_execution_update", toolName: "bash", toolCallId: "live", partialResult: { content: [{ type: "text", text: "first-output-line\n" + "middle-output-line\n".repeat(100) + "last-output-line" }] } });
+    await until(() => terminal.text().includes("last-output-line"), "dialog follows output");
+    terminal.output = "";
+    terminal.send("\x1b[H");
+    await until(() => terminal.text().includes("first-output-line"), "Home scrolls Bash dialog to start");
+    terminal.output = "";
+    terminal.send("\x1b[F");
+    await until(() => terminal.text().includes("last-output-line"), "End scrolls Bash dialog to end");
     terminal.send("\x1b");
+    session.emit({ type: "tool_execution_end", toolName: "bash", toolCallId: "live", result: { content: [{ type: "text", text: "finished-bash-output" }] }, isError: false });
     terminal.resize(140, 12);
     await tick();
     assert.ok(!terminal.text().includes("finished-bash-output"), "sidebar hidden in short windows");
@@ -159,11 +168,11 @@ test("browser tab mouse selection preserves each editor draft and restores Bash 
     await until(() => second.bound && terminal.text().includes("SECOND OUTPUT"), "mouse selects history");
     assert.equal(second.ui.getEditorText(), "");
     terminal.send("second draft");
-    terminal.send("\x1b[1;3D");
-    await until(() => first.ui.getEditorText() === "first draft", "draft restored");
+    terminal.send("\x1b[9;6u");
+    await until(() => first.events.size > 0 && first.ui.getEditorText() === "first draft", "draft restored");
     assert.equal(opens, 1, "switching back uses the existing session");
-    terminal.send("\x1b[1;3C");
-    await until(() => second.ui.getEditorText() === "second draft", "other draft restored");
+    terminal.send("\x1b[9;5u");
+    await until(() => second.events.size > 0 && second.ui.getEditorText() === "second draft", "other draft restored");
     assert.equal(opens, 1);
   } finally { terminal.send("\x03"); await running; }
   assert.equal(first.disposed, true);
@@ -182,7 +191,7 @@ test("history opened beyond twelve sessions stays active, and standard tools sur
   try {
     await until(() => first.bound, "first binding");
     terminal.send("\x1bw");
-    for (let i = 0; i < 29; i++) terminal.send("\x1b[B");
+    terminal.send("\x1b[F");
     terminal.send("\r");
     await until(() => older.bound && terminal.text().includes("历史会话 29"), "old history opens");
     terminal.send("/chat"); terminal.send("\r");

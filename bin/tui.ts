@@ -1,7 +1,7 @@
 /** Dito 全屏工作台：浏览器式会话标签、对话区、响应式 Bash 侧栏。 */
 import {
   CombinedAutocompleteProvider, Editor, HStack, ProcessTerminal, ScrollView,
-  TuiAltScreen, VStack, isKeyRelease, parseKey, type OverlayHandle, type Terminal,
+  TuiAltScreen, VStack, isKeyRelease, parseKey, type Component, type OverlayHandle, type Terminal,
 } from "@earendil-works/pi-tui";
 import { basename } from "node:path";
 import { MODE_DEFS, getMode, nextMode, readOnlyTools, setMode, type DitoMode } from "../extensions/mode.js";
@@ -55,6 +55,7 @@ export async function runTui(
   let resolveShutdown: (() => void) | undefined;
   let unsubscribe: (() => void) | undefined;
   let overlay: OverlayHandle | undefined;
+  let overlayComponent: Component | undefined;
   const sessionInputRemovers = new Set<() => void>();
   const tabs = new TabsBar();
   const conversation = new ConversationView();
@@ -62,6 +63,10 @@ export async function runTui(
 
   // 鼠标点击标签先于 pi-tui 的文本选择器处理，正文仍使用原生滚动/选择。
   const routed = new RoutedTerminal(terminal, (data) => {
+    if (overlay?.isFocused() && overlayComponent?.handleInput && ["home", "end", "pageUp", "pageDown"].includes(parseKey(data) ?? "")) {
+      if (!isKeyRelease(data)) overlayComponent.handleInput(data);
+      return true;
+    }
     if (tui.hasOverlay() || terminal.rows < 5) return false;
     const mouse = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/.exec(data);
     if (!mouse || Number(mouse[3]) !== 1 || (Number(mouse[1]) & 3) !== 0 || Number(mouse[1]) >= 32) return false;
@@ -98,7 +103,7 @@ export async function runTui(
     redraw();
   };
   const shutdown = (): void => { shutdownRequested = true; resolveShutdown?.(); };
-  const closeOverlay = (): void => { overlay?.hide(); overlay = undefined; redraw(); };
+  const closeOverlay = (): void => { overlay?.hide(); overlay = undefined; overlayComponent = undefined; redraw(); };
 
   /** 不在每个 token / 工具回合扫描所有 jsonl；仅更新当前会话的标签。 */
   const refreshTabs = (reload = false): void => {
@@ -239,12 +244,14 @@ export async function runTui(
     const picker = new SessionPicker(summaries, currentPath, () => terminal.rows, (target) => {
       closeOverlay(); void openPath(target.path);
     }, closeOverlay, redraw);
+    overlayComponent = picker;
     overlay = tui.showOverlay(picker, { width: "86%", maxHeight: "85%", margin: 1 });
     redraw();
   };
   const openBash = (): void => {
     closeOverlay();
-    overlay = tui.showOverlay(new BashDialog(bash, () => terminal.rows, closeOverlay, redraw), { width: "90%", maxHeight: "90%", margin: 1 });
+    overlayComponent = new BashDialog(bash, () => terminal.rows, closeOverlay, redraw);
+    overlay = tui.showOverlay(overlayComponent, { width: "90%", maxHeight: "90%", margin: 1 });
     redraw();
   };
 
@@ -326,7 +333,7 @@ export async function runTui(
     if (key === "alt+a") { openPreviousSession(); return { consume: true }; }
     if (key === "alt+w") { openSessionPicker(); return { consume: true }; }
     if ((key === "ctrl+shift+b" || key === "shift+ctrl+b")) { openBash(); return { consume: true }; }
-    // Alt+←/→ normally是编辑器的词移动；编辑器有内容时保留该行为。
+    // 编辑器有内容时保留 Alt+←/→ 的词移动；Ctrl+Tab 始终切换标签。
     if (key === "ctrl+tab" || (key === "alt+right" && !editor.getText())) { switchTabBy(1); return { consume: true }; }
     if (key === "shift+ctrl+tab" || (key === "alt+left" && !editor.getText())) { switchTabBy(-1); return { consume: true }; }
     if (key && /^alt\+[1-9]$/.test(key)) {
