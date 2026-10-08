@@ -86,16 +86,19 @@ dito                           # 进入全屏对话 TUI
 - 顶部标签栏显示当前会话与历史会话：**Ctrl+Tab** 切换，**Alt+1…9** 直接选择，鼠标点击标签也可切换；输入框为空时也可用 **Alt+←→**；**Ctrl+T** / **alt+d** 新会话
 - **alt+a** 上一会话；**alt+w** 会话选择器（↑↓ / j-k 移动、enter 恢复）；**Ctrl+Shift+B** 展开 Bash 活动
 - **esc** 中断当前任务；任务运行中可直接打字插话（排队为 followUp）
-- 思考过程默认以灰色标题折叠；点击「◇ 思考」展开或收起，底部模型名左侧显示当前上下文使用率
+- 思考过程默认以灰色标题折叠；点击「◇ 思考」展开或收起，底部模型名左侧显示当前上下文的已用 token、模型窗口和使用率
+- `web_search`、`subagent` 等工具调用会显示运行或完成状态；点击工具标题可展开参数、实时输出与最终结果，恢复历史会话后也可查看
 - `/compact` 手动压缩上下文；达到上下文压力阈值时也会自动压缩，并在上下文溢出后压缩重试
 - `/sudo on` / `/sudo off` 切换 sudo 权限模式；`/persona`、`/identity` 切换人设与用户身份；`/model` 切换模型
 - 启动自动恢复上次会话；宽窗口右侧显示 Bash 命令和实时输出，窄窗口自动隐藏侧栏与次要状态信息
 
-自动压缩默认参考 DeepSeek Harness：上下文达到 `min(窗口 × 0.8, 窗口 - 最大输出 - 65536)` 时触发，并原样保留最近约 16% 的对话。可以在 `~/.pi/agent/dito/config.json` 的 `contextCompaction` 中调整 `enabled`、`thresholdRatio`、`retainRatio` 和 `headroomTokens`；摘要、工具调用边界、溢出恢复和会话落盘由 pi-coding-agent 负责。
+自动压缩采用 laozhou 的窗口策略：按当前模型的上下文窗口显示 `已用/窗口 (百分比)`，达到窗口 80% 时触发，压缩后固定保留最近 16384 token，并保证至少有窗口 10%（至少 4096 token）的响应余量。可以在 `~/.pi/agent/dito/config.json` 的 `contextCompaction` 中调整 `enabled`、`trimAtRatio`、`trimBatchRatio`、`reservedRatio`、`minReservedTokens` 和 `compactTailTokens`；摘要、工具调用边界、溢出恢复和会话落盘由 pi-coding-agent 负责。
+
+模型上下文窗口从供应商 API 动态读取（如 `/models` 中的 `context_length`、`context_window`、`limit.context`；Ollama 使用 `/api/show`）。接口未提供时查询 [models.dev 动态模型目录](https://models.dev/)，元数据在 `~/.pi/agent/dito/model-metadata/` 缓存 6 小时，离线时保留最近成功结果；「刷新模型列表（API）」可强制更新。API/目录结果优先于旧配置，显式配置的 `contextWindow` 仅在查不到元数据时作为备用值。窗口仍未知时显示「未知」，暂停按窗口比例触发的压缩，仍保留 API 上下文溢出后的压缩恢复；切换模型时同步更新窗口和压缩预算。
 
 QQ 的 `dito-re` 配置位于 `~/.pi/agent/dito/config.json` 的 `plugins["dito-re"]`：`defaultReplyChance` 是普通消息概率，`topics` 中每个主题配置 `keywords` 与 `replyChance`，主题数组可以自由添加和删除，不受固定枚举限制；`contextMessages` / `contextChars` 控制每个群注入的上下文上限。`dito config` →「QQ 智能自动回复」可直接追加一个主题 JSON 或按 ID 删除主题。群上下文保存在 QQ 私有数据目录的 `dito-re-context.json`，只在本机使用。
 
-**子代理调度**：主代理可以调用 `subagent` 工具创建隔离上下文的单个任务、并行任务或串行任务链。任务支持 `workType`、`model` 和 `budgetUsd`；留空模型时会结合任务内容、模型推理能力和价格自动选择。并行任务最多 100 个，`plugins.subagent.maxConcurrency` 控制同时运行的数量；`dito config` →「子代理调度」可调整上限和默认预算。
+**子代理调度**：主代理可以调用 `subagent` 工具创建隔离上下文的单个任务、并行任务或串行任务链。TUI 中会显示各任务的排队、运行、完成、失败或取消状态；点击 `subagent` 标题可查看分配任务、所用模型、当前工具和返回结果。任务支持 `workType`、`model` 和 `budgetUsd`；留空模型时会结合任务内容、模型推理能力和价格自动选择。并行任务最多 100 个，`plugins.subagent.maxConcurrency` 控制同时运行的数量；`dito config` →「子代理调度」可调整上限和默认预算。
 
 **长记忆**参考 laozhou 的“短日记 → 长期整理 → 自动联想”流程。每轮结束会按聊天 scope 保存短日记；“请记住”“我喜欢”“我的目标”等明确的稳定信息会整理为知识点，重要或反复被回忆的经历会升级为长期记忆。下一轮提问前，相关知识和经历会自动作为不可信历史资料注入上下文，并按回忆次数强化、按半衰期衰减。运行 `/memory-stats` 查看统计，运行 `/memory-clear` 清空；`dito config` →「记忆」可调整自动联想、短日记保留天数、联想条数和遗忘策略。记忆库仍保存在各聊天隔离的 `memory.db` / `memory-<scope>.db` 中，旧版数据库会自动迁移。
 

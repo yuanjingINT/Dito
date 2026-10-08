@@ -25,6 +25,7 @@ import {
   DITO_IS_ALPHA,
   type DitoConfig,
   type ProviderConfig,
+  type ModelInfo,
 } from "../extensions/util.js";
 import { resolveDitoReConfig } from "../extensions/plugins/dito-re.js";
 import { resolveSubagentConfig } from "../extensions/subagent-config.js";
@@ -685,14 +686,14 @@ function persist(cfg: DitoConfig, message = "已保存，改动即时生效"): v
 
 async function refreshModelsFor(p: ProviderConfig): Promise<boolean> {
   notify(`正在从 API 获取「${p.name}」的模型列表…`);
-  let list: { id: string; name?: string }[] = [];
+  let list: ModelInfo[] = [];
   try {
-    list = await fetchModelList(p);
+    list = await fetchModelList(p, { force: true });
   } catch {
     list = [];
   }
   // 免 Key 端点（apiKey 为空/空格）只保留 -free 模型，避免混入需鉴权的付费模型导致 401
-  if (p.apiKey.trim() === "") {
+  if (p.id === "opencode-free" && p.apiKey.trim() === "") {
     list = list.filter((m) => m.id.endsWith("-free"));
   }
   // 合并而非替换：拉取失败（空列表）绝不清空现有模型
@@ -758,7 +759,6 @@ async function editProviderScreen(cfg: DitoConfig, index: number): Promise<boole
         name: id,
         reasoning: false,
         input: ["text"] as ("text" | "image")[],
-        contextWindow: 128000,
         maxTokens: 16384,
       },
   );

@@ -154,7 +154,7 @@ function modelCostUsd(model: Model<any>): number {
 }
 
 function modelQuality(model: Model<any>): number {
-  const context = Math.log2(Math.max(1, model.contextWindow || 1));
+  const context = Number.isFinite(model.contextWindow) ? Math.log2(Math.max(1, model.contextWindow || 1)) : 0;
   const output = Math.log2(Math.max(1, model.maxTokens || 1));
   const reasoning = model.reasoning ? 3 : 0;
   const name = `${model.name} ${model.id}`.toLowerCase();
@@ -224,7 +224,7 @@ interface UsageStats {
   turns: number;
 }
 
-interface AgentResult {
+export interface AgentResult {
   agent: string;
   model?: string;
   task: string;
@@ -233,6 +233,9 @@ interface AgentResult {
   usage: UsageStats;
   estimatedCostUsd: number;
   routeReason: string;
+  state: "queued" | "running" | "done" | "error" | "cancelled" | "skipped";
+  toolCalls: number;
+  currentTool?: string;
 }
 
 interface ToolUpdate {
@@ -240,7 +243,7 @@ interface ToolUpdate {
   details?: unknown;
 }
 
-type UpdateCallback = (update: ToolUpdate) => void;
+type ProgressCallback = (result: AgentResult) => void;
 
 function textFromMessage(message: any): string {
   if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return "";
@@ -264,6 +267,33 @@ function capOutput(text: string): string {
   return `${result}\n\n[子代理输出已截断]`;
 }
 
+/** Worker events contain public output and tool activity; thinking stays in the worker. */
+export function applySubagentEvent(result: AgentResult, event: any): boolean {
+  if (!event || typeof event !== "object") return false;
+  if (event.type === "subagent_start") {
+    if (typeof event.model === "string") result.model = event.model;
+  } else if (event.type === "message_start" && event.message?.role === "assistant") {
+    result.output = "";
+  } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
+    result.output = (result.output + (event.assistantMessageEvent.delta || "")).slice(0, DEFAULT_OUTPUT_CAP);
+  } else if (event.type === "message_end" && event.message?.role === "assistant") {
+    usageFromMessage(event.message, result.usage);
+    const output = textFromMessage(event.message);
+    if (output) result.output = capOutput(output);
+    if (event.message.stopReason === "error" || event.message.stopReason === "aborted") {
+      result.error = event.message.errorMessage || "子代理未完成任务";
+    }
+  } else if (event.type === "tool_execution_start") {
+    result.currentTool = event.toolName;
+    result.toolCalls++;
+  } else if (event.type === "tool_execution_end") {
+    if (result.currentTool === event.toolName) result.currentTool = undefined;
+  } else if (event.type === "subagent_error") {
+    result.error = String(event.error || "子代理失败");
+  } else return false;
+  return true;
+}
+
 async function runWorker(
   profile: AgentProfile,
   task: SubagentTaskInput,
@@ -271,7 +301,7 @@ async function runWorker(
   routeReason: string,
   cwd: string,
   signal: AbortSignal | undefined,
-  onUpdate: UpdateCallback | undefined,
+  onProgress: ProgressCallback | undefined,
 ): Promise<AgentResult> {
   const usage: UsageStats = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 };
   const tempDir = await mkdtemp(join(tmpdir(), "dito-subagent-"));
@@ -282,7 +312,6 @@ async function runWorker(
     model: model ? `${model.provider}/${model.id}` : undefined,
     tools: profile.tools,
   };
-  await writeFile(payloadPath, JSON.stringify(payload), { encoding: "utf8", mode: 0o600 });
 
   const extensionRoot = dirname(fileURLToPath(import.meta.url));
   const projectRoot = dirname(extensionRoot);
@@ -296,23 +325,28 @@ async function runWorker(
     usage,
     estimatedCostUsd: model ? modelCostUsd(model) : 0,
     routeReason,
+    state: "running",
+    toolCalls: 0,
   };
+  onProgress?.(result);
   let buffer = "";
   let aborted = false;
+  let lastUpdate = 0;
   const processLine = (line: string): void => {
     if (!line.trim()) return;
     let event: any;
     try { event = JSON.parse(line); } catch { return; }
-    if (event.type === "message_end" && event.message) {
-      usageFromMessage(event.message, usage);
-      const output = textFromMessage(event.message);
-      if (output) result.output = output;
-      onUpdate?.({ content: [{ type: "text", text: result.output || "子代理正在工作…" }] });
+    if (applySubagentEvent(result, event)) {
+      const now = Date.now();
+      if (event.type !== "message_update" || now - lastUpdate >= 100) {
+        onProgress?.(result);
+        lastUpdate = now;
+      }
     }
-    if (event.type === "subagent_error") result.error = String(event.error || "子代理失败");
   };
 
   try {
+    await writeFile(payloadPath, JSON.stringify(payload), { encoding: "utf8", mode: 0o600 });
     const exitCode = await new Promise<number>((resolve) => {
       const child = spawn(process.execPath, [tsxCli, workerPath, "--payload", payloadPath], {
         cwd,
@@ -320,6 +354,16 @@ async function runWorker(
         stdio: ["ignore", "pipe", "pipe"],
       });
       let stderr = "";
+      let closed = false;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      const abort = () => {
+        aborted = true;
+        child.kill("SIGTERM");
+        killTimer = setTimeout(() => { if (!closed) child.kill("SIGKILL"); }, 5000);
+        killTimer.unref();
+      };
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
       child.stdout.on("data", (data) => {
         buffer += data.toString();
         const lines = buffer.split("\n");
@@ -332,21 +376,22 @@ async function runWorker(
         resolve(1);
       });
       child.on("close", (code) => {
+        closed = true;
+        clearTimeout(killTimer);
+        signal?.removeEventListener("abort", abort);
         if (buffer.trim()) processLine(buffer);
         if (!result.error && code !== 0) result.error = stderr.trim() || `子代理退出码 ${code ?? 1}`;
         resolve(code ?? 1);
       });
-      const abort = () => {
-        aborted = true;
-        child.kill("SIGTERM");
-        setTimeout(() => { if (!child.killed) child.kill("SIGKILL"); }, 5000).unref();
-      };
       if (signal?.aborted) abort();
       else signal?.addEventListener("abort", abort, { once: true });
     });
     if (aborted) result.error = "子代理已取消";
     if (exitCode !== 0 && !result.error) result.error = `子代理退出码 ${exitCode}`;
     result.output = capOutput(result.output || result.error || "（子代理没有返回文本）");
+    result.state = aborted ? "cancelled" : result.error ? "error" : "done";
+    result.currentTool = undefined;
+    onProgress?.(result);
     return result;
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
@@ -381,9 +426,22 @@ function chooseProfile(profiles: AgentProfile[], requested: string | undefined, 
   return profiles.find((profile) => profile.name === preferred) ?? profiles[0];
 }
 
-function formatResult(result: AgentResult): string {
-  const status = result.error ? `失败：${result.error}` : "完成";
-  return `### ${result.agent} · ${status}\n模型：${result.model || "主代理默认模型"}\n预估单任务成本：$${result.estimatedCostUsd.toFixed(4)}\n${result.output}`;
+function formatResult(result: AgentResult, partial = false): string {
+  const labels = { queued: "排队中", running: "运行中", done: "完成", error: "失败", cancelled: "已取消", skipped: "未执行" };
+  const status = `${labels[result.state]}${result.error ? `：${result.error}` : ""}`;
+  const activity = result.currentTool ? `\n当前工具：${result.currentTool}` : "";
+  const output = partial && result.output.length > 4096 ? `${result.output.slice(0, 4096)}\n[进度预览已截断，完成后可查看结果]` : result.output;
+  return `### ${result.agent} · ${status}\n任务：${result.task}\n模型：${result.model || "主代理默认模型"}\n预估单任务成本：$${result.estimatedCostUsd.toFixed(4)}\n工具调用：${result.toolCalls} 次${activity}\n${output}`;
+}
+
+function progressUpdate(mode: "single" | "parallel" | "chain", results: AgentResult[], partial = false): ToolUpdate {
+  const count = (state: AgentResult["state"]) => results.filter((result) => result.state === state).length;
+  const label = { single: "单任务", parallel: "并行", chain: "串行" }[mode];
+  const text = `子代理 · ${label} · 完成 ${count("done")}/${results.length} · 运行 ${count("running")} · 排队 ${count("queued")} · 失败 ${count("error")} · 取消 ${count("cancelled")} · 未执行 ${count("skipped")}`;
+  return {
+    content: [{ type: "text", text: `${text}\n\n${results.map((result) => formatResult(result, partial)).join("\n\n---\n\n")}` }],
+    details: { mode, isError: results.some((result) => !!result.error), results: results.map((result) => ({ ...result, usage: { ...result.usage } })) },
+  };
 }
 
 const WorkTypeSchema = StringEnum(WORK_TYPES, { description: "任务类型；auto 会根据任务内容自动判断。", default: "auto" });
@@ -410,9 +468,15 @@ const SubagentSchema = Type.Object({
 
 let activeSubagents = 0;
 
-export default function subagentExtension(pi: ExtensionAPI, rawConfig: unknown = {}): void {
+export default function subagentExtension(pi: ExtensionAPI, rawConfig: unknown = {}, worker = runWorker): void {
   const config: SubagentConfig = resolveSubagentConfig(rawConfig);
   if (!config.enabled) return;
+
+  // pi derives isError from thrown errors and tool_result hooks, not the
+  // execute return value. Preserve task details while marking failed calls.
+  pi.on("tool_result", (event) => {
+    if (event.toolName === "subagent" && (event.details as { isError?: boolean } | undefined)?.isError) return { isError: true };
+  });
 
   pi.registerTool({
     name: "subagent",
@@ -447,14 +511,14 @@ export default function subagentExtension(pi: ExtensionAPI, rawConfig: unknown =
       const chain = Array.isArray(input.chain) ? input.chain as SubagentTaskInput[] : [];
       const modeCount = Number(single.length > 0) + Number(parallel.length > 0) + Number(chain.length > 0);
       if (modeCount !== 1) {
-        return { content: [{ type: "text", text: "子代理参数错误：请提供 task、tasks 或 chain 中的一种。" }] };
+        return { content: [{ type: "text", text: "子代理参数错误：请提供 task、tasks 或 chain 中的一种。" }], details: { isError: true }, isError: true };
       }
       if (parallel.length > HARD_MAX_AGENTS || chain.length > HARD_MAX_AGENTS) {
-        return { content: [{ type: "text", text: `子代理数量超过硬上限：最多 ${HARD_MAX_AGENTS} 个。` }] };
+        return { content: [{ type: "text", text: `子代理数量超过硬上限：最多 ${HARD_MAX_AGENTS} 个。` }], details: { isError: true }, isError: true };
       }
       const reservation = parallel.length > 0 ? parallel.length : 1;
       if (activeSubagents + reservation > config.maxAgents) {
-        return { content: [{ type: "text", text: `当前已有 ${activeSubagents} 个子代理运行，配置上限为 ${config.maxAgents} 个。` }] };
+        return { content: [{ type: "text", text: `当前已有 ${activeSubagents} 个子代理运行，配置上限为 ${config.maxAgents} 个。` }], details: { isError: true }, isError: true };
       }
       activeSubagents += reservation;
       const makeAssignment = (item: SubagentTaskInput): { profile: AgentProfile; choice: ModelChoice; type: Exclude<WorkType, "auto"> } => {
@@ -465,33 +529,65 @@ export default function subagentExtension(pi: ExtensionAPI, rawConfig: unknown =
         return { profile, choice, type };
       };
       try {
+        const mode = parallel.length ? "parallel" : chain.length ? "chain" : "single";
+        const items = parallel.length ? parallel : chain.length ? chain : single;
+        const progress: AgentResult[] = items.map((item) => {
+          const assignment = makeAssignment(item);
+          return {
+            agent: assignment.profile.name, task: item.task, model: assignment.choice.model ? modelLabel(assignment.choice.model) : undefined,
+            output: "", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
+            estimatedCostUsd: assignment.choice.estimatedCostUsd, routeReason: assignment.choice.reason,
+            state: "queued", toolCalls: 0,
+          };
+        });
+        const publish = (): void => onUpdate?.(progressUpdate(mode, progress, true));
+        const runTask = async (item: SubagentTaskInput, index: number): Promise<AgentResult> => {
+          if (signal?.aborted) {
+            progress[index].state = "cancelled";
+            progress[index].error = "子代理已取消";
+            publish();
+            return progress[index];
+          }
+          const assignment = makeAssignment(item);
+          progress[index].task = item.task;
+          progress[index].agent = assignment.profile.name;
+          progress[index].model = assignment.choice.model ? modelLabel(assignment.choice.model) : undefined;
+          progress[index].state = "running";
+          publish();
+          try {
+            progress[index] = await worker(assignment.profile, item, assignment.choice.model,
+              `${assignment.choice.reason}；任务类型 ${assignment.type}；使用 ${modelLabel(assignment.choice.model)}`,
+              item.cwd ?? ctx.cwd, signal, (result) => { progress[index] = result; publish(); });
+          } catch (error) {
+            progress[index].state = signal?.aborted ? "cancelled" : "error";
+            progress[index].error = error instanceof Error ? error.message : String(error);
+          }
+          publish();
+          return progress[index];
+        };
+        publish();
         if (parallel.length > 0) {
-          const results = await mapWithConcurrency(parallel, config.maxConcurrency, async (item) => {
-            const assignment = makeAssignment(item);
-            return runWorker(assignment.profile, item, assignment.choice.model, `${assignment.choice.reason}；任务类型 ${assignment.type}；使用 ${modelLabel(assignment.choice.model)}`, item.cwd ?? ctx.cwd, signal, onUpdate);
-          });
-          const success = results.filter((result) => !result.error).length;
-          return { content: [{ type: "text", text: `并行子代理完成：${success}/${results.length} 成功\n\n${results.map(formatResult).join("\n\n---\n\n")}` }], details: { mode: "parallel", results } };
+          const results = await mapWithConcurrency(parallel, config.maxConcurrency, runTask);
+          return { ...progressUpdate(mode, progress), isError: results.some((result) => !!result.error) };
         }
 
         if (chain.length > 0) {
-          const results: AgentResult[] = [];
           let previous = "";
-          for (const item of chain) {
+          for (const [index, item] of chain.entries()) {
             const task = { ...item, task: item.task.replace(/\{previous\}/g, previous) };
-            const assignment = makeAssignment(task);
-            const result = await runWorker(assignment.profile, task, assignment.choice.model, `${assignment.choice.reason}；任务类型 ${assignment.type}；使用 ${modelLabel(assignment.choice.model)}`, task.cwd ?? ctx.cwd, signal, onUpdate);
-            results.push(result);
-            if (result.error) return { content: [{ type: "text", text: `串行子代理在 ${result.agent} 处失败：${result.error}` }], details: { mode: "chain", results }, isError: true };
+            const result = await runTask(task, index);
+            if (result.error) {
+              for (const pending of progress.slice(index + 1)) pending.state = "skipped";
+              publish();
+              return { ...progressUpdate(mode, progress), isError: true };
+            }
             previous = result.output;
           }
-          return { content: [{ type: "text", text: previous || "（串行子代理没有返回文本）" }], details: { mode: "chain", results } };
+          return progressUpdate(mode, progress);
         }
 
-        const item = single[0];
-        const assignment = makeAssignment(item);
-        const result = await runWorker(assignment.profile, item, assignment.choice.model, `${assignment.choice.reason}；任务类型 ${assignment.type}；使用 ${modelLabel(assignment.choice.model)}`, item.cwd ?? ctx.cwd, signal, onUpdate);
-        return { content: [{ type: "text", text: formatResult(result) }], details: { mode: "single", results: [result] }, ...(result.error ? { isError: true } : {}) };
+        const result = await runTask(single[0], 0);
+        return { ...progressUpdate(mode, progress), isError: !!result.error };
       } finally {
         activeSubagents -= reservation;
       }

@@ -29,6 +29,7 @@ class TestSession {
   bound = false; ui: Record<string, any> = {};
   events = new Set<(event: unknown) => void>();
   sent: string[] = [];
+  contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null };
   constructor(public sessionFile: string) {}
   extensionRunner = { getUIContext: () => this.ui };
   async bindExtensions(options: any): Promise<void> { this.ui = options.uiContext; this.bound = true; }
@@ -37,6 +38,7 @@ class TestSession {
   getActiveToolNames(): string[] { return [...this.tools]; }
   setActiveToolsByName(tools: string[]): void { this.tools = [...tools]; }
   setThinkingLevel(): void {}
+  getContextUsage() { return this.contextUsage; }
   async prompt(text: string): Promise<void> { this.sent.push(text); this.messages.push({ role: "user", content: text }); }
   async abort(): Promise<void> { this.isStreaming = false; }
   dispose(): void { this.disposed = true; this.events.clear(); }
@@ -118,6 +120,149 @@ test("thinking output is gray and collapsed until its header is clicked", () => 
   assert.doesNotMatch(collapsed, /内部推理内容/);
   assert.equal(view.toggleThinkingAt(1), true);
   assert.match(stripTerminalSequences(view.render(80).join("\n")), /内部推理内容/);
+});
+
+test("thinking is restored from history and final snapshots without duplicating streamed text", () => {
+  const message = { role: "assistant", content: [{ type: "thinking", thinking: "saved-thinking" }, { type: "text", text: "final answer" }] };
+  for (const streaming of [false, true]) {
+    const view = new ConversationView();
+    if (streaming) { view.appendThinking("saved-"); view.appendAssistant("final"); }
+    view.finishAssistant(message);
+    assert.doesNotMatch(stripTerminalSequences(view.render(80).join("\n")), /saved-thinking/);
+    assert.equal(view.toggleThinkingAt(1), true);
+    const expanded = stripTerminalSequences(view.render(80).join("\n"));
+    assert.equal((expanded.match(/saved-thinking/g) ?? []).length, 1);
+    assert.match(expanded, /final answer/);
+    assert.equal(view.isThinkingAt(2), false, "body remains selectable");
+    view.reset([message]);
+    view.render(80);
+    assert.equal(view.toggleThinkingAt(1), true);
+    assert.match(stripTerminalSequences(view.render(80).join("\n")), /saved-thinking/);
+    view.reset([]);
+    assert.equal(view.isExpandableAt(1), false, "reset clears old hit targets");
+  }
+});
+
+test("search and subagent tools show independent states and expandable results, including history", () => {
+  const view = new ConversationView();
+  view.addTool("web_search", { query: "first" }, "first");
+  view.addTool("web_search", { query: "second" }, "second");
+  view.addTool("subagent", { tasks: [{ task: "research" }] }, "agents");
+  view.addTool("subagent", {}, "agents");
+  view.updateTool("first", { content: [{ type: "text", text: "first-result" }] }, "done");
+  view.updateTool("second", { content: [{ type: "text", text: "second-error" }] }, "error");
+  view.updateTool("agents", { content: [{ type: "text", text: "子代理 · 完成 1/2\nagent-live-output" }] });
+  let rendered = stripTerminalSequences(view.render(80).join("\n"));
+  assert.match(rendered, /web_search.*完成/);
+  assert.match(rendered, /web_search.*失败/);
+  assert.match(rendered, /subagent.*运行中.*完成 1\/2/);
+  assert.equal((rendered.match(/◇ subagent/g) ?? []).length, 1);
+  assert.doesNotMatch(rendered, /first-result|second-error|agent-live-output/);
+  assert.equal(view.toggleDetailsAt(2), true);
+  rendered = stripTerminalSequences(view.render(80).join("\n"));
+  assert.match(rendered, /agent-live-output/);
+  view.updateTool("agents", { content: [{ type: "text", text: "子代理 · 完成 2/2\nagent-final-output" }] }, "done");
+  rendered = stripTerminalSequences(view.render(80).join("\n"));
+  assert.match(rendered, /subagent.*完成.*完成 2\/2/);
+  assert.match(rendered, /agent-final-output/);
+  assert.doesNotMatch(rendered, /agent-live-output/);
+  view.reset([
+    { role: "assistant", content: [{ type: "toolCall", id: "old", name: "subagent", arguments: { task: "saved task" } }] },
+    { role: "toolResult", toolCallId: "old", toolName: "subagent", isError: true, content: [{ type: "text", text: "saved-agent-error" }] },
+  ]);
+  assert.match(stripTerminalSequences(view.render(80).join("\n")), /subagent.*失败/);
+  assert.equal(view.toggleDetailsAt(0), true);
+  assert.match(stripTerminalSequences(view.render(80).join("\n")), /saved-agent-error/);
+});
+
+test("real mouse clicks expand and collapse thinking below the tabs at wide and narrow sizes", async () => {
+  setMode("standard");
+  const session = new TestSession("history-0");
+  session.messages = [{ role: "assistant", content: [{ type: "thinking", thinking: "mouse-thinking-content" }, { type: "text", text: "answer" }] }];
+  const terminal = new TestTerminal();
+  const running = runTui(session.asTui(), "Offline", async () => { throw new Error("unexpected new session"); }, terminal, source([summary(0)], async () => { throw new Error("unexpected history"); }));
+  try {
+    await until(() => session.bound && terminal.text().includes("点击展开"), "collapsed thinking");
+    terminal.output = "";
+    terminal.send("\x1b[<0;120;4M"); terminal.send("\x1b[<0;120;4m");
+    await tick();
+    assert.ok(!terminal.text().includes("mouse-thinking-content"), "sidebar click does not toggle conversation");
+    for (const [columns, rows, headerRow] of [[140, 30, 4], [80, 20, 4], [60, 12, 3]]) {
+      terminal.resize(columns, rows);
+      await tick();
+      terminal.output = "";
+      terminal.send(`\x1b[<0;5;${headerRow}M`); terminal.send(`\x1b[<0;5;${headerRow}m`);
+      await until(() => terminal.text().includes("mouse-thinking-content"), `thinking expanded at ${columns} columns`);
+      terminal.output = "";
+      terminal.send(`\x1b[<0;5;${headerRow}M`); terminal.send(`\x1b[<0;5;${headerRow}m`);
+      await until(() => terminal.text().includes("点击展开"), "thinking collapsed");
+      assert.ok(!terminal.text().includes("mouse-thinking-content"));
+    }
+  } finally { terminal.send("\x03"); await running; }
+});
+
+test("mouse targets follow conversation scroll offsets and keep long thinking headers visible", async () => {
+  setMode("standard");
+  const session = new TestSession("history-0");
+  session.messages = [{ role: "assistant", content: [{ type: "thinking", thinking: "long-thinking-first\n\n" + "thinking-body\n".repeat(50) }, { type: "text", text: "answer\n".repeat(60) }] }];
+  const terminal = new TestTerminal();
+  const running = runTui(session.asTui(), "Offline", async () => { throw new Error("unexpected new session"); }, terminal, source([summary(0)], async () => { throw new Error("unexpected history"); }));
+  try {
+    await until(() => session.bound, "binding");
+    await tick();
+    terminal.output = "";
+    for (let i = 0; i < 50; i++) terminal.send("\x1b[<64;5;8M");
+    await until(() => terminal.text().includes("◇ 思考"), "scroll to thinking header");
+    terminal.output = "";
+    terminal.send("\x1b[<0;5;4M"); terminal.send("\x1b[<0;5;4m");
+    await until(() => terminal.text().includes("long-thinking-first"), "scrolled thinking expands");
+    assert.ok(terminal.text().includes("点击收起"), "expansion keeps its header in view");
+  } finally { terminal.send("\x03"); await running; }
+});
+
+test("real TUI streams subagent progress and exposes final results through the tool header", async () => {
+  setMode("standard");
+  const session = new TestSession("history-0");
+  const terminal = new TestTerminal();
+  const running = runTui(session.asTui(), "Offline", async () => { throw new Error("unexpected new session"); }, terminal, source([summary(0)], async () => { throw new Error("unexpected history"); }));
+  try {
+    await until(() => session.bound && session.events.size > 0, "event subscription");
+    session.emit({ type: "tool_execution_start", toolName: "subagent", toolCallId: "agents", args: { task: "research" } });
+    session.emit({ type: "tool_execution_update", toolName: "subagent", toolCallId: "agents", partialResult: { content: [{ type: "text", text: "子代理 · 完成 0/1\n模型：test/model\nagent-live-detail" }] } });
+    await until(() => terminal.text().includes("完成 0/1"), "visible progress");
+    terminal.output = "";
+    terminal.send("\x1b[<0;5;3M"); terminal.send("\x1b[<0;5;3m");
+    await until(() => terminal.text().includes("agent-live-detail"), "expanded tool result");
+    assert.match(terminal.text(), /test\/model/);
+    terminal.output = "";
+    session.emit({ type: "tool_execution_end", toolName: "subagent", toolCallId: "agents", result: { content: [{ type: "text", text: "子代理 · 完成 1/1\nagent-final-detail" }] }, isError: false });
+    await until(() => terminal.text().includes("agent-final-detail"), "final tool result");
+    assert.ok(!terminal.text().includes("agent-live-detail"));
+    terminal.output = "";
+    terminal.send("\x1b[<0;5;3M"); terminal.send("\x1b[<0;5;3m");
+    await until(() => terminal.text().includes("点击展开"), "tool collapsed");
+    assert.ok(!terminal.text().includes("agent-final-detail"));
+  } finally { terminal.send("\x03"); await running; }
+});
+
+test("TUI reflects dynamic context windows and shows unknown metadata without a fake percentage", async () => {
+  setMode("standard");
+  const session = new TestSession("history-0");
+  session.contextUsage = { tokens: 6400, contextWindow: 32000, percent: 20 };
+  const terminal = new TestTerminal();
+  const running = runTui(session.asTui(), "Offline", async () => { throw new Error("unexpected new session"); }, terminal, source([summary(0)], async () => { throw new Error("unexpected history"); }));
+  try {
+    await until(() => session.events.size > 0 && terminal.text().includes("6.4k/32k (20.0%)"), "API context shown");
+    terminal.output = "";
+    session.contextUsage = { tokens: 6400, contextWindow: 64000, percent: 10 };
+    session.emit({ type: "model_select", model: { name: "Changed" } });
+    await until(() => terminal.text().includes("6.4k/64k (10.0%)"), "model change updates context display");
+    terminal.output = "";
+    session.contextUsage = { tokens: 6400, contextWindow: Infinity, percent: 0 };
+    session.emit({ type: "model_select", model: { name: "Unknown" } });
+    await until(() => terminal.text().includes("6.4k/未知 (?)"), "unknown context shown");
+    assert.ok(!terminal.text().includes("0.0%"));
+  } finally { terminal.send("\x03"); await running; }
 });
 
 test("the history picker scrolls to the last item and remains usable after resize", () => {

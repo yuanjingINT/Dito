@@ -26,6 +26,21 @@ const defaultSessionSource: TuiSessionSource = {
   list: listSessions,
   open: (path) => createSession({ sessionFile: path }),
 };
+
+/** 与 laozhou 状态栏一致：窗口较大时使用 k/M，避免挤占模型名称。 */
+function formatContextTokens(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return "?";
+  if (value >= 1_000_000) {
+    const compact = value / 1_000_000;
+    return `${Number.isInteger(compact) ? compact.toFixed(0) : compact.toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    const compact = value / 1_000;
+    return `${Number.isInteger(compact) ? compact.toFixed(0) : compact.toFixed(1)}k`;
+  }
+  return String(Math.floor(value));
+}
+
 const slashCommands = [
   { name: "chat", description: "闲聊模式（不调用工具）" },
   { name: "standard", description: "标准模式（完整助手）" },
@@ -70,7 +85,7 @@ export async function runTui(
     }
     if (tui.hasOverlay() || terminal.rows < 5) return false;
     const mouse = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/.exec(data);
-    if (!mouse || Number(mouse[3]) !== 1 || (Number(mouse[1]) & 3) !== 0 || Number(mouse[1]) >= 32) return false;
+    if (!mouse || Number(mouse[1]) !== 0) return false;
     const row = Number(mouse[3]);
     if (row === 1) {
       if (mouse[4] === "M") {
@@ -84,9 +99,20 @@ export async function runTui(
     // The conversation sits below the tab and optional context rows. Convert
     // the terminal row back to ConversationView's unscrolled content row.
     const bodyTop = (terminal.rows >= 5 ? 1 : 0) + (terminal.columns >= 80 && terminal.rows >= 18 ? 1 : 0);
-    const contentRow = row - 1 - bodyTop + scroll.scrollTop;
-    if (conversation.isThinkingAt(contentRow)) {
-      if (mouse[4] === "M") { conversation.toggleThinkingAt(contentRow); redraw(); }
+    const bodyWidth = terminal.columns - (terminal.columns >= 112 && terminal.rows >= 16 ? 42 : 0);
+    const column = Number(mouse[2]) - 1;
+    const viewportRow = row - 1 - bodyTop;
+    if (viewportRow < 0 || viewportRow >= scroll.viewportHeight || column < 0 || column >= bodyWidth - (scroll.isScrollbarVisible ? 1 : 0)) return false;
+    const contentRow = viewportRow + scroll.scrollTop;
+    if (conversation.isExpandableAt(contentRow)) {
+      if (mouse[4] === "M") {
+        const top = scroll.scrollTop;
+        conversation.toggleDetailsAt(contentRow);
+        // Keep the clicked header in view when expansion adds many lines.
+        scroll.updateLayout(conversation.render(scroll.getContentWidth(bodyWidth)).length, scroll.viewportHeight, redraw);
+        scroll.scrollTo(top);
+        redraw();
+      }
       return true;
     }
     return false;
@@ -182,21 +208,27 @@ export async function runTui(
     unsubscribe = current.session.subscribe((event) => {
       const e = event as {
         type: string; message?: MessageLike & { stopReason?: string; errorMessage?: string };
+        model?: { name?: string; id?: string };
         assistantMessageEvent?: { type: string; delta?: string };
         toolName?: string; toolCallId?: string; args?: unknown; partialResult?: unknown; result?: unknown; isError?: boolean;
         reason?: "manual" | "threshold" | "overflow"; aborted?: boolean; errorMessage?: string;
       };
       const ame = e.assistantMessageEvent;
+      if (e.type === "model_select" && e.model) {
+        current.modelName = e.model.name || e.model.id || current.modelName;
+      }
       if (e.type === "message_start" && e.message?.role === "assistant") conversation.beginAssistant();
       if (e.type === "message_update" && ame) {
         if (ame.type === "thinking_delta") conversation.appendThinking(ame.delta ?? "");
         else if (ame.type === "text_delta") conversation.appendAssistant(ame.delta ?? "");
       } else if (e.type === "tool_execution_start" && e.toolName) {
-        conversation.addTool(e.toolName, e.args);
+        conversation.addTool(e.toolName, e.args, e.toolCallId);
         if (isBashTool(e.toolName) && e.toolCallId) bash.start(e.toolCallId, bashCommand(e.args));
-      } else if ((e.type === "tool_execution_update" || e.type === "tool_execution_end") && e.toolCallId && e.toolName && isBashTool(e.toolName)) {
-        bash.update(e.toolCallId, e.type === "tool_execution_update" ? e.partialResult : e.result,
-          e.type === "tool_execution_end" ? e.isError ? "error" : "done" : undefined);
+      } else if ((e.type === "tool_execution_update" || e.type === "tool_execution_end") && e.toolCallId) {
+        const result = e.type === "tool_execution_update" ? e.partialResult : e.result;
+        const state = e.type === "tool_execution_end" ? e.isError ? "error" : "done" : undefined;
+        conversation.updateTool(e.toolCallId, result, state);
+        if (e.toolName && isBashTool(e.toolName)) bash.update(e.toolCallId, result, state);
       } else if (e.type === "message_end" && e.message?.role === "assistant") {
         conversation.finishAssistant(e.message);
         if (e.message.stopReason === "error" && e.message.errorMessage) {
@@ -326,8 +358,13 @@ export async function runTui(
     const alpha = DITO_IS_ALPHA ? ` ${C.yellow}${C.bold}ALPHA${C.reset}` : "";
     const left = ` ${state}${alpha}${C.reset}${C.muted}${help}${C.reset}`;
     const usage = current.session.getContextUsage?.();
-    const percent = usage?.percent == null ? "--" : String(Math.max(0, Math.min(100, Math.round(usage.percent))));
-    const context = `${C.dim}上下文 ${percent}%${C.reset}`;
+    const contextTokens = formatContextTokens(usage?.tokens);
+    const knownWindow = usage?.contextWindow != null && Number.isFinite(usage.contextWindow) && usage.contextWindow > 0;
+    const contextWindow = knownWindow ? formatContextTokens(usage.contextWindow) : "未知";
+    const percent = !knownWindow || usage?.percent == null
+      ? "?"
+      : `${Math.max(0, Math.min(100, usage.percent)).toFixed(1)}%`;
+    const context = `${C.dim}上下文 ${contextTokens}/${contextWindow} (${percent})${C.reset}`;
     const right = width >= 85 ? `${context} ${C.dim}${singleLine(current.modelName)}${C.reset} ${sudoModeEnabled() ? C.yellow + "sudo" : C.muted + "权限门"}${C.reset} ` : "";
     return filledLine(balancedLine(left, right, width), width);
   });

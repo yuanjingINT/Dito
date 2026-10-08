@@ -26,9 +26,9 @@ import { bootDitoPlugins } from "../extensions/plugin-kernel.js";
 import { DITO_PLUGINS } from "../extensions/plugins/index.js";
 import { getBuiltinModels, type BuiltinProvider } from "@earendil-works/pi-ai/providers/all";
 
-import { isPiBuiltinProvider } from "../extensions/provider.js";
-import { loadConfig, resolveApiKey } from "../extensions/util.js";
-import { resolveCompactionBudget } from "../extensions/context-compaction.js";
+import { applyRuntimeModelMetadata, isPiBuiltinProvider } from "../extensions/provider.js";
+import { loadConfig, refreshProviderModelMetadata, resolveApiKey, type DitoConfig } from "../extensions/util.js";
+import { registerContextCompaction, resolveCompactionBudget, resolveContextWindow } from "../extensions/context-compaction.js";
 
 const DITO_DIR = join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"), "dito");
 const DITO_SESSIONS_DIR = join(DITO_DIR, "sessions");
@@ -141,9 +141,10 @@ export function ditoExtensions(pi: ExtensionAPI): void {
 }
 
 /** 带插件过滤的扩展工厂：频道进程可以跳过面向终端的插件（如 system/mode）。 */
-function makeExtensionFactory(skipPluginIds?: string[]): (pi: ExtensionAPI) => void {
+function makeExtensionFactory(skipPluginIds?: string[], settingsManager?: SettingsManager, cfg?: DitoConfig): (pi: ExtensionAPI) => void {
   return (pi) => {
     bootDitoPlugins(pi, DITO_PLUGINS.filter((p) => !skipPluginIds?.includes(p.id)));
+    if (settingsManager && cfg) registerContextCompaction(pi, settingsManager, cfg.contextCompaction);
   };
 }
 
@@ -152,8 +153,7 @@ function makeExtensionFactory(skipPluginIds?: string[]): (pi: ExtensionAPI) => v
  *  modelOverrides.thinkingLevelMap —— 各思考档位都映射为 reasoning_effort "none"，
  *  服务端不再产生推理 token。部分网关会把推理流进正文而非独立 thinking 事件，
  *  频道消息里出现思维链时用它从源头根治；终端不传，保持原行为。 */
-export function buildModelsJson(disableThinking = false): string {
-  const cfg = loadConfig();
+export function buildModelsJson(disableThinking = false, cfg = loadConfig()): string {
   const providers: Record<string, unknown> = {};
   for (const p of cfg.providers) {
     if (isPiBuiltinProvider(p.id)) {
@@ -173,7 +173,7 @@ export function buildModelsJson(disableThinking = false): string {
             name: m.name || m.id,
             reasoning: m.reasoning,
             input: m.input,
-            contextWindow: m.contextWindow || 128000,
+            ...(Number.isFinite(resolveContextWindow(m.contextWindow)) ? { contextWindow: m.contextWindow } : {}),
             maxTokens: m.maxTokens || 16384,
             ...(m.api ? { api: m.api } : {}),
             ...(m.baseUrl ? { baseUrl: m.baseUrl } : {}),
@@ -209,7 +209,7 @@ export function buildModelsJson(disableThinking = false): string {
         name: m.name || m.id,
         reasoning: m.reasoning,
         input: m.input,
-        contextWindow: m.contextWindow || 128000,
+        ...(Number.isFinite(resolveContextWindow(m.contextWindow)) ? { contextWindow: m.contextWindow } : {}),
         maxTokens: m.maxTokens || 16384,
         ...(m.api ? { api: m.api } : {}),
         ...(m.baseUrl ? { baseUrl: m.baseUrl } : {}),
@@ -227,9 +227,9 @@ export function buildModelsJson(disableThinking = false): string {
   return JSON.stringify({ providers }, null, 2);
 }
 
-export function writeModelsJson(): void {
+export function writeModelsJson(cfg = loadConfig()): void {
   mkdirSync(DITO_DIR, { recursive: true });
-  writeFileSync(join(DITO_DIR, "models.json"), buildModelsJson(false));
+  writeFileSync(join(DITO_DIR, "models.json"), buildModelsJson(false, cfg));
 }
 
 export interface TuiSession {
@@ -320,7 +320,10 @@ async function runCreate(options: CreateSessionOptions): Promise<SessionBundle> 
 }
 
 async function createSessionInner(options: CreateSessionOptions): Promise<SessionBundle> {
-  writeModelsJson();
+  const cfg = loadConfig();
+  const requestedProvider = options.model?.split("/")[0];
+  await Promise.all(cfg.providers.filter((p) => p.id === cfg.model.provider || p.id === requestedProvider).map(refreshProviderModelMetadata));
+  writeModelsJson(cfg);
 
   // 频道关闭思考：用带 modelOverrides 的独立 models 文件建运行时。
   // 覆盖必须走配置层——会话启动时 pi 会用注册表对象刷新 agent 的 model，
@@ -328,15 +331,15 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
   let modelsPath = join(DITO_DIR, "models.json");
   if (options.disableThinking) {
     modelsPath = join(DITO_DIR, "models-channel.json");
-    writeFileSync(modelsPath, buildModelsJson(true));
+    writeFileSync(modelsPath, buildModelsJson(true, cfg));
   }
 
-  const cfg = loadConfig();
   const modelRuntime = await ModelRuntime.create({
     modelsPath,
     // 复用 pi 的共享鉴权文件（~/.pi/agent/auth.json）
     authPath: join(getAgentDir(), "auth.json"),
   });
+  applyRuntimeModelMetadata({ getAll: () => [...modelRuntime.getModels()], registerProvider: (id, config) => modelRuntime.registerProvider(id, config) }, cfg);
 
   const available = await modelRuntime.getAvailable();
   const providerCfg = cfg.providers.find((p) => p.id === cfg.model.provider);
@@ -364,8 +367,8 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
     throw new Error("没有可用模型。请检查 API Key 或稍后重试（opencode 免费额度可能限流）。");
   }
 
-  // pi 原生负责摘要、切分、会话落盘和溢出重试；Dito 只把 DeepSeek Harness
-  // 的比例策略换算成 pi 的 token 预算，并通过运行时覆盖注入，避免写入用户的全局设置。
+  // pi 原生负责摘要、切分、会话落盘和溢出重试；Dito 只把 laozhou 的
+  // 窗口水位和固定尾部策略换算成 pi 的 token 预算，避免写入全局设置。
   const settingsManager = SettingsManager.create(process.cwd(), getAgentDir());
   const compaction = resolveCompactionBudget(model, cfg.contextCompaction);
 
@@ -373,7 +376,7 @@ async function createSessionInner(options: CreateSessionOptions): Promise<Sessio
     cwd: process.cwd(),
     agentDir: getAgentDir(),
     settingsManager,
-    extensionFactories: [makeExtensionFactory(options.skipPluginIds), ...(options.extraExtensions ?? [])],
+    extensionFactories: [makeExtensionFactory(options.skipPluginIds, settingsManager, cfg), ...(options.extraExtensions ?? [])],
     systemPrompt: options.systemPrompt ?? buildDitoSystemPrompt(),
   });
   await resourceLoader.reload();
@@ -446,8 +449,11 @@ export function parseSessionTurns(file: string, limit = 200): SessionTurn[] {
 }
 
 /** 模型回退的详细原因（用于在 Web UI 顶部提示）。 */
-export async function describeModelSelection(): Promise<{ modelName: string; providerId: string; modelId: string; fallbackNotice: string | null }> {  writeModelsJson();
+export async function describeModelSelection(): Promise<{ modelName: string; providerId: string; modelId: string; fallbackNotice: string | null }> {
   const cfg = loadConfig();
+  const provider = cfg.providers.find((p) => p.id === cfg.model.provider);
+  if (provider) await refreshProviderModelMetadata(provider);
+  writeModelsJson(cfg);
   const modelRuntime = await ModelRuntime.create({
     modelsPath: join(DITO_DIR, "models.json"),
     authPath: join(getAgentDir(), "auth.json"),

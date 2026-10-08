@@ -33,12 +33,16 @@ async function main(): Promise<void> {
   const session = created.session;
   if (payload.tools?.length) session.setActiveToolsByName(payload.tools);
 
-  const messages: unknown[] = [];
+  emit({ type: "subagent_start", model: session.model ? `${session.model.provider}/${session.model.id}` : created.modelName });
   const unsubscribe = session.subscribe((event: unknown) => {
-    const e = event as { type?: string; message?: unknown };
-    if ((e.type === "message_end" || e.type === "tool_result_end") && e.message) {
-      messages.push(e.message);
-      emit({ type: e.type, message: e.message });
+    const e = event as { type: string; message?: any; assistantMessageEvent?: { type: string; delta?: string }; toolName?: string };
+    if (e.type === "message_start" && e.message?.role === "assistant") emit({ type: e.type, message: { role: "assistant" } });
+    else if (e.type === "message_update" && e.assistantMessageEvent?.type === "text_delta") {
+      emit({ type: e.type, assistantMessageEvent: { type: "text_delta", delta: e.assistantMessageEvent.delta } });
+    }
+    else if (e.type === "tool_execution_start" || e.type === "tool_execution_end") emit({ type: e.type, toolName: e.toolName });
+    else if (e.type === "message_end" && e.message?.role === "assistant") {
+      emit({ type: e.type, message: { ...e.message, content: e.message.content.filter((block: any) => block.type === "text") } });
     }
   });
 
@@ -47,10 +51,13 @@ async function main(): Promise<void> {
     "你是 Dito 的一个隔离子代理。完成分配的任务后，直接返回可供主代理使用的结果；不要再次创建子代理。",
     payload.task,
   ].filter(Boolean).join("\n\n");
-  await session.prompt(prompt);
-  emit({ type: "subagent_end", model: created.modelName, messages });
-  unsubscribe?.();
-  session.dispose();
+  try {
+    await session.prompt(prompt);
+    emit({ type: "subagent_end", model: created.modelName });
+  } finally {
+    unsubscribe?.();
+    session.dispose();
+  }
 }
 
 main().catch((error) => {

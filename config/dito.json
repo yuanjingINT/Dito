@@ -7,9 +7,11 @@
   },
   "contextCompaction": {
     "enabled": true,
-    "thresholdRatio": 0.8,
-    "retainRatio": 0.16,
-    "headroomTokens": 65536
+    "trimAtRatio": 0.8,
+    "trimBatchRatio": 0.15,
+    "reservedRatio": 0.1,
+    "minReservedTokens": 4096,
+    "compactTailTokens": 16384
   },
   "providers": [
     {
@@ -26,7 +28,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 272000,
           "maxTokens": 16384
         },
         {
@@ -37,7 +38,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 272000,
           "maxTokens": 16384
         }
       ]
@@ -56,7 +56,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 1000000,
           "maxTokens": 384000
         },
         {
@@ -66,7 +65,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 1000000,
           "maxTokens": 384000
         },
         {
@@ -77,7 +75,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 1048576,
           "maxTokens": 131072
         },
         {
@@ -88,7 +85,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 262144,
           "maxTokens": 262144
         },
         {
@@ -98,7 +94,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 1000000,
           "maxTokens": 131072
         },
         {
@@ -109,7 +104,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 1000000,
           "maxTokens": 128000
         },
         {
@@ -120,7 +114,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 1000000,
           "maxTokens": 131072,
           "api": "anthropic-messages",
           "baseUrl": "https://opencode.ai/zen/go"
@@ -133,7 +126,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 1050000,
           "maxTokens": 128000,
           "api": "openai-responses"
         }
@@ -153,7 +145,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 1000000,
           "maxTokens": 384000
         },
         {
@@ -163,7 +154,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 1000000,
           "maxTokens": 384000
         }
       ]
@@ -182,7 +172,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 128000,
           "maxTokens": 16384
         },
         {
@@ -192,7 +181,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 128000,
           "maxTokens": 16384
         },
         {
@@ -203,7 +191,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 128000,
           "maxTokens": 16384
         },
         {
@@ -213,7 +200,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 128000,
           "maxTokens": 16384
         }
       ]
@@ -232,7 +218,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 131072,
           "maxTokens": 8192
         },
         {
@@ -242,7 +227,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 131072,
           "maxTokens": 8192
         },
         {
@@ -252,7 +236,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 32768,
           "maxTokens": 8192
         },
         {
@@ -263,7 +246,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 32768,
           "maxTokens": 4096
         }
       ]
@@ -283,7 +265,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 131072,
           "maxTokens": 16384
         },
         {
@@ -293,7 +274,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 131072,
           "maxTokens": 8192
         },
         {
@@ -304,7 +284,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 262144,
           "maxTokens": 65536
         }
       ]
@@ -323,7 +302,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 65536,
           "maxTokens": 8192
         },
         {
@@ -333,7 +311,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 32768,
           "maxTokens": 8192
         },
         {
@@ -343,7 +320,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 32768,
           "maxTokens": 8192
         },
         {
@@ -353,7 +329,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 131072,
           "maxTokens": 16384
         }
       ]
@@ -372,7 +347,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 262144,
           "maxTokens": 16384
         },
         {
@@ -382,7 +356,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 32768,
           "maxTokens": 4096
         },
         {
@@ -393,7 +366,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 32768,
           "maxTokens": 4096
         }
       ]
@@ -413,7 +385,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 200000,
           "maxTokens": 16384
         },
         {
@@ -424,7 +395,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 200000,
           "maxTokens": 8192
         }
       ]
@@ -444,7 +414,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 128000,
           "maxTokens": 16384
         },
         {
@@ -455,7 +424,6 @@
             "text",
             "image"
           ],
-          "contextWindow": 128000,
           "maxTokens": 16384
         }
       ]
@@ -474,7 +442,6 @@
           "input": [
             "text"
           ],
-          "contextWindow": 128000,
           "maxTokens": 8192
         }
       ]

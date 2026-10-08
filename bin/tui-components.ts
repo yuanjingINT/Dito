@@ -119,9 +119,38 @@ class MessageBlock implements Component {
     if (this.isThinking && !this.thinkingExpanded) {
       return ["", ` ${label} ${C.muted}（点击展开）${C.reset}`, ""];
     }
-    const lines = [` ${label}`, ...this.body.render(inner).map((line) => ` ${line}`)];
+    const lines = [` ${label}${this.isThinking ? ` ${C.muted}（点击收起）${C.reset}` : ""}`, ...this.body.render(inner).map((line) => ` ${line}`)];
     if (this.kind === "user") return ["", ...lines.map((line) => filledLine(line, width, C.panelBg)), ""];
     return ["", ...lines.map((line) => truncateToWidth(line, width, "…")), ""];
+  }
+}
+
+type ToolState = "running" | "done" | "error";
+class ToolBlock implements Component {
+  private readonly body = new Markdown("", 0, 0, markdownTheme);
+  private expanded = false;
+  private output = "";
+  constructor(readonly name: string, private readonly args: unknown, private state: ToolState) {}
+  toggle(): void { this.expanded = !this.expanded; }
+  update(result: unknown, state?: ToolState): void {
+    if (state) this.state = state;
+    this.output = toolOutput(result);
+    // Subagent results are bounded per task; retain every task's result.
+    const cap = 48 * 1024;
+    this.body.setText(this.name === "subagent" || this.output.length <= cap ? this.output : `${this.output.slice(0, cap)}\n\n[后续工具输出已省略]`);
+  }
+  invalidate(): void { this.body.invalidate(); }
+  render(width: number): string[] {
+    const status = this.state === "running" ? `${C.yellow}● 运行中` : this.state === "error" ? `${C.red}× 失败` : `${C.green}✓ 完成`;
+    const preview = this.output && (this.state === "running" || this.name === "subagent") ? singleLine(this.output.split("\n")[0]) : argsSummary(this.args);
+    const hint = this.expanded ? "点击收起" : "点击展开";
+    const header = truncateToWidth(`  ${C.dim}◇ ${this.name}${C.reset} ${status}${C.reset} ${C.muted}（${hint}）${preview ? ` ${preview}` : ""}${C.reset}`, width, "…");
+    if (!this.expanded) return [header];
+    const inner = Math.max(1, width - 4);
+    const args = argsSummary(this.args);
+    const lines = args ? wrapTextWithAnsi(`${C.dim}参数：${args}${C.reset}`, inner) : [];
+    lines.push(...(this.output ? this.body.render(inner) : [`${C.dim}${this.state === "running" ? "等待输出…" : "（无文本输出）"}${C.reset}`]));
+    return [header, ...lines.map((line) => truncateToWidth(`    ${line}`, width, "…"))];
   }
 }
 
@@ -131,19 +160,31 @@ export class ConversationView implements Component {
   private assistant: MessageBlock | undefined;
   private thinking: MessageBlock | undefined;
   private thinkingHits: Array<{ start: number; end: number; block: MessageBlock }> = [];
+  private toolHits: Array<{ row: number; block: ToolBlock }> = [];
+  private tools = new Map<string, ToolBlock>();
   reset(messages: readonly unknown[]): void {
     this.blocks = [];
+    this.tools.clear();
+    this.thinkingHits = [];
+    this.toolHits = [];
     this.beginAssistant();
     for (const raw of messages) {
       const message = raw as MessageLike;
       if (message.role === "user") this.addUser(messageText(message));
       else if (message.role === "assistant") {
-        const text = messageText(message);
-        if (text) this.blocks.push(new MessageBlock("assistant", text));
-        if (Array.isArray(message.content)) for (const rawBlock of message.content) {
-          const block = rawBlock as Record<string, unknown>;
-          if (block?.type === "toolCall" && typeof block.name === "string") this.addTool(block.name, block.arguments);
-        }
+        this.beginAssistant();
+        if (Array.isArray(message.content)) {
+          for (const rawBlock of message.content) {
+            const block = rawBlock as Record<string, unknown>;
+            if (block?.type === "thinking" && typeof block.thinking === "string") this.appendThinking(block.thinking);
+            else if (block?.type === "text" && typeof block.text === "string") this.appendAssistant(block.text);
+            else if (block?.type === "toolCall" && typeof block.name === "string") {
+              this.addTool(block.name, block.arguments, typeof block.id === "string" ? block.id : undefined, "done");
+            }
+          }
+        } else this.appendAssistant(messageText(message));
+      } else if (message.role === "toolResult" && message.toolCallId) {
+        this.updateTool(message.toolCallId, message, message.isError ? "error" : "done");
       }
     }
     this.beginAssistant();
@@ -156,6 +197,19 @@ export class ConversationView implements Component {
     this.assistant.append(delta);
   }
   finishAssistant(message: MessageLike): void {
+    if (Array.isArray(message.content)) {
+      const thinking = message.content.filter((block) => block?.type === "thinking" && typeof block.thinking === "string")
+        .map((block) => block.thinking).join("\n\n");
+      if (thinking) {
+        if (this.thinking) this.thinking.setText(thinking);
+        else {
+          this.thinking = new MessageBlock("thinking", thinking);
+          const index = this.assistant ? this.blocks.indexOf(this.assistant) : -1;
+          if (index >= 0) this.blocks.splice(index, 0, this.thinking);
+          else this.blocks.push(this.thinking);
+        }
+      }
+    }
     const text = messageText(message);
     if (!text) return;
     if (!this.assistant) { this.assistant = new MessageBlock("assistant", text); this.blocks.push(this.assistant); }
@@ -166,11 +220,18 @@ export class ConversationView implements Component {
     if (!this.thinking) { this.thinking = new MessageBlock("thinking"); this.blocks.push(this.thinking); }
     this.thinking.append(delta);
   }
-  addTool(name: string, args: unknown): void {
-    const summary = argsSummary(args);
-    const detail = isBashTool(name) ? singleLine(bashCommand(args)) : summary;
+  addTool(name: string, args: unknown, id?: string, state: ToolState = "running"): void {
+    if (id && this.tools.has(id)) return;
+    if (!isBashTool(name)) {
+      const block = new ToolBlock(name, args, state);
+      this.blocks.push(block);
+      if (id) this.tools.set(id, block);
+      return;
+    }
+    const detail = singleLine(bashCommand(args));
     this.blocks.push(new Text(`${C.dim}  ◇ ${name}${detail ? `  ${truncateToWidth(detail, 100, "…")}` : ""}${C.reset}`, 0, 0));
   }
+  updateTool(id: string, result: unknown, state?: ToolState): void { this.tools.get(id)?.update(result, state); }
   notice(text: string): void { this.blocks.push(new Text(`${C.dim}  ${plainText(text)}${C.reset}`, 0, 0)); }
   /** Toggle only when the click lands on a thinking header in the rendered content. */
   toggleThinkingAt(row: number): boolean {
@@ -183,6 +244,15 @@ export class ConversationView implements Component {
   isThinkingAt(row: number): boolean {
     return this.thinkingHits.some((item) => row >= item.start && row < item.end);
   }
+  isExpandableAt(row: number): boolean { return this.isThinkingAt(row) || this.toolHits.some((hit) => hit.row === row); }
+  toggleDetailsAt(row: number): boolean {
+    if (this.toggleThinkingAt(row)) return true;
+    const hit = this.toolHits.find((item) => item.row === row);
+    if (!hit) return false;
+    hit.block.toggle();
+    this.invalidate();
+    return true;
+  }
   invalidate(): void { this.blocks.forEach((block) => block.invalidate()); }
   render(width: number): string[] {
     if (!this.blocks.length) {
@@ -193,15 +263,15 @@ export class ConversationView implements Component {
       return lines.map((line) => truncateToWidth(line, width, "…"));
     }
     this.thinkingHits = [];
+    this.toolHits = [];
     const lines: string[] = [];
     for (const block of this.blocks) {
       const rendered = block.render(width);
       const start = lines.length;
       if (block instanceof MessageBlock && block.isThinking) {
-        // The leading blank line and the gray header are clickable; the body is
-        // left selectable when expanded.
-        this.thinkingHits.push({ start, end: Math.min(start + 2, start + rendered.length), block });
-      }
+        // Only headers are clickable; expanded bodies remain selectable.
+        this.thinkingHits.push({ start: start + 1, end: start + 2, block });
+      } else if (block instanceof ToolBlock) this.toolHits.push({ row: start, block });
       lines.push(...rendered);
     }
     return lines;

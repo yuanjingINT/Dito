@@ -9,6 +9,8 @@ import { homedir } from "node:os";
 import { hasPromptBundle, listEncryptedPromptNames, namespaceForDir, readEncryptedPrompt } from "./prompt-crypto.js";
 import { channelDataDir, migrateChannelData, userDataDir, writePrivateJson, type UserChannel } from "./user-data.js";
 import { DEFAULT_CONTEXT_COMPACTION, type ContextCompactionConfig } from "./context-compaction.js";
+import { cachedModelInfo, fetchEndpointModels, type ModelEndpoint, type ModelInfo } from "./model-metadata.js";
+export type { ModelInfo } from "./model-metadata.js";
 import { DEFAULT_MEMORY_CONFIG, resolveMemoryConfig, type MemoryConfig } from "./memory-config.js";
 import { DEFAULT_DITO_RE_CONFIG, type DitoReConfig } from "./plugins/dito-re.js";
 import { DEFAULT_SUBAGENT_CONFIG, type SubagentConfig } from "./subagent-config.js";
@@ -66,7 +68,8 @@ export interface ProviderModelConfig {
   name?: string;
   reasoning: boolean;
   input: ("text" | "image")[];
-  contextWindow: number;
+  /** API/catalog metadata, or an explicit user-supplied fallback. */
+  contextWindow?: number;
   maxTokens: number;
   /** 模型级 API 类型覆盖（可选，默认继承供应商 api） */
   api?: string;
@@ -198,7 +201,7 @@ export interface DitoConfig {
     vision: string;
   };
   providers: ProviderConfig[];
-  /** 上下文自动压缩策略（参考 DeepSeek Harness）。 */
+  /** 上下文自动压缩策略（与 laozhou 的窗口水位保持一致）。 */
   contextCompaction: ContextCompactionConfig;
   persona: {
     active: string;
@@ -288,8 +291,8 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: " ",
       api: "openai-completions",
       models: [
-        { id: "big-pickle", name: "Big Pickle（免费）", reasoning: true, input: ["text"], contextWindow: 272000, maxTokens: 16384 },
-        { id: "mimo-v2.5-free", name: "MiMo v2.5（免费·视觉）", reasoning: false, input: ["text", "image"], contextWindow: 272000, maxTokens: 16384 },
+        { id: "big-pickle", name: "Big Pickle（免费）", reasoning: true, input: ["text"], maxTokens: 16384 },
+        { id: "mimo-v2.5-free", name: "MiMo v2.5（免费·视觉）", reasoning: false, input: ["text", "image"], maxTokens: 16384 },
       ],
     },
     {
@@ -299,21 +302,21 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$OPENCODE_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", reasoning: true, input: ["text"], contextWindow: 1000000, maxTokens: 384000 },
-        { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", reasoning: true, input: ["text"], contextWindow: 1000000, maxTokens: 384000 },
-        { id: "kimi-k3", name: "Kimi K3", reasoning: true, input: ["text", "image"], contextWindow: 1048576, maxTokens: 131072 },
-        { id: "kimi-k2.7-code", name: "Kimi K2.7 Code", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 262144 },
-        { id: "kimi-k2.6", name: "Kimi K2.6", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 65536 },
-        { id: "glm-5.2", name: "GLM-5.2", reasoning: true, input: ["text"], contextWindow: 1000000, maxTokens: 131072 },
-        { id: "mimo-v2.5", name: "MiMo V2.5", reasoning: true, input: ["text", "image"], contextWindow: 1000000, maxTokens: 128000 },
-        { id: "minimax-m2.7", name: "MiniMax-M2.7", reasoning: true, input: ["text"], contextWindow: 204800, maxTokens: 131072 },
-        { id: "qwen3.6-plus", name: "Qwen3.6 Plus", reasoning: true, input: ["text", "image"], contextWindow: 1000000, maxTokens: 65536 },
+        { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", reasoning: true, input: ["text"], maxTokens: 384000 },
+        { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", reasoning: true, input: ["text"], maxTokens: 384000 },
+        { id: "kimi-k3", name: "Kimi K3", reasoning: true, input: ["text", "image"], maxTokens: 131072 },
+        { id: "kimi-k2.7-code", name: "Kimi K2.7 Code", reasoning: true, input: ["text", "image"], maxTokens: 262144 },
+        { id: "kimi-k2.6", name: "Kimi K2.6", reasoning: true, input: ["text", "image"], maxTokens: 65536 },
+        { id: "glm-5.2", name: "GLM-5.2", reasoning: true, input: ["text"], maxTokens: 131072 },
+        { id: "mimo-v2.5", name: "MiMo V2.5", reasoning: true, input: ["text", "image"], maxTokens: 128000 },
+        { id: "minimax-m2.7", name: "MiniMax-M2.7", reasoning: true, input: ["text"], maxTokens: 131072 },
+        { id: "qwen3.6-plus", name: "Qwen3.6 Plus", reasoning: true, input: ["text", "image"], maxTokens: 65536 },
         // anthropic-messages 端点（/zen/go 无 /v1）
-        { id: "qwen3.8-max", name: "Qwen3.8 Max", reasoning: true, input: ["text", "image"], contextWindow: 1000000, maxTokens: 131072, api: "anthropic-messages", baseUrl: "https://opencode.ai/zen/go" },
-        { id: "qwen3.7-max", name: "Qwen3.7 Max", reasoning: true, input: ["text"], contextWindow: 1000000, maxTokens: 65536, api: "anthropic-messages", baseUrl: "https://opencode.ai/zen/go" },
-        { id: "minimax-m3", name: "MiniMax-M3", reasoning: true, input: ["text", "image"], contextWindow: 1000000, maxTokens: 131072, api: "anthropic-messages", baseUrl: "https://opencode.ai/zen/go" },
+        { id: "qwen3.8-max", name: "Qwen3.8 Max", reasoning: true, input: ["text", "image"], maxTokens: 131072, api: "anthropic-messages", baseUrl: "https://opencode.ai/zen/go" },
+        { id: "qwen3.7-max", name: "Qwen3.7 Max", reasoning: true, input: ["text"], maxTokens: 65536, api: "anthropic-messages", baseUrl: "https://opencode.ai/zen/go" },
+        { id: "minimax-m3", name: "MiniMax-M3", reasoning: true, input: ["text", "image"], maxTokens: 131072, api: "anthropic-messages", baseUrl: "https://opencode.ai/zen/go" },
         // openai-responses 端点（/zen/go/v1）
-        { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", reasoning: true, input: ["text", "image"], contextWindow: 1050000, maxTokens: 128000, api: "openai-responses" },
+        { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", reasoning: true, input: ["text", "image"], maxTokens: 128000, api: "openai-responses" },
       ],
     },
     {
@@ -323,8 +326,8 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$DEEPSEEK_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", reasoning: true, input: ["text"], contextWindow: 1000000, maxTokens: 384000 },
-        { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", reasoning: true, input: ["text"], contextWindow: 1000000, maxTokens: 384000 },
+        { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", reasoning: true, input: ["text"], maxTokens: 384000 },
+        { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", reasoning: true, input: ["text"], maxTokens: 384000 },
       ],
     },
     {
@@ -334,10 +337,10 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$ZHIPUAI_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "glm-5.3-flash", name: "GLM-5.3-Flash（闪存·快）", reasoning: true, input: ["text"], contextWindow: 128000, maxTokens: 16384 },
-        { id: "glm-4-flash", name: "GLM-4-Flash（免费）", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 16384 },
-        { id: "glm-4v-flash", name: "GLM-4V-Flash（免费·视觉）", reasoning: false, input: ["text", "image"], contextWindow: 128000, maxTokens: 16384 },
-        { id: "glm-5.2", name: "GLM-5.2（旗舰）", reasoning: true, input: ["text"], contextWindow: 128000, maxTokens: 16384 },
+        { id: "glm-5.3-flash", name: "GLM-5.3-Flash（闪存·快）", reasoning: true, input: ["text"], maxTokens: 16384 },
+        { id: "glm-4-flash", name: "GLM-4-Flash（免费）", reasoning: false, input: ["text"], maxTokens: 16384 },
+        { id: "glm-4v-flash", name: "GLM-4V-Flash（免费·视觉）", reasoning: false, input: ["text", "image"], maxTokens: 16384 },
+        { id: "glm-5.2", name: "GLM-5.2（旗舰）", reasoning: true, input: ["text"], maxTokens: 16384 },
       ],
     },
     {
@@ -347,10 +350,10 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$DASHSCOPE_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "qwen-turbo", name: "Qwen Turbo", reasoning: false, input: ["text"], contextWindow: 131072, maxTokens: 8192 },
-        { id: "qwen-plus", name: "Qwen Plus", reasoning: false, input: ["text"], contextWindow: 131072, maxTokens: 8192 },
-        { id: "qwen-max", name: "Qwen Max", reasoning: false, input: ["text"], contextWindow: 32768, maxTokens: 8192 },
-        { id: "qwen-vl-plus", name: "Qwen VL Plus（视觉）", reasoning: false, input: ["text", "image"], contextWindow: 32768, maxTokens: 4096 },
+        { id: "qwen-turbo", name: "Qwen Turbo", reasoning: false, input: ["text"], maxTokens: 8192 },
+        { id: "qwen-plus", name: "Qwen Plus", reasoning: false, input: ["text"], maxTokens: 8192 },
+        { id: "qwen-max", name: "Qwen Max", reasoning: false, input: ["text"], maxTokens: 8192 },
+        { id: "qwen-vl-plus", name: "Qwen VL Plus（视觉）", reasoning: false, input: ["text", "image"], maxTokens: 4096 },
       ],
     },
     {
@@ -360,9 +363,9 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$MOONSHOT_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "kimi-latest", name: "Kimi Latest", reasoning: true, input: ["text", "image"], contextWindow: 131072, maxTokens: 16384 },
-        { id: "moonshot-v1-128k", name: "Moonshot V1 128K", reasoning: false, input: ["text"], contextWindow: 131072, maxTokens: 8192 },
-        { id: "kimi-k2-0711-preview", name: "Kimi K2（推理）", reasoning: true, input: ["text", "image"], contextWindow: 262144, maxTokens: 65536 },
+        { id: "kimi-latest", name: "Kimi Latest", reasoning: true, input: ["text", "image"], maxTokens: 16384 },
+        { id: "moonshot-v1-128k", name: "Moonshot V1 128K", reasoning: false, input: ["text"], maxTokens: 8192 },
+        { id: "kimi-k2-0711-preview", name: "Kimi K2（推理）", reasoning: true, input: ["text", "image"], maxTokens: 65536 },
       ],
     },
     {
@@ -372,10 +375,10 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$SILICONFLOW_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "deepseek-ai/DeepSeek-V3", name: "DeepSeek-V3", reasoning: false, input: ["text"], contextWindow: 65536, maxTokens: 8192 },
-        { id: "Qwen/Qwen2.5-7B-Instruct", name: "Qwen2.5-7B（免费）", reasoning: false, input: ["text"], contextWindow: 32768, maxTokens: 8192 },
-        { id: "THUDM/glm-4-9b-chat", name: "GLM-4-9B（免费）", reasoning: false, input: ["text"], contextWindow: 32768, maxTokens: 8192 },
-        { id: "Qwen/Qwen3-235B-A22B-Instruct", name: "Qwen3-235B（推理）", reasoning: true, input: ["text"], contextWindow: 131072, maxTokens: 16384 },
+        { id: "deepseek-ai/DeepSeek-V3", name: "DeepSeek-V3", reasoning: false, input: ["text"], maxTokens: 8192 },
+        { id: "Qwen/Qwen2.5-7B-Instruct", name: "Qwen2.5-7B（免费）", reasoning: false, input: ["text"], maxTokens: 8192 },
+        { id: "THUDM/glm-4-9b-chat", name: "GLM-4-9B（免费）", reasoning: false, input: ["text"], maxTokens: 8192 },
+        { id: "Qwen/Qwen3-235B-A22B-Instruct", name: "Qwen3-235B（推理）", reasoning: true, input: ["text"], maxTokens: 16384 },
       ],
     },
     {
@@ -385,9 +388,9 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$ARK_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "doubao-seed-1-6-250615", name: "Doubao Seed 1.6", reasoning: false, input: ["text"], contextWindow: 262144, maxTokens: 16384 },
-        { id: "doubao-1-5-pro-32k-250115", name: "Doubao 1.5 Pro 32K", reasoning: false, input: ["text"], contextWindow: 32768, maxTokens: 4096 },
-        { id: "doubao-1-5-vision-pro-32k-250115", name: "Doubao 1.5 Vision Pro（视觉）", reasoning: false, input: ["text", "image"], contextWindow: 32768, maxTokens: 4096 },
+        { id: "doubao-seed-1-6-250615", name: "Doubao Seed 1.6", reasoning: false, input: ["text"], maxTokens: 16384 },
+        { id: "doubao-1-5-pro-32k-250115", name: "Doubao 1.5 Pro 32K", reasoning: false, input: ["text"], maxTokens: 4096 },
+        { id: "doubao-1-5-vision-pro-32k-250115", name: "Doubao 1.5 Vision Pro（视觉）", reasoning: false, input: ["text", "image"], maxTokens: 4096 },
       ],
     },
     {
@@ -397,8 +400,8 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$ANTHROPIC_API_KEY",
       api: "anthropic-messages",
       models: [
-        { id: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 16384 },
-        { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 8192 },
+        { id: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5", reasoning: true, input: ["text", "image"], maxTokens: 16384 },
+        { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", reasoning: true, input: ["text", "image"], maxTokens: 8192 },
       ],
     },
     {
@@ -408,8 +411,8 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "$OPENAI_API_KEY",
       api: "openai-completions",
       models: [
-        { id: "gpt-4o", name: "GPT-4o", reasoning: false, input: ["text", "image"], contextWindow: 128000, maxTokens: 16384 },
-        { id: "gpt-4o-mini", name: "GPT-4o mini", reasoning: false, input: ["text", "image"], contextWindow: 128000, maxTokens: 16384 },
+        { id: "gpt-4o", name: "GPT-4o", reasoning: false, input: ["text", "image"], maxTokens: 16384 },
+        { id: "gpt-4o-mini", name: "GPT-4o mini", reasoning: false, input: ["text", "image"], maxTokens: 16384 },
       ],
     },
     {
@@ -419,7 +422,7 @@ export function defaultProviders(): ProviderConfig[] {
       apiKey: "ollama",
       api: "openai-completions",
       models: [
-        { id: "qwen2.5:7b", name: "Qwen2.5 7B", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 8192 },
+        { id: "qwen2.5:7b", name: "Qwen2.5 7B", reasoning: false, input: ["text"], maxTokens: 8192 },
       ],
     },
   ];
@@ -563,33 +566,31 @@ export function providerRequestHeaders(
   return headers;
 }
 
-export interface ModelInfo {
-  id: string;
-  name: string;
+function metadataEndpoint(p: ProviderConfig, model?: ProviderModelConfig): ModelEndpoint {
+  return { id: p.id, baseUrl: model?.baseUrl || p.baseUrl, api: model?.api || p.api, apiKey: resolveApiKey(p.apiKey).trim(), models: p.models };
 }
-
-/** 从供应商 API 拉取模型列表（GET {baseUrl}/models，OpenAI/Anthropic 兼容）。 */
-export async function fetchModelList(p: ProviderConfig): Promise<ModelInfo[]> {
-  const base = p.baseUrl.trim().replace(/\/+$/, "");
-  if (!base) return [];
-  const headers: Record<string, string> = {};
-  const key = resolveApiKey(p.apiKey);
-  if (p.api === "anthropic-messages") {
-    if (key) {
-      headers["x-api-key"] = key;
-      headers["anthropic-version"] = "2023-06-01";
-    }
-  } else if (key) {
-    headers["Authorization"] = `Bearer ${key}`;
+export function getModelMetadata(p: ProviderConfig, id: string): ModelInfo | undefined {
+  return cachedModelInfo(metadataEndpoint(p, p.models.find((m) => m.id === id)), id, join(ditoDataDir(), "model-metadata"));
+}
+/** Model lists retain limits; providers that omit them use the live catalog/cache. */
+export async function fetchModelList(p: ProviderConfig, options: { force?: boolean; signal?: AbortSignal } = {}): Promise<ModelInfo[]> {
+  const endpoints = new Map<string, ModelEndpoint>();
+  for (const model of [undefined, ...p.models.filter((m) => m.baseUrl || m.api)]) {
+    const endpoint = metadataEndpoint(p, model);
+    endpoints.set(`${endpoint.api}\n${endpoint.baseUrl}`, endpoint);
   }
-  const resp = await fetch(`${base}/models`, { headers, signal: AbortSignal.timeout(10_000) });
-  if (!resp.ok) return [];
-  const json = (await resp.json()) as {
-    data?: { id: string; display_name?: string; name?: string }[];
-    models?: { id: string; name?: string }[];
-  };
-  const arr = json.data ?? json.models ?? [];
-  return arr.map((m) => ({ id: m.id, name: m.display_name || m.name || m.id }));
+  const lists = await Promise.all([...endpoints.values()].map((endpoint) => fetchEndpointModels(endpoint, join(ditoDataDir(), "model-metadata"), options)));
+  const merged = new Map<string, ModelInfo>();
+  for (const list of lists) for (const model of list) merged.set(model.id, model);
+  return [...merged.values()];
+}
+export async function refreshProviderModelMetadata(p: ProviderConfig): Promise<void> {
+  await fetchModelList(p);
+  for (const model of p.models) {
+    const metadata = getModelMetadata(p, model.id);
+    if (metadata?.contextWindow) model.contextWindow = metadata.contextWindow;
+    if (metadata?.maxTokens) model.maxTokens = metadata.maxTokens;
+  }
 }
 
 /** 把 API 拉到的模型列表合并进供应商配置：以拉取结果为主、保留列表外已有模型。
@@ -600,14 +601,16 @@ export function applyFetchedModels(p: ProviderConfig, list: ModelInfo[]): boolea
   const fetchedIds = new Set(list.map((m) => m.id));
   const merged: ProviderModelConfig[] = list.map((m) => {
     const hit = existing.get(m.id);
-    if (hit) return hit;
+    if (hit) return { ...hit, ...m, contextWindow: m.contextWindow ?? hit.contextWindow, input: m.input ?? hit.input, reasoning: m.reasoning ?? hit.reasoning, maxTokens: m.maxTokens ?? hit.maxTokens };
     return {
       id: m.id,
       name: m.name || m.id,
       reasoning: false,
       input: ["text"],
-      contextWindow: 128000,
-      maxTokens: 16384,
+      ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+      maxTokens: m.maxTokens ?? 16384,
+      ...(m.reasoning !== undefined ? { reasoning: m.reasoning } : {}),
+      ...(m.input ? { input: m.input } : {}),
     };
   });
   for (const m of p.models) {
@@ -695,6 +698,20 @@ export function loadConfig(): DitoConfig {
   if (existsSync(path)) {
     try {
       const raw = JSON.parse(readFileSync(path, "utf-8")) as Partial<DitoConfig>;
+      // 0.2.1 之前的配置使用 DeepSeek Harness 命名。迁移到 laozhou
+      // 参数时只保留可对应的触发水位，尾部预算改用固定 16k。
+      const legacyCompaction = raw.contextCompaction as (Partial<ContextCompactionConfig> | undefined);
+      if (legacyCompaction && typeof legacyCompaction === "object") {
+        const migrated: Partial<ContextCompactionConfig> = { ...legacyCompaction };
+        if (migrated.trimAtRatio === undefined && migrated.thresholdRatio !== undefined) {
+          migrated.trimAtRatio = migrated.thresholdRatio;
+        }
+        if (migrated.compactTailTokens === undefined) migrated.compactTailTokens = 16_384;
+        delete migrated.thresholdRatio;
+        delete migrated.retainRatio;
+        delete migrated.headroomTokens;
+        (raw as { contextCompaction?: Partial<ContextCompactionConfig> }).contextCompaction = migrated;
+      }
       legacyChannels = raw.channels ?? {};
       shouldRewritePublicConfig = "qq" in legacyChannels || "matrix" in legacyChannels;
       const merged = deepMerge(defaultConfig(), raw);
@@ -728,6 +745,11 @@ export function loadConfig(): DitoConfig {
     writePrivateJson(ditoConfigPath(), { ...config, channels: { mobile: config.channels.mobile } });
   }
   config.plugins.memory = resolveMemoryConfig(config.plugins.memory);
+  for (const p of config.providers) for (const model of p.models) {
+    const metadata = getModelMetadata(p, model.id);
+    if (metadata?.contextWindow) model.contextWindow = metadata.contextWindow;
+    if (metadata?.maxTokens) model.maxTokens = metadata.maxTokens;
+  }
   return config;
 }
 
