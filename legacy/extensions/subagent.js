@@ -1,0 +1,521 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import { StringEnum } from "@earendil-works/pi-ai";
+import {
+  CONFIG_DIR_NAME,
+  getAgentDir,
+  parseFrontmatter
+} from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { resolveSubagentConfig } from "./subagent-config.js";
+const WORK_TYPES = ["auto", "quick", "standard", "coding", "review", "research", "complex"];
+const HARD_MAX_AGENTS = 100;
+const DEFAULT_OUTPUT_CAP = 48 * 1024;
+const EXPECTED_INPUT_TOKENS = 12e3;
+const EXPECTED_OUTPUT_TOKENS = 4e3;
+const BUILTIN_PROFILES = [
+  {
+    name: "scout",
+    description: "快速检索代码、文件和事实，输出压缩后的调查结果。",
+    source: "builtin",
+    tools: ["read", "grep", "find", "ls"],
+    systemPrompt: "你是侦察子代理。快速查找与任务相关的文件、接口和事实，输出结构化发现，不修改文件。"
+  },
+  {
+    name: "planner",
+    description: "根据调查结果拆解实现计划。",
+    source: "builtin",
+    tools: ["read", "grep", "find", "ls"],
+    systemPrompt: "你是规划子代理。分析任务和已有代码，给出具体、可执行的步骤和风险，不修改文件。"
+  },
+  {
+    name: "reviewer",
+    description: "检查实现的正确性、安全性和可维护性。",
+    source: "builtin",
+    tools: ["read", "grep", "find", "ls"],
+    systemPrompt: "你是审查子代理。检查代码问题、边界条件、安全风险和回归风险，按严重程度给出结论。"
+  },
+  {
+    name: "worker",
+    description: "执行完整的实现、修复和验证任务。",
+    source: "builtin",
+    systemPrompt: "你是执行子代理。独立完成分配的任务，必要时读取和修改工作区，最后汇报改动和验证结果。"
+  }
+];
+function isDirectory(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function nearestProjectAgentsDir(cwd) {
+  let current = cwd;
+  while (true) {
+    const candidate = join(current, CONFIG_DIR_NAME, "agents");
+    if (isDirectory(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+function loadProfilesFromDir(dir, source) {
+  if (!isDirectory(dir)) return [];
+  const profiles = [];
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return profiles;
+  }
+  for (const entry of entries) {
+    if (!entry.endsWith(".md")) continue;
+    const path = join(dir, entry);
+    try {
+      const parsed = parseFrontmatter(readFileSync(path, "utf8"));
+      if (!parsed.frontmatter.name || !parsed.frontmatter.description) continue;
+      profiles.push({
+        name: parsed.frontmatter.name,
+        description: parsed.frontmatter.description,
+        systemPrompt: parsed.body,
+        source,
+        model: parsed.frontmatter.model?.trim() || void 0,
+        tools: parsed.frontmatter.tools?.split(",").map((tool) => tool.trim()).filter(Boolean)
+      });
+    } catch {
+    }
+  }
+  return profiles;
+}
+function discoverSubagentProfiles(cwd, scope = "user") {
+  const profiles = new Map(BUILTIN_PROFILES.map((profile) => [profile.name, profile]));
+  if (scope !== "project") {
+    for (const profile of loadProfilesFromDir(join(getAgentDir(), "agents"), "user")) profiles.set(profile.name, profile);
+  }
+  if (scope !== "user") {
+    const projectDir = nearestProjectAgentsDir(cwd);
+    if (projectDir) for (const profile of loadProfilesFromDir(projectDir, "project")) profiles.set(profile.name, profile);
+  }
+  return [...profiles.values()];
+}
+function inferWorkType(task, requested = "auto") {
+  if (requested !== "auto") return requested;
+  const text = task.toLowerCase();
+  if (/(review|审查|检查|audit|安全|回归)/i.test(text)) return "review";
+  if (/(代码|编码|实现|修复|重构|编程|bug|debug|implement|refactor|fix)/i.test(text)) return "coding";
+  if (/(研究|调研|调查|比较|资料|research|investigate|分析)/i.test(text)) return "research";
+  if (/(架构|设计|复杂|多步骤|综合|architecture|complex)/i.test(text)) return "complex";
+  if (/(总结|提取|查找|列出|格式化|快速|summarize|lookup|list|quick)/i.test(text)) return "quick";
+  return "standard";
+}
+function modelCostUsd(model) {
+  const cost = model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  return Math.max(0, (cost.input * EXPECTED_INPUT_TOKENS + cost.output * EXPECTED_OUTPUT_TOKENS) / 1e6);
+}
+function modelQuality(model) {
+  const context = Number.isFinite(model.contextWindow) ? Math.log2(Math.max(1, model.contextWindow || 1)) : 0;
+  const output = Math.log2(Math.max(1, model.maxTokens || 1));
+  const reasoning = model.reasoning ? 3 : 0;
+  const name = `${model.name} ${model.id}`.toLowerCase();
+  const specialist = /(pro|max|opus|sonnet|reason|coder|code|旗舰|推理)/.test(name) ? 1.5 : 0;
+  return reasoning + context / 10 + output / 10 + specialist;
+}
+function exactModel(models, requested) {
+  const value = requested?.trim();
+  if (!value) return void 0;
+  return models.find(
+    (model) => `${model.provider}/${model.id}` === value || model.id === value || model.name === value
+  );
+}
+function chooseSubagentModel(models, task, workType = "auto", budgetUsd = 0, requestedModel) {
+  const textModels = models.filter((model) => model.input?.includes("text"));
+  const explicit = exactModel(textModels, requestedModel);
+  if (explicit) {
+    return { model: explicit, estimatedCostUsd: modelCostUsd(explicit), reason: "使用任务明确指定的模型" };
+  }
+  if (textModels.length === 0) return { estimatedCostUsd: 0, reason: "当前模型目录没有可用的文本模型" };
+  const type = inferWorkType(task, workType);
+  const affordable = budgetUsd > 0 ? textModels.filter((model) => modelCostUsd(model) <= budgetUsd) : textModels;
+  const candidates = affordable.length > 0 ? affordable : [...textModels].sort((a, b) => modelCostUsd(a) - modelCostUsd(b)).slice(0, 1);
+  let selected;
+  if (type === "quick") {
+    selected = [...candidates].sort((a, b) => modelCostUsd(a) - modelCostUsd(b) || modelQuality(b) - modelQuality(a))[0];
+  } else if (type === "complex" || type === "coding" || type === "research") {
+    selected = [...candidates].sort((a, b) => modelQuality(b) - modelQuality(a) || modelCostUsd(a) - modelCostUsd(b))[0];
+  } else {
+    selected = [...candidates].sort((a, b) => {
+      const aRatio = modelCostUsd(a) / Math.max(1, modelQuality(a));
+      const bRatio = modelCostUsd(b) / Math.max(1, modelQuality(b));
+      return aRatio - bRatio || modelQuality(b) - modelQuality(a);
+    })[0];
+  }
+  const budgetNote = budgetUsd > 0 ? `，预算 ${budgetUsd.toFixed(4)} USD` : "，未设置预算上限";
+  return {
+    model: selected,
+    estimatedCostUsd: modelCostUsd(selected),
+    reason: `${type}任务按价格/能力策略选择${budgetNote}`
+  };
+}
+function textFromMessage(message) {
+  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return "";
+  return message.content.filter((part) => part?.type === "text").map((part) => part.text ?? "").join("");
+}
+function usageFromMessage(message, usage) {
+  if (message?.role !== "assistant" || !message.usage) return;
+  usage.turns++;
+  usage.input += message.usage.input || 0;
+  usage.output += message.usage.output || 0;
+  usage.cacheRead += message.usage.cacheRead || 0;
+  usage.cacheWrite += message.usage.cacheWrite || 0;
+  usage.cost += message.usage.cost?.total || 0;
+}
+function capOutput(text) {
+  if (Buffer.byteLength(text, "utf8") <= DEFAULT_OUTPUT_CAP) return text;
+  let result = text.slice(0, DEFAULT_OUTPUT_CAP);
+  while (Buffer.byteLength(result, "utf8") > DEFAULT_OUTPUT_CAP) result = result.slice(0, -1);
+  return `${result}
+
+[子代理输出已截断]`;
+}
+function applySubagentEvent(result, event) {
+  if (!event || typeof event !== "object") return false;
+  if (event.type === "subagent_start") {
+    if (typeof event.model === "string") result.model = event.model;
+  } else if (event.type === "message_start" && event.message?.role === "assistant") {
+    result.output = "";
+  } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
+    result.output = (result.output + (event.assistantMessageEvent.delta || "")).slice(0, DEFAULT_OUTPUT_CAP);
+  } else if (event.type === "message_end" && event.message?.role === "assistant") {
+    usageFromMessage(event.message, result.usage);
+    const output = textFromMessage(event.message);
+    if (output) result.output = capOutput(output);
+    if (event.message.stopReason === "error" || event.message.stopReason === "aborted") {
+      result.error = event.message.errorMessage || "子代理未完成任务";
+    }
+  } else if (event.type === "tool_execution_start") {
+    result.currentTool = event.toolName;
+    result.toolCalls++;
+  } else if (event.type === "tool_execution_end") {
+    if (result.currentTool === event.toolName) result.currentTool = void 0;
+  } else if (event.type === "subagent_error") {
+    result.error = String(event.error || "子代理失败");
+  } else return false;
+  return true;
+}
+async function runWorker(profile, task, model, routeReason, cwd, signal, onProgress) {
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 };
+  const tempDir = await mkdtemp(join(tmpdir(), "dito-subagent-"));
+  const payloadPath = join(tempDir, "payload.json");
+  const payload = {
+    task: task.task,
+    systemPrompt: profile.systemPrompt,
+    model: model ? `${model.provider}/${model.id}` : void 0,
+    tools: profile.tools
+  };
+  const extensionRoot = dirname(fileURLToPath(import.meta.url));
+  const projectRoot = dirname(extensionRoot);
+  const workerPath = join(projectRoot, "bin", "subagent-worker.js");
+  const result = {
+    agent: profile.name,
+    model: model ? `${model.provider}/${model.id}` : void 0,
+    task: task.task,
+    output: "",
+    usage,
+    estimatedCostUsd: model ? modelCostUsd(model) : 0,
+    routeReason,
+    state: "running",
+    toolCalls: 0
+  };
+  onProgress?.(result);
+  let buffer = "";
+  let aborted = false;
+  let lastUpdate = 0;
+  const processLine = (line) => {
+    if (!line.trim()) return;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (applySubagentEvent(result, event)) {
+      const now = Date.now();
+      if (event.type !== "message_update" || now - lastUpdate >= 100) {
+        onProgress?.(result);
+        lastUpdate = now;
+      }
+    }
+  };
+  try {
+    await writeFile(payloadPath, JSON.stringify(payload), { encoding: "utf8", mode: 384 });
+    const exitCode = await new Promise((resolve) => {
+      const child = spawn(process.execPath, [...process.execArgv, workerPath, "--payload", payloadPath], {
+        cwd,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      let stderr = "";
+      let closed = false;
+      let killTimer;
+      const abort = () => {
+        aborted = true;
+        child.kill("SIGTERM");
+        killTimer = setTimeout(() => {
+          if (!closed) child.kill("SIGKILL");
+        }, 5e3);
+        killTimer.unref();
+      };
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (data) => {
+        buffer += data.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) processLine(line);
+      });
+      child.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+      child.on("error", (error) => {
+        result.error = error.message;
+        resolve(1);
+      });
+      child.on("close", (code) => {
+        closed = true;
+        clearTimeout(killTimer);
+        signal?.removeEventListener("abort", abort);
+        if (buffer.trim()) processLine(buffer);
+        if (!result.error && code !== 0) result.error = stderr.trim() || `子代理退出码 ${code ?? 1}`;
+        resolve(code ?? 1);
+      });
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+    });
+    if (aborted) result.error = "子代理已取消";
+    if (exitCode !== 0 && !result.error) result.error = `子代理退出码 ${exitCode}`;
+    result.output = capOutput(result.output || result.error || "（子代理没有返回文本）");
+    result.state = aborted ? "cancelled" : result.error ? "error" : "done";
+    result.currentTool = void 0;
+    onProgress?.(result);
+    return result;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {
+    });
+  }
+}
+async function mapWithConcurrency(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+function modelLabel(model) {
+  return model ? `${model.provider}/${model.id}` : "主代理默认模型";
+}
+function chooseProfile(profiles, requested, workType, task) {
+  if (requested) {
+    const found = profiles.find((profile) => profile.name === requested);
+    if (found) return found;
+  }
+  const type = inferWorkType(task, workType);
+  const preferred = type === "review" ? "reviewer" : type === "quick" || type === "research" ? "scout" : type === "complex" ? "planner" : "worker";
+  return profiles.find((profile) => profile.name === preferred) ?? profiles[0];
+}
+function formatResult(result, partial = false) {
+  const labels = { queued: "排队中", running: "运行中", done: "完成", error: "失败", cancelled: "已取消", skipped: "未执行" };
+  const status = `${labels[result.state]}${result.error ? `：${result.error}` : ""}`;
+  const activity = result.currentTool ? `
+当前工具：${result.currentTool}` : "";
+  const output = partial && result.output.length > 4096 ? `${result.output.slice(0, 4096)}
+[进度预览已截断，完成后可查看结果]` : result.output;
+  return `### ${result.agent} · ${status}
+任务：${result.task}
+模型：${result.model || "主代理默认模型"}
+预估单任务成本：$${result.estimatedCostUsd.toFixed(4)}
+工具调用：${result.toolCalls} 次${activity}
+${output}`;
+}
+function progressUpdate(mode, results, partial = false) {
+  const count = (state) => results.filter((result) => result.state === state).length;
+  const label = { single: "单任务", parallel: "并行", chain: "串行" }[mode];
+  const text = `子代理 · ${label} · 完成 ${count("done")}/${results.length} · 运行 ${count("running")} · 排队 ${count("queued")} · 失败 ${count("error")} · 取消 ${count("cancelled")} · 未执行 ${count("skipped")}`;
+  return {
+    content: [{ type: "text", text: `${text}
+
+${results.map((result) => formatResult(result, partial)).join("\n\n---\n\n")}` }],
+    details: { mode, isError: results.some((result) => !!result.error), results: results.map((result) => ({ ...result, usage: { ...result.usage } })) }
+  };
+}
+const WorkTypeSchema = StringEnum(WORK_TYPES, { description: "任务类型；auto 会根据任务内容自动判断。", default: "auto" });
+const TaskSchema = Type.Object({
+  agent: Type.Optional(Type.String({ description: "子代理名称；留空时按任务类型选择 scout/planner/reviewer/worker。" })),
+  task: Type.String({ description: "交给子代理的独立任务。" }),
+  workType: Type.Optional(WorkTypeSchema),
+  model: Type.Optional(Type.String({ description: "明确模型，支持 provider/model、模型 id 或名称。" })),
+  budgetUsd: Type.Optional(Type.Number({ minimum: 0, description: "该任务估算预算（美元），0 或省略表示不设预算。" })),
+  cwd: Type.Optional(Type.String({ description: "子代理工作目录。" }))
+});
+const SubagentSchema = Type.Object({
+  agent: Type.Optional(Type.String({ description: "单任务子代理名称。" })),
+  task: Type.Optional(Type.String({ description: "单任务内容；与 agent 一起使用，或单独使用以自动选择。" })),
+  workType: Type.Optional(WorkTypeSchema),
+  model: Type.Optional(Type.String({ description: "单任务明确模型。" })),
+  budgetUsd: Type.Optional(Type.Number({ minimum: 0, description: "单任务预算（美元）。" })),
+  tasks: Type.Optional(Type.Array(TaskSchema, { description: "并行任务，最多 100 个。" })),
+  chain: Type.Optional(Type.Array(TaskSchema, { description: "串行任务，后一步可以使用 {previous}。最多 100 步。" })),
+  agentScope: Type.Optional(StringEnum(["user", "project", "both"], { default: "user" })),
+  confirmProjectAgents: Type.Optional(Type.Boolean({ default: true }))
+});
+let activeSubagents = 0;
+function subagentExtension(pi, rawConfig = {}, worker = runWorker) {
+  const config = resolveSubagentConfig(rawConfig);
+  if (!config.enabled) return;
+  pi.on("tool_result", (event) => {
+    if (event.toolName === "subagent" && event.details?.isError) return { isError: true };
+  });
+  pi.registerTool({
+    name: "subagent",
+    label: "子代理",
+    description: "把独立工作委派给隔离上下文的子代理。支持单个、最多 100 个并行任务和串行链；会根据工作内容、模型价格、能力和预算自动选模。",
+    parameters: SubagentSchema,
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      const input = params;
+      const scope = input.agentScope ?? "user";
+      const profiles = discoverSubagentProfiles(ctx.cwd, scope);
+      if ((scope === "project" || scope === "both") && input.confirmProjectAgents !== false && ctx.hasUI) {
+        const requestedNames = /* @__PURE__ */ new Set();
+        if (input.agent) requestedNames.add(input.agent);
+        for (const item of [...Array.isArray(input.tasks) ? input.tasks : [], ...Array.isArray(input.chain) ? input.chain : []]) {
+          if (item?.agent) requestedNames.add(item.agent);
+        }
+        const projectNames = [...requestedNames].map((name) => profiles.find((profile) => profile.name === name)).filter((profile) => profile?.source === "project").map((profile) => profile.name);
+        if (projectNames.length > 0) {
+          const ok = await ctx.ui.confirm(
+            "运行项目级子代理？",
+            `代理：${projectNames.join(", ")}
+目录：${join(ctx.cwd, CONFIG_DIR_NAME, "agents")}
+
+项目代理中的提示词和工具权限由项目文件定义。`
+          );
+          if (!ok) return { content: [{ type: "text", text: "已取消运行项目级子代理。" }] };
+        }
+      }
+      const models = ctx.modelRegistry.getAvailable();
+      const single = input.task ? [{ ...input, task: input.task }] : [];
+      const parallel = Array.isArray(input.tasks) ? input.tasks : [];
+      const chain = Array.isArray(input.chain) ? input.chain : [];
+      const modeCount = Number(single.length > 0) + Number(parallel.length > 0) + Number(chain.length > 0);
+      if (modeCount !== 1) {
+        return { content: [{ type: "text", text: "子代理参数错误：请提供 task、tasks 或 chain 中的一种。" }], details: { isError: true }, isError: true };
+      }
+      if (parallel.length > HARD_MAX_AGENTS || chain.length > HARD_MAX_AGENTS) {
+        return { content: [{ type: "text", text: `子代理数量超过硬上限：最多 ${HARD_MAX_AGENTS} 个。` }], details: { isError: true }, isError: true };
+      }
+      const reservation = parallel.length > 0 ? parallel.length : 1;
+      if (activeSubagents + reservation > config.maxAgents) {
+        return { content: [{ type: "text", text: `当前已有 ${activeSubagents} 个子代理运行，配置上限为 ${config.maxAgents} 个。` }], details: { isError: true }, isError: true };
+      }
+      activeSubagents += reservation;
+      const makeAssignment = (item) => {
+        const type = inferWorkType(item.task, item.workType ?? "auto");
+        const profile = chooseProfile(profiles, item.agent, item.workType ?? "auto", item.task);
+        const budget = item.budgetUsd ?? config.defaultBudgetUsd;
+        const choice = chooseSubagentModel(models, item.task, type, budget, item.model ?? profile.model);
+        return { profile, choice, type };
+      };
+      try {
+        const mode = parallel.length ? "parallel" : chain.length ? "chain" : "single";
+        const items = parallel.length ? parallel : chain.length ? chain : single;
+        const progress = items.map((item) => {
+          const assignment = makeAssignment(item);
+          return {
+            agent: assignment.profile.name,
+            task: item.task,
+            model: assignment.choice.model ? modelLabel(assignment.choice.model) : void 0,
+            output: "",
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
+            estimatedCostUsd: assignment.choice.estimatedCostUsd,
+            routeReason: assignment.choice.reason,
+            state: "queued",
+            toolCalls: 0
+          };
+        });
+        const publish = () => onUpdate?.(progressUpdate(mode, progress, true));
+        const runTask = async (item, index) => {
+          if (signal?.aborted) {
+            progress[index].state = "cancelled";
+            progress[index].error = "子代理已取消";
+            publish();
+            return progress[index];
+          }
+          const assignment = makeAssignment(item);
+          progress[index].task = item.task;
+          progress[index].agent = assignment.profile.name;
+          progress[index].model = assignment.choice.model ? modelLabel(assignment.choice.model) : void 0;
+          progress[index].state = "running";
+          publish();
+          try {
+            progress[index] = await worker(
+              assignment.profile,
+              item,
+              assignment.choice.model,
+              `${assignment.choice.reason}；任务类型 ${assignment.type}；使用 ${modelLabel(assignment.choice.model)}`,
+              item.cwd ?? ctx.cwd,
+              signal,
+              (result2) => {
+                progress[index] = result2;
+                publish();
+              }
+            );
+          } catch (error) {
+            progress[index].state = signal?.aborted ? "cancelled" : "error";
+            progress[index].error = error instanceof Error ? error.message : String(error);
+          }
+          publish();
+          return progress[index];
+        };
+        publish();
+        if (parallel.length > 0) {
+          const results = await mapWithConcurrency(parallel, config.maxConcurrency, runTask);
+          return { ...progressUpdate(mode, progress), isError: results.some((result2) => !!result2.error) };
+        }
+        if (chain.length > 0) {
+          let previous = "";
+          for (const [index, item] of chain.entries()) {
+            const task = { ...item, task: item.task.replace(/\{previous\}/g, previous) };
+            const result2 = await runTask(task, index);
+            if (result2.error) {
+              for (const pending of progress.slice(index + 1)) pending.state = "skipped";
+              publish();
+              return { ...progressUpdate(mode, progress), isError: true };
+            }
+            previous = result2.output;
+          }
+          return progressUpdate(mode, progress);
+        }
+        const result = await runTask(single[0], 0);
+        return { ...progressUpdate(mode, progress), isError: !!result.error };
+      } finally {
+        activeSubagents -= reservation;
+      }
+    }
+  });
+}
+export {
+  applySubagentEvent,
+  chooseSubagentModel,
+  subagentExtension as default,
+  discoverSubagentProfiles,
+  inferWorkType
+};

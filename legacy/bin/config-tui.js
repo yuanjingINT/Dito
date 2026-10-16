@@ -1,0 +1,1262 @@
+import {
+  loadConfig,
+  saveConfig,
+  listFiles,
+  PERSONAS_DIR,
+  IDENTITIES_DIR,
+  fetchModelList,
+  applyFetchedModels,
+  backfillPresetModels,
+  DITO_IS_ALPHA
+} from "../extensions/util.js";
+import { resolveDitoReConfig } from "../extensions/plugins/dito-re.js";
+import { resolveSubagentConfig } from "../extensions/subagent-config.js";
+const ALT = "\x1B[?1049h";
+const LEAVE = "\x1B[?1049l";
+const HIDE = "\x1B[?25l";
+const SHOW = "\x1B[?25h";
+const C = {
+  reset: "\x1B[0m",
+  bold: "\x1B[1m",
+  dim: "\x1B[90m",
+  dimmer: "\x1B[38;2;115;135;145m",
+  sky: "\x1B[38;2;70;200;230m",
+  skyBright: "\x1B[38;2;150;230;255m",
+  yellow: "\x1B[38;2;220;190;110m",
+  green: "\x1B[38;2;126;216;163m",
+  red: "\x1B[38;2;235;130;120m",
+  // 选中行：固定暗青底（不用 \x1b[7m 反色，避免黑白闪烁）
+  selBg: "\x1B[48;2;22;72;86m"
+};
+const ENTER = ["\r", "\n"];
+const UP = ["\x1B[A", "k"];
+const DOWN = ["\x1B[B", "j"];
+const LEFT_ARROW = "\x1B[D";
+const RIGHT_ARROW = "\x1B[C";
+const BACKSPACE = ["", "\b"];
+const DELETE = "\x1B[3~";
+const HOME = ["\x1B[H", "\x1B[1~"];
+const END = ["\x1B[F", "\x1B[4~"];
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+function charWidth(cp) {
+  if (cp >= 4352 && cp <= 4447 || cp >= 11904 && cp <= 12350 || cp >= 12353 && cp <= 13311 || cp >= 13312 && cp <= 19903 || cp >= 19968 && cp <= 40959 || cp >= 40960 && cp <= 42191 || cp >= 44032 && cp <= 55203 || cp >= 63744 && cp <= 64255 || cp >= 65072 && cp <= 65103 || cp >= 65280 && cp <= 65376 || cp >= 65504 && cp <= 65510) {
+    return 2;
+  }
+  return 1;
+}
+function visualWidth(s) {
+  let w = 0;
+  for (const ch of s.replace(ANSI_RE, "")) {
+    w += charWidth(ch.codePointAt(0) ?? 0);
+  }
+  return w;
+}
+function padEndVis(s, width) {
+  const len = visualWidth(s);
+  return len >= width ? s : s + " ".repeat(width - len);
+}
+function truncPlain(s, width) {
+  if (width <= 0) return "";
+  if (visualWidth(s) <= width) return s;
+  let out = "";
+  let w = 0;
+  const target = width - 1;
+  for (const ch of s) {
+    const cw = charWidth(ch.codePointAt(0) ?? 0);
+    if (w + cw > target) break;
+    out += ch;
+    w += cw;
+  }
+  return `${out}…`;
+}
+let keyQueue = [];
+let keyWaiters = [];
+function parseKeys(s) {
+  const keys = [];
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === "\x1B") {
+      if (s[i + 1] === "[") {
+        let j = i + 2;
+        while (j < s.length && !/[@-~]/.test(s[j])) j++;
+        keys.push(s.slice(i, j + 1));
+        i = j + 1;
+      } else {
+        keys.push("\x1B");
+        i++;
+      }
+    } else {
+      keys.push(ch);
+      i++;
+    }
+  }
+  return keys;
+}
+function onData(buf) {
+  const keys = parseKeys(buf.toString());
+  keyQueue.push(...keys);
+  while (keyQueue.length && keyWaiters.length) {
+    const k = keyQueue.shift();
+    keyWaiters.shift()(k);
+  }
+}
+function startRaw() {
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.on("data", onData);
+}
+function stopRaw() {
+  process.stdin.setRawMode(false);
+  process.stdin.pause();
+  process.stdin.off("data", onData);
+  keyQueue = [];
+  keyWaiters = [];
+}
+function readKey() {
+  return new Promise((resolve) => {
+    if (keyQueue.length) resolve(keyQueue.shift());
+    else keyWaiters.push(resolve);
+  });
+}
+class QuitSignal extends Error {
+}
+function throwIfQuit(key) {
+  if (key === "" || key === "") throw new QuitSignal();
+}
+let needClear = true;
+function requestClear() {
+  needClear = true;
+}
+let drawCurrent = null;
+let toast = null;
+let toastTimer = null;
+function notify(text, tone = "info") {
+  toast = { text, tone, until: Date.now() + 2600 };
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast = null;
+    toastTimer = null;
+    drawCurrent?.();
+  }, 2700);
+  drawCurrent?.();
+}
+function panelWidth() {
+  const cols = process.stdout.columns || 80;
+  return Math.max(30, Math.min(cols - 2, 94));
+}
+function panelInnerWidth() {
+  return panelWidth() - 2;
+}
+function crumbLine(...parts) {
+  return parts.map((p, i) => i === parts.length - 1 ? `${C.sky}${p}${C.reset}` : `${C.dimmer}${p}${C.reset}`).join(`${C.dimmer} › ${C.reset}`);
+}
+function keysHint(segments) {
+  return segments.map(([k, d]) => `${C.skyBright}${k}${C.reset} ${C.dimmer}${d}${C.reset}`).join(`${C.dimmer} · ${C.reset}`);
+}
+function bgWrap(content, width) {
+  const pad = Math.max(0, width - visualWidth(content));
+  return `${C.selBg}${content}${" ".repeat(pad)}${C.reset}`;
+}
+function hintRow(hint, width) {
+  if (!hint) return "";
+  return ` ${C.dimmer}${truncPlain(hint, width - 2)}${C.reset}`;
+}
+function menuRow(label, detail, sel, width, marked = false) {
+  const prefix = ` ${sel ? ">" : " "} `;
+  const labelText = marked ? `${label} *` : label;
+  const leftW = visualWidth(prefix) + visualWidth(labelText);
+  let right = detail ?? "";
+  const avail = width - leftW - 2;
+  if (right && visualWidth(right) > avail) right = truncPlain(right, Math.max(0, avail));
+  const gap = Math.max(2, width - leftW - visualWidth(right));
+  const labelStyled = sel ? `${C.bold}${labelText}${C.reset}` : labelText;
+  const rightStyled = right ? `${sel ? C.dim : C.dimmer}${right}${C.reset}` : "";
+  const row = `${prefix}${labelStyled}${rightStyled ? `${" ".repeat(gap)}${rightStyled}` : ""}`;
+  return sel ? bgWrap(row, width) : padEndVis(row, width);
+}
+function drawShell(o) {
+  const cols = process.stdout.columns || 80;
+  const rows = process.stdout.rows || 24;
+  const W = panelWidth();
+  const Wi = W - 2;
+  const lines = [];
+  const alphaPlain = DITO_IS_ALPHA ? " [ALPHA]" : "";
+  const brandPlain = ` ◈ Dito 配置${alphaPlain}`;
+  const statusText = o.status ? truncPlain(o.status, Math.max(0, cols - 2 - visualWidth(brandPlain))) : "";
+  const brand = `${C.skyBright}${C.bold} ◈ Dito${C.reset}${C.dimmer} 配置${C.reset}${DITO_IS_ALPHA ? ` ${C.yellow}${C.bold}[ALPHA]${C.reset}` : ""}`;
+  const headGap = Math.max(1, cols - 1 - visualWidth(brandPlain) - visualWidth(statusText));
+  lines.push(`${brand}${" ".repeat(headGap)}${C.dimmer}${statusText}${C.reset}`);
+  lines.push(` ${o.crumb}`);
+  lines.push("");
+  const titleW = visualWidth(o.panelTitle);
+  const dashRest = Math.max(0, W - 5 - titleW);
+  lines.push(`╭${C.dim}─ ${C.reset}${C.bold}${o.panelTitle}${C.reset}${C.dim} ${"─".repeat(dashRest)}${C.reset}╮`);
+  for (const row of o.body) lines.push(`│${padEndVis(row, Wi)}│`);
+  lines.push(`╰${"─".repeat(W - 2)}╯`);
+  lines.push("");
+  if (toast && Date.now() < toast.until) {
+    const tone = toast.tone === "error" ? C.red : toast.tone === "warn" ? C.yellow : C.sky;
+    lines.push(` ${tone}${truncPlain(toast.text, cols - 4)}${C.reset}`);
+  } else {
+    lines.push("");
+  }
+  let right = o.footerRight;
+  const leftW = visualWidth(o.footerLeft);
+  if (leftW + visualWidth(right) + 2 > cols - 1) right = truncPlain(right, Math.max(0, cols - 2 - leftW));
+  const footGap = Math.max(1, cols - 1 - leftW - visualWidth(right));
+  lines.push(`${o.footerLeft}${" ".repeat(footGap)}${C.dimmer}${right}${C.reset}`);
+  frame(lines);
+}
+function frame(lines) {
+  const rows = process.stdout.rows || 24;
+  let out = needClear ? "\x1B[2J\x1B[H" : "";
+  needClear = false;
+  const n = Math.max(rows, lines.length);
+  for (let i = 0; i < n; i++) {
+    out += `\x1B[${i + 1};1H\x1B[2K${lines[i] ?? ""}`;
+  }
+  process.stdout.write(out);
+}
+function bodyCapacity() {
+  const rows = process.stdout.rows || 24;
+  return Math.max(1, rows - 8);
+}
+async function menuScreen(opts) {
+  let selected = 0;
+  const getItems = () => typeof opts.items === "function" ? opts.items() : opts.items;
+  const draw = () => {
+    const items = getItems();
+    if (selected >= items.length) selected = Math.max(0, items.length - 1);
+    const Wi = panelInnerWidth();
+    const cap = bodyCapacity();
+    const hint = items[selected]?.hint ?? "";
+    let start = 0;
+    if (selected >= cap) start = selected - cap + 1;
+    if (selected < start) start = selected;
+    const body = [];
+    const listCap = Math.max(1, cap - (hint ? 1 : 0));
+    for (let i = start; i < items.length && body.length < listCap; i++) {
+      body.push(menuRow(items[i].label, items[i].detail, i === selected, Wi));
+    }
+    if (hint) body.push(hintRow(hint, Wi));
+    const hasDelete = items.some((it) => it.onDelete);
+    drawShell({
+      crumb: crumbLine(...opts.crumbParts),
+      status: opts.status?.() ?? "",
+      panelTitle: opts.panelTitle,
+      body,
+      footerLeft: keysHint(
+        hasDelete ? [["↑↓", "选择"], ["enter", "确认"], ["d", "删除"], ["esc/q", "返回"]] : [["↑↓", "选择"], ["enter", "确认"], ["esc/q", "返回"]]
+      ),
+      footerRight: items.length > 0 ? `${selected + 1}/${items.length}` : ""
+    });
+  };
+  drawCurrent = draw;
+  try {
+    while (true) {
+      draw();
+      const key = await readKey();
+      throwIfQuit(key);
+      const items = getItems();
+      if (selected >= items.length) selected = Math.max(0, items.length - 1);
+      if (UP.includes(key)) selected = Math.max(0, selected - 1);
+      else if (DOWN.includes(key)) selected = Math.min(items.length - 1, selected + 1);
+      else if (ENTER.includes(key)) {
+        const it = items[selected];
+        if (it?.onEnter) {
+          drawCurrent = null;
+          await it.onEnter();
+          drawCurrent = draw;
+        }
+      } else if (key === "d" || key === "D") {
+        const it = items[selected];
+        if (it?.onDelete) {
+          drawCurrent = null;
+          await it.onDelete();
+          drawCurrent = draw;
+        }
+      } else if (key === "\x1B" || key === "q") {
+        return;
+      }
+    }
+  } finally {
+    drawCurrent = null;
+  }
+}
+async function selectOverlay(opts) {
+  const choices = opts.choices;
+  let selected = Math.max(0, choices.indexOf(opts.current));
+  const draw = () => {
+    const Wi = panelInnerWidth();
+    const cap = bodyCapacity();
+    let start = 0;
+    if (selected >= cap) start = selected - cap + 1;
+    if (selected < start) start = selected;
+    const body = [];
+    const listCap = Math.max(1, cap - (opts.hint ? 1 : 0));
+    for (let i = start; i < choices.length && body.length < listCap; i++) {
+      body.push(menuRow(choices[i], void 0, i === selected, Wi, choices[i] === opts.current));
+    }
+    if (opts.hint) body.push(hintRow(opts.hint, Wi));
+    drawShell({
+      crumb: crumbLine(...opts.crumbParts),
+      status: "",
+      panelTitle: opts.title,
+      body,
+      footerLeft: keysHint([["↑↓", "选择"], ["enter", "确认"], ["esc", "取消"]]),
+      footerRight: choices.length > 0 ? `${selected + 1}/${choices.length}` : ""
+    });
+  };
+  drawCurrent = draw;
+  try {
+    while (true) {
+      draw();
+      const key = await readKey();
+      throwIfQuit(key);
+      if (UP.includes(key)) selected = Math.max(0, selected - 1);
+      else if (DOWN.includes(key)) selected = Math.min(choices.length - 1, selected + 1);
+      else if (ENTER.includes(key)) return choices[selected] ?? null;
+      else if (key === "\x1B" || key === "q") return null;
+    }
+  } finally {
+    drawCurrent = null;
+  }
+}
+async function confirmOverlay(title, message) {
+  const r = await selectOverlay({
+    title,
+    crumbParts: ["配置"],
+    choices: ["取消", "确认"],
+    current: "取消",
+    hint: message
+  });
+  return r === "确认";
+}
+function fieldDisplayPlain(f) {
+  if (f.kind === "bool") return f.value === "true" ? "启用" : "停用";
+  if (f.kind === "sensitive") {
+    if (/^\$\{?[\w-]+\}?$/.test(f.value)) return f.value;
+    return f.value ? "********" : "";
+  }
+  return f.value;
+}
+function editWindow(value, cursor, width) {
+  const chars = [...value];
+  if (width <= 0) return { text: "", cursorPos: 0 };
+  if (chars.length < width) return { text: value, cursorPos: Math.max(0, Math.min(cursor, chars.length)) };
+  let start = Math.max(0, Math.min(cursor - Math.floor(width / 3), chars.length - width));
+  if (cursor < start) start = cursor;
+  if (cursor >= start + width) start = cursor - width + 1;
+  start = Math.max(0, Math.min(start, Math.max(0, chars.length - width)));
+  return { text: chars.slice(start, start + width).join(""), cursorPos: cursor - start };
+}
+function formRow(f, sel, editing, cursor, labelW, valueW) {
+  const prefix = ` ${sel ? ">" : " "} `;
+  const labelText = visualWidth(f.label) > labelW - 2 ? truncPlain(f.label, labelW - 2) : f.label;
+  const labelPad = " ".repeat(Math.max(0, labelW - visualWidth(labelText)));
+  const labelStyled = sel ? `${C.sky}${C.bold}${labelText}${C.reset}` : labelText;
+  let valuePart;
+  if (editing) {
+    const win = editWindow(f.value, cursor, valueW);
+    const chars = [...win.text];
+    const at = win.cursorPos < chars.length ? chars[win.cursorPos] : " ";
+    const before = chars.slice(0, win.cursorPos).join("");
+    const after = chars.slice(win.cursorPos + 1).join("");
+    valuePart = `${before}\x1B[7m${at}\x1B[27m${after}`;
+  } else if (f.kind === "bool") {
+    valuePart = f.value === "true" ? `${C.green}启用${C.reset}` : `${C.dim}停用${C.reset}`;
+  } else if (f.kind === "sensitive") {
+    const shown = fieldDisplayPlain(f);
+    valuePart = shown ? `${C.yellow}${shown}${C.reset}` : `${C.dimmer}（未设置）${C.reset}`;
+  } else {
+    const raw = f.value || (f.kind === "choice" ? "（未选择）" : "");
+    valuePart = truncPlain(raw, valueW);
+  }
+  const inner = `${prefix}${labelStyled}${labelPad} ${valuePart}`;
+  return sel ? bgWrap(inner, panelInnerWidth()) : padEndVis(inner, panelInnerWidth());
+}
+async function formScreen(opts) {
+  const work = opts.fields.map((f) => ({ ...f }));
+  const cursors = work.map((f) => [...f.value].length);
+  let selected = 0;
+  let editing = false;
+  const draw = () => {
+    const Wi = panelInnerWidth();
+    const rows = process.stdout.rows || 24;
+    const cap = Math.max(1, rows - 8);
+    const maxLabel = Math.max(...work.map((f2) => visualWidth(f2.label)));
+    const labelW = Math.max(8, Math.min(maxLabel + 2, Math.floor((Wi - 12) / 2)));
+    const valueW = Math.max(4, Wi - 4 - labelW);
+    const hint = work[selected]?.hint ?? "";
+    let start = 0;
+    if (selected >= cap) start = selected - cap + 1;
+    if (selected < start) start = selected;
+    const body = [];
+    for (let i = start; i < work.length && body.length < cap - 1; i++) {
+      body.push(formRow(work[i], i === selected, editing && i === selected, cursors[i], labelW, valueW));
+    }
+    body.push(hintRow(editing ? `${hint ? `${hint}　` : ""}(enter 完成)` : hint, Wi));
+    const f = work[selected];
+    const enterWord = f?.kind === "bool" || f?.kind === "choice" ? "切换" : "编辑";
+    drawShell({
+      crumb: crumbLine(...opts.crumbParts),
+      status: opts.status?.() ?? "",
+      panelTitle: opts.panelTitle,
+      body,
+      footerLeft: editing ? keysHint([["←→", "光标"], ["home/end", "行首尾"], ["backspace", "删除"], ["enter/esc", "完成"]]) : keysHint([["↑↓", "选择"], ["enter", enterWord], ["s", "保存返回"], ["esc/q", "返回"]]),
+      footerRight: `${selected + 1}/${work.length}`
+    });
+  };
+  drawCurrent = draw;
+  try {
+    while (true) {
+      draw();
+      const key = await readKey();
+      throwIfQuit(key);
+      const f = work[selected];
+      if (editing) {
+        if (key === "\x1B" || ENTER.includes(key)) {
+          editing = false;
+        } else if (key === LEFT_ARROW) {
+          cursors[selected] = Math.max(0, cursors[selected] - 1);
+        } else if (key === RIGHT_ARROW) {
+          cursors[selected] = Math.min([...f.value].length, cursors[selected] + 1);
+        } else if (HOME.includes(key)) {
+          cursors[selected] = 0;
+        } else if (END.includes(key)) {
+          cursors[selected] = [...f.value].length;
+        } else if (BACKSPACE.includes(key)) {
+          if (cursors[selected] > 0) {
+            const arr = [...f.value];
+            arr.splice(cursors[selected] - 1, 1);
+            f.value = arr.join("");
+            cursors[selected]--;
+          }
+        } else if (key === DELETE) {
+          const arr = [...f.value];
+          arr.splice(cursors[selected], 1);
+          f.value = arr.join("");
+        } else if (!key.startsWith("\x1B") && [...key].length === 1) {
+          const cp = key.codePointAt(0) ?? 0;
+          if (cp >= 32 && cp !== 127) {
+            const arr = [...f.value];
+            arr.splice(cursors[selected], 0, key);
+            f.value = arr.join("");
+            cursors[selected]++;
+          }
+        }
+        continue;
+      }
+      if (UP.includes(key)) selected = Math.max(0, selected - 1);
+      else if (DOWN.includes(key)) selected = Math.min(work.length - 1, selected + 1);
+      else if (ENTER.includes(key)) {
+        if (f.kind === "bool") {
+          f.value = f.value === "true" ? "false" : "true";
+        } else if (f.kind === "choice") {
+          if (!f.choices || f.choices.length === 0) {
+            notify("没有可选项", "warn");
+            continue;
+          }
+          const picked = await selectOverlay({
+            title: f.label,
+            crumbParts: [...opts.crumbParts, f.label],
+            choices: f.choices,
+            current: f.value
+          });
+          if (picked !== null) f.value = picked;
+        } else {
+          if (f.kind === "sensitive" && f.value) {
+            f.value = "";
+            cursors[selected] = 0;
+            notify("已清空，直接输入新值（旧 Key 不会残留）");
+          } else {
+            cursors[selected] = [...f.value].length;
+          }
+          editing = true;
+        }
+      } else if ((key === LEFT_ARROW || key === RIGHT_ARROW) && f.kind === "bool") {
+        f.value = f.value === "true" ? "false" : "true";
+      } else if (key === "s" || key === "S") {
+        return work;
+      } else if (key === "\x1B" || key === "q") {
+        return null;
+      }
+    }
+  } finally {
+    drawCurrent = null;
+  }
+}
+function parseBool(v) {
+  return v === "true";
+}
+function parseNum(v, fallback) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+function activeProvider(cfg) {
+  return cfg.providers.find((p) => p.id === cfg.model.provider) ?? cfg.providers[0];
+}
+function statusOf(cfg) {
+  const ap = activeProvider(cfg);
+  return `${ap ? ap.name : cfg.model.provider} · ${cfg.model.chat || "无模型"}`;
+}
+function persist(cfg, message = "已保存，改动即时生效") {
+  saveConfig(cfg);
+  notify(message);
+}
+async function refreshModelsFor(p) {
+  notify(`正在从 API 获取「${p.name}」的模型列表…`);
+  let list = [];
+  try {
+    list = await fetchModelList(p, { force: true });
+  } catch {
+    list = [];
+  }
+  if (p.id === "opencode-free" && p.apiKey.trim() === "") {
+    list = list.filter((m) => m.id.endsWith("-free"));
+  }
+  if (applyFetchedModels(p, list)) {
+    notify(`已刷新 ${p.models.length} 个模型`);
+    return true;
+  }
+  if (backfillPresetModels(p)) {
+    notify("API 获取失败，已恢复该供应商的预置模型", "warn");
+    return true;
+  }
+  notify("获取失败（离线或缺少 Key），保留已有列表", "warn");
+  return false;
+}
+async function editProviderScreen(cfg, index) {
+  const p = cfg.providers[index];
+  if (!p) return false;
+  const oldId = p.id;
+  const result = await formScreen({
+    crumbParts: ["配置", "模型与供应商", `编辑 ${oldId}`],
+    panelTitle: `编辑供应商 ${oldId}`,
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "ID", value: p.id, kind: "text", hint: "唯一标识；pi 内置供应商 id（anthropic/openai 等）由 pi 原生接管" },
+      { label: "名称", value: p.name, kind: "text", hint: "显示名称" },
+      { label: "baseUrl", value: p.baseUrl, kind: "text", hint: "OpenAI/Anthropic 兼容端点，如 https://api.example.com/v1" },
+      { label: "API Key", value: p.apiKey, kind: "sensitive", hint: "进入编辑即清空，直接输入新值；支持 $ENV_VAR 环境变量引用" },
+      {
+        label: "API 类型",
+        value: p.api,
+        kind: "choice",
+        choices: ["openai-completions", "anthropic-messages", "openai-responses"],
+        hint: "端点协议类型"
+      },
+      {
+        label: "模型 id（逗号分隔）",
+        value: p.models.map((m) => m.id).join(", "),
+        kind: "text",
+        hint: "如 gpt-4o, gpt-4o-mini；已存在的模型配置会保留"
+      }
+    ]
+  });
+  if (!result) return false;
+  p.id = result[0].value.trim() || "custom";
+  p.name = result[1].value.trim() || p.id;
+  p.baseUrl = result[2].value.trim();
+  p.apiKey = result[3].value.trim();
+  p.api = result[4].value;
+  const ids = result[5].value.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
+  const existing = new Map(p.models.map((m) => [m.id, m]));
+  p.models = ids.map(
+    (id) => existing.get(id) ?? {
+      id,
+      name: id,
+      reasoning: false,
+      input: ["text"],
+      maxTokens: 16384
+    }
+  );
+  if (cfg.model.provider === oldId) {
+    cfg.model.provider = p.id;
+    cfg.model.chat = p.models[0]?.id ?? "";
+    cfg.model.vision = (p.models.find((m) => m.input.includes("image")) ?? p.models[0])?.id ?? "";
+  }
+  persist(cfg, `供应商 ${p.id} 已保存`);
+  return true;
+}
+async function providersScreen(cfg) {
+  const items = () => [
+    ...cfg.providers.map((p, i) => ({
+      label: p.name || p.id,
+      detail: `${p.id}${p.id === cfg.model.provider ? " · 使用中" : ""}`,
+      hint: `${p.baseUrl || "（未设置 baseUrl）"}`,
+      onEnter: () => editProviderScreen(cfg, i),
+      onDelete: async () => {
+        const ok = await confirmOverlay(
+          `删除供应商 ${p.name || p.id}？`,
+          "删除后不可恢复；若它是当前使用的供应商，会自动切到列表第一个"
+        );
+        if (!ok) return;
+        const removedId = p.id;
+        cfg.providers.splice(i, 1);
+        if (cfg.model.provider === removedId) {
+          const first = cfg.providers[0];
+          cfg.model.provider = first?.id ?? "";
+          cfg.model.chat = first?.models[0]?.id ?? "";
+          cfg.model.vision = (first?.models.find((m) => m.input.includes("image")) ?? first?.models[0])?.id ?? "";
+        }
+        persist(cfg, `已删除供应商：${removedId}`);
+      }
+    })),
+    {
+      label: "＋ 新增供应商",
+      detail: "新建并编辑",
+      hint: "新建一个自定义供应商并进入编辑",
+      onEnter: async () => {
+        const p = { id: "custom", name: "自定义", baseUrl: "", apiKey: "", api: "openai-completions", models: [] };
+        cfg.providers.push(p);
+        const ok = await editProviderScreen(cfg, cfg.providers.length - 1);
+        if (!ok) {
+          cfg.providers.pop();
+          notify("已取消新增", "warn");
+        }
+      }
+    }
+  ];
+  await menuScreen({
+    crumbParts: ["配置", "模型与供应商", "管理供应商"],
+    panelTitle: "管理供应商",
+    items,
+    status: () => statusOf(cfg)
+  });
+}
+async function pickModelScreen(cfg, kind) {
+  const p = activeProvider(cfg);
+  if (!p) return;
+  await refreshModelsFor(p);
+  if (p.models.length === 0) {
+    notify("该供应商没有可用模型", "warn");
+    return;
+  }
+  const choices = p.models.map((m) => `${m.name || m.id} (${m.id})`);
+  const cur = kind === "chat" ? cfg.model.chat : cfg.model.vision;
+  const curIdx = Math.max(0, p.models.findIndex((m) => m.id === cur));
+  const picked = await selectOverlay({
+    title: kind === "chat" ? "聊天模型" : "视觉模型",
+    crumbParts: ["配置", "模型与供应商"],
+    choices,
+    current: choices[curIdx] ?? ""
+  });
+  if (picked === null) return;
+  const id = p.models[choices.indexOf(picked)]?.id;
+  if (!id) return;
+  if (kind === "chat") cfg.model.chat = id;
+  else cfg.model.vision = id;
+  persist(cfg, `已设置${kind === "chat" ? "聊天" : "视觉"}模型：${id}`);
+}
+async function modelScreen(cfg) {
+  const items = () => {
+    const ap = activeProvider(cfg);
+    return [
+      {
+        label: "选择供应商",
+        detail: ap ? `${ap.name} (${ap.id})` : "—",
+        hint: "切换后自动刷新模型列表，并重置聊天/视觉模型为该供应商默认",
+        onEnter: async () => {
+          if (cfg.providers.length === 0) {
+            notify("没有可用的供应商", "warn");
+            return;
+          }
+          const names = cfg.providers.map((p2) => `${p2.name} (${p2.id})`);
+          const picked = await selectOverlay({
+            title: "选择供应商",
+            crumbParts: ["配置", "模型与供应商"],
+            choices: names,
+            current: ap ? `${ap.name} (${ap.id})` : ""
+          });
+          if (picked === null) return;
+          const p = cfg.providers[names.indexOf(picked)];
+          if (!p) return;
+          cfg.model.provider = p.id;
+          await refreshModelsFor(p);
+          cfg.model.chat = p.models[0]?.id ?? "";
+          cfg.model.vision = (p.models.find((m) => m.input.includes("image")) ?? p.models[0])?.id ?? "";
+          persist(cfg, `已切换供应商：${p.name}`);
+        }
+      },
+      {
+        label: "聊天模型",
+        detail: cfg.model.chat || "—",
+        hint: "日常对话与工具调用使用的模型（先从 API 刷新列表）",
+        onEnter: () => pickModelScreen(cfg, "chat")
+      },
+      {
+        label: "视觉模型",
+        detail: cfg.model.vision || "—",
+        hint: "看图使用的模型（先从 API 刷新列表）",
+        onEnter: () => pickModelScreen(cfg, "vision")
+      },
+      {
+        label: "刷新模型列表（API）",
+        detail: "GET {baseUrl}/models",
+        hint: "从当前供应商拉取最新模型列表；免 Key 供应商只保留 -free 模型",
+        onEnter: async () => {
+          const p = activeProvider(cfg);
+          if (!p) return;
+          await refreshModelsFor(p);
+          persist(cfg);
+        }
+      },
+      {
+        label: "管理供应商",
+        detail: `${cfg.providers.length} 个`,
+        hint: "新增 / 编辑 / 删除供应商（列表页按 d 删除）",
+        onEnter: () => providersScreen(cfg)
+      }
+    ];
+  };
+  await menuScreen({
+    crumbParts: ["配置", "模型与供应商"],
+    panelTitle: "模型与供应商",
+    items,
+    status: () => statusOf(cfg)
+  });
+}
+async function personaScreen(cfg) {
+  const personas = listFiles(PERSONAS_DIR, ".md");
+  const identities = listFiles(IDENTITIES_DIR, ".md");
+  const result = await formScreen({
+    crumbParts: ["配置", "提示词设定"],
+    panelTitle: "提示词设定",
+    status: () => statusOf(cfg),
+    fields: [
+      {
+        label: "AI 人格",
+        value: cfg.persona.active,
+        kind: "choice",
+        choices: personas,
+        hint: "personas/ 目录下的人设；桌面版只显示名称（正文已加密）"
+      },
+      {
+        label: "用户身份",
+        value: cfg.persona.identity,
+        kind: "choice",
+        choices: identities,
+        hint: "identities/ 目录下的用户身份，决定 Dito 回答的深浅"
+      }
+    ]
+  });
+  if (!result) return;
+  cfg.persona.active = result[0].value || "dito";
+  cfg.persona.identity = result[1].value || "默认";
+  persist(cfg);
+}
+async function kbScreen(cfg) {
+  const kb = cfg.plugins.knowledge_base;
+  const result = await formScreen({
+    crumbParts: ["配置", "知识库"],
+    panelTitle: "知识库",
+    status: () => statusOf(cfg),
+    fields: [
+      {
+        label: "启用",
+        value: String(kb.enabled),
+        kind: "bool",
+        hint: "本地 SQLite 知识库（kb.db），首次启动自动导入 kb/ 内置文章"
+      },
+      { label: "数据目录（空=默认）", value: kb.dataDir, kind: "text", hint: "留空使用 ~/.pi/agent/dito/" }
+    ]
+  });
+  if (!result) return;
+  kb.enabled = parseBool(result[0].value);
+  kb.dataDir = result[1].value.trim();
+  persist(cfg);
+}
+async function memoryScreen(cfg) {
+  const memory = cfg.plugins.memory;
+  const result = await formScreen({
+    crumbParts: ["配置", "记忆"],
+    panelTitle: "记忆",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(memory.enabled), kind: "bool", hint: "跨会话长期记忆（按聊天隔离）" },
+      { label: "自动日记", value: String(memory.autoDiary), kind: "bool", hint: "每轮完成后记录短日记，并自动整理稳定信息" },
+      { label: "自动联想", value: String(memory.associationEnabled), kind: "bool", hint: "回答前把相关知识和经历注入上下文" },
+      { label: "自动知识点", value: String(memory.autoFact), kind: "bool", hint: "从“记住/我喜欢/我的目标”等明确表述提取长期事实" },
+      { label: "短日记保留天数", value: String(memory.shortDiaryRetentionDays), kind: "number", hint: "未升级的短日记到期后删除" },
+      { label: "回忆升级次数", value: String(memory.diaryPromotionRecalls), kind: "number", hint: "短日记被联想达到次数后升级为长期经历" },
+      { label: "联想知识条数", value: String(memory.associationFacts), kind: "number", hint: "每轮自动注入的知识点上限" },
+      { label: "联想经历条数", value: String(memory.associationEpisodes), kind: "number", hint: "每轮自动注入的经历上限" },
+      { label: "遗忘衰减", value: String(memory.forgettingEnabled), kind: "bool", hint: "按半衰期降低长期记忆强度，过弱记忆不再联想" },
+      { label: "记忆半衰期（天）", value: String(memory.forgettingHalfLifeDays), kind: "number", hint: "被再次回忆会按回忆强化" }
+    ]
+  });
+  if (!result) return;
+  memory.enabled = parseBool(result[0].value);
+  memory.autoDiary = parseBool(result[1].value);
+  memory.associationEnabled = parseBool(result[2].value);
+  memory.autoFact = parseBool(result[3].value);
+  memory.shortDiaryRetentionDays = Math.max(1, Number(result[4].value) || 14);
+  memory.diaryPromotionRecalls = Math.max(1, Number(result[5].value) || 3);
+  memory.associationFacts = Math.max(0, Number(result[6].value) || 5);
+  memory.associationEpisodes = Math.max(0, Number(result[7].value) || 3);
+  memory.forgettingEnabled = parseBool(result[8].value);
+  memory.forgettingHalfLifeDays = Math.max(0.1, Number(result[9].value) || 7);
+  persist(cfg);
+}
+async function searchScreen(cfg) {
+  const ws = cfg.plugins.web_search;
+  const result = await formScreen({
+    crumbParts: ["配置", "网络搜索"],
+    panelTitle: "网络搜索",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(ws.enabled), kind: "bool", hint: "无 Key 时自动走 DuckDuckGo → Yahoo → Bing 兜底" },
+      { label: "Tavily Key", value: ws.tavilyKeys.join(","), kind: "sensitive", hint: "多个用英文逗号分隔；配置后优先于免费搜索源" },
+      { label: "Firecrawl Key", value: ws.firecrawlKeys.join(","), kind: "sensitive", hint: "" },
+      { label: "AnySearch Key", value: ws.anysearchKeys.join(","), kind: "sensitive", hint: "" },
+      { label: "Exa Key", value: ws.exaKeys.join(","), kind: "sensitive", hint: "" },
+      { label: "Perplexity Key", value: ws.perplexityKey, kind: "sensitive", hint: "sonar 在线搜索，返回合成回答 + 引用" },
+      { label: "SearXNG 地址", value: ws.searxngUrl, kind: "text", hint: "如 http://localhost:8888（需开启 JSON 输出）" }
+    ]
+  });
+  if (!result) return;
+  ws.enabled = parseBool(result[0].value);
+  ws.tavilyKeys = result[1].value.split(",").map((s) => s.trim()).filter(Boolean);
+  ws.firecrawlKeys = result[2].value.split(",").map((s) => s.trim()).filter(Boolean);
+  ws.anysearchKeys = result[3].value.split(",").map((s) => s.trim()).filter(Boolean);
+  ws.exaKeys = result[4].value.split(",").map((s) => s.trim()).filter(Boolean);
+  ws.perplexityKey = result[5].value.trim();
+  ws.searxngUrl = result[6].value.trim();
+  persist(cfg);
+}
+async function voiceScreen(cfg) {
+  const v = cfg.plugins.voice;
+  const result = await formScreen({
+    crumbParts: ["配置", "语音"],
+    panelTitle: "语音",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(v.enabled), kind: "bool", hint: "关闭后 `dito voice` 会提示先在配置里启用" },
+      { label: "STT 后端", value: v.stt, kind: "choice", choices: ["whisper", "xiaomi", "custom"], hint: "whisper=本地 whisper-cli；xiaomi=小米 MiMo ASR；custom=自定义命令" },
+      { label: "TTS 后端", value: v.tts, kind: "choice", choices: ["espeak", "piper", "xiaomi", "custom"], hint: "espeak=本地 espeak-ng；piper=本地；xiaomi=小米 MiMo TTS；custom=自定义命令" },
+      { label: "whisper 模型路径", value: v.whisperModel, kind: "text", hint: "ggml 模型文件，如 ~/.local/share/whisper/models/ggml-small-q5_1.bin" },
+      { label: "whisper 语言", value: v.whisperLanguage, kind: "text", hint: "zh / auto 等" },
+      { label: "espeak 音色", value: v.espeakVoice, kind: "text", hint: "如 zh" },
+      { label: "piper 模型", value: v.piperModel, kind: "text", hint: ".onnx 模型文件路径" },
+      { label: "小米 API Key", value: v.xiaomiApiKey, kind: "sensitive", hint: "进入编辑即清空，直接输入新值" },
+      { label: "小米 TTS 音色", value: v.xiaomiTtsVoice, kind: "text", hint: "preset 音色名，如 冰糖；配了下方声音设计则不生效" },
+      { label: "小米 TTS 声音设计", value: v.xiaomiTtsVoiceDesign ?? "", kind: "text", hint: "音色描述（如：年轻女性，清脆甜美，活泼俏皮）→ 用 voicedesign 模型定制音色；留空用 preset" },
+      { label: "最大录音秒数", value: String(v.maxRecordSeconds), kind: "number", hint: "超时自动收声" },
+      { label: "问句自动听回答", value: String(v.autoListenAfterQuestion), kind: "bool", hint: "回复以问句结尾时自动继续录音" },
+      { label: "连续对话", value: String(v.continuous), kind: "bool", hint: "回答完自动继续监听" },
+      { label: "语音唤醒词", value: v.wakeWord, kind: "text", hint: "逗号分隔（如 hey,你好）：待机时本地 whisper 轮询短音频（零 API 成本），听到即应「在的啊」并开始对话；空格键仍可手动唤醒；留空 = 仅空格键" }
+    ]
+  });
+  if (!result) return;
+  v.enabled = parseBool(result[0].value);
+  v.stt = result[1].value;
+  v.tts = result[2].value;
+  v.whisperModel = result[3].value.trim();
+  v.whisperLanguage = result[4].value.trim();
+  v.espeakVoice = result[5].value.trim();
+  v.piperModel = result[6].value.trim();
+  v.xiaomiApiKey = result[7].value.trim();
+  v.xiaomiTtsVoice = result[8].value.trim();
+  v.xiaomiTtsVoiceDesign = result[9].value.trim();
+  v.maxRecordSeconds = parseNum(result[10].value, 8);
+  v.autoListenAfterQuestion = parseBool(result[11].value);
+  v.continuous = parseBool(result[12].value);
+  v.wakeWord = result[13].value.trim();
+  persist(cfg);
+}
+async function permissionScreen(cfg) {
+  const p = cfg.plugins.permission;
+  const result = await formScreen({
+    crumbParts: ["配置", "权限与 sudo"],
+    panelTitle: "权限与 sudo",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用权限门插件", value: String(p.enabled), kind: "bool", hint: "关闭后高危命令不再拦截与确认（不推荐）" },
+      { label: "sudo 权限模式", value: String(p.sudoMode), kind: "bool", hint: "开启后权限门关闭、Dito 获得 root 权限，请只在自己的机器上开启" },
+      { label: "自动加 sudo", value: String(p.autoSudo), kind: "bool", hint: "仅 sudo 模式下生效：装/卸软件、管理服务等命令自动补 sudo" },
+      { label: "提权命令（默认 sudo）", value: p.sudoCommand, kind: "text", hint: "可改成 doas / sudo -n 等" }
+    ]
+  });
+  if (!result) return;
+  p.enabled = parseBool(result[0].value);
+  p.sudoMode = parseBool(result[1].value);
+  p.autoSudo = parseBool(result[2].value);
+  p.sudoCommand = result[3].value.trim() || "sudo";
+  persist(cfg);
+}
+async function ditoReScreen(cfg) {
+  const re = cfg.plugins["dito-re"];
+  const result = await formScreen({
+    crumbParts: ["配置", "QQ 智能自动回复"],
+    panelTitle: "QQ 智能自动回复（dito-re）",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(re.enabled), kind: "bool", hint: "关闭后退回 QQ 原来的群聊回复概率逻辑" },
+      { label: "普通消息概率", value: String(re.defaultReplyChance), kind: "text", hint: "0-1；未命中爱好主题、也没有直接点名 Dito 时使用" },
+      { label: "直接对话概率", value: String(re.directReplyChance), kind: "text", hint: "明显在和 Dito 说话时使用，默认 1（必答）" },
+      { label: "每群上下文消息数", value: String(re.contextMessages), kind: "number", hint: "所有群消息都会进入滚动上下文，包括没有触发回复的消息" },
+      { label: "每群上下文字符数", value: String(re.contextChars), kind: "number", hint: "触发回复时交给模型的最大字符数，较早消息超限后裁剪" },
+      { label: "爱好主题 JSON", value: JSON.stringify(re.topics), kind: "text", hint: "数组元素：{id,name,keywords,replyChance}；replyChance 为 0-1；填 [] 可关闭主题命中" },
+      { label: "追加爱好主题", value: "", kind: "text", hint: '填一个对象或数组，例如 {"id":"摄影","name":"摄影","keywords":["相机","镜头"],"replyChance":0.6}' },
+      { label: "删除主题 ID", value: "", kind: "text", hint: "可填多个 ID，用逗号分隔；留空不删除" }
+    ]
+  });
+  if (!result) return;
+  let topics = re.topics;
+  try {
+    const parsed = JSON.parse(result[5].value || "[]");
+    if (Array.isArray(parsed)) topics = parsed;
+  } catch {
+  }
+  const additions = result[6].value.trim();
+  if (additions) {
+    try {
+      const parsed = JSON.parse(additions);
+      const next = Array.isArray(parsed) ? parsed : [parsed];
+      topics = [...topics, ...next];
+    } catch {
+    }
+  }
+  const removedIds = new Set(result[7].value.split(/[,，\s]+/).map((id) => id.trim()).filter(Boolean));
+  if (removedIds.size > 0) {
+    topics = topics.filter((topic) => !removedIds.has(typeof topic?.id === "string" ? topic.id : ""));
+  }
+  cfg.plugins["dito-re"] = resolveDitoReConfig({
+    ...re,
+    enabled: parseBool(result[0].value),
+    defaultReplyChance: Number(result[1].value),
+    directReplyChance: Number(result[2].value),
+    contextMessages: Number(result[3].value),
+    contextChars: Number(result[4].value),
+    topics
+  });
+  persist(cfg);
+}
+async function subagentScreen(cfg) {
+  const subagent = cfg.plugins.subagent;
+  const result = await formScreen({
+    crumbParts: ["配置", "子代理调度"],
+    panelTitle: "子代理调度",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(subagent.enabled), kind: "bool", hint: "启用后主代理可以调用 subagent 工具" },
+      { label: "最多子代理数", value: String(subagent.maxAgents), kind: "number", hint: "硬上限 100；用于限制同一主代理同时持有的子代理数量" },
+      { label: "最大并发数", value: String(subagent.maxConcurrency), kind: "number", hint: "并行任务同时运行的进程数，过高会占用更多内存和 API 配额" },
+      { label: "默认任务预算（美元）", value: String(subagent.defaultBudgetUsd), kind: "text", hint: "0 表示不设预算；子任务也可以在调用时单独指定 budgetUsd" }
+    ]
+  });
+  if (!result) return;
+  cfg.plugins.subagent = resolveSubagentConfig({
+    enabled: parseBool(result[0].value),
+    maxAgents: Number(result[1].value),
+    maxConcurrency: Number(result[2].value),
+    defaultBudgetUsd: Number(result[3].value)
+  });
+  persist(cfg);
+}
+function parseNumberList(v) {
+  return v.split(/[,，\s]+/).map((s) => Number(s)).filter((n) => Number.isFinite(n) && n !== 0);
+}
+async function channelsScreen(cfg) {
+  const items = () => [
+    {
+      label: "QQ（SnowLuma）",
+      detail: cfg.channels.qq.enabled ? `已启用 · ${cfg.channels.qq.url}` : "停用",
+      hint: "连接 SnowLuma OneBot 收发 QQ；支持戳一戳、点赞、发空间说说；`dito qq` 启动",
+      onEnter: () => qqChannelScreen(cfg)
+    },
+    {
+      label: "Matrix",
+      detail: cfg.channels.matrix.enabled ? `已启用 · ${cfg.channels.matrix.homeserver}` : "停用",
+      hint: "连接 Matrix homeserver 收发房间消息（需 Access Token）；`dito matrix` 启动",
+      onEnter: () => matrixChannelScreen(cfg)
+    },
+    {
+      label: "手机连接",
+      detail: cfg.channels.mobile.relayUrl ? `远程中继 · ${cfg.channels.mobile.devices.length} 台设备` : `局域网模式 · ${cfg.channels.mobile.devices.length} 台设备`,
+      hint: "手机 / iPhone PWA 扫码配对连到电脑；`dito mobile` 启动",
+      onEnter: () => mobileChannelScreen(cfg)
+    }
+  ];
+  await menuScreen({
+    crumbParts: ["配置", "频道"],
+    panelTitle: "频道",
+    items,
+    status: () => statusOf(cfg)
+  });
+}
+async function qqChannelScreen(cfg) {
+  const qq = cfg.channels.qq;
+  const result = await formScreen({
+    crumbParts: ["配置", "频道", "QQ（SnowLuma）"],
+    panelTitle: "QQ 频道",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(qq.enabled), kind: "bool", hint: "启用后用 `dito qq` 启动频道进程" },
+      { label: "OneBot WS 地址", value: qq.url, kind: "text", hint: "SnowLuma 的 WebSocket 端口（config/onebot_<uin>.json）" },
+      { label: "Access Token", value: qq.accessToken, kind: "sensitive", hint: "进入编辑即清空；与 SnowLuma 的 accessToken 一致，留空表示无鉴权" },
+      { label: "启动命令", value: qq.command, kind: "text", hint: "SnowLuma 本体的启动命令；留空则 dito qq 启动时自动探测（PATH/systemd/docker/常见目录）并填入" },
+      { label: "自动拉起 SnowLuma", value: String(qq.autoStart), kind: "bool", hint: "dito qq 时探测端口，未运行就按启动命令拉起，退出时一并关闭" },
+      { label: "主人 QQ（逗号分隔）", value: qq.owners.join(","), kind: "text", hint: "这些号的私聊拥有全部能力（含电脑控制）；其余会话仅保留搜索/知识库/记忆/娱乐" },
+      { label: "响应群号（逗号分隔）", value: qq.groups.join(","), kind: "text", hint: "留空 = 不响应任何群聊；群聊始终按受限工具集运行" },
+      { label: "群聊唤醒词（逗号分隔）", value: qq.wakeKeywords.join(","), kind: "text", hint: "留空 = 只有 @机器人 能唤醒；填了关键词则喊关键词也能唤醒（唤醒必答）" },
+      { label: "群聊回复概率", value: String(qq.groupReplyChance ?? 0.2), kind: "text", hint: "0-1 小数（0.2 = 20%）：未被唤醒的群消息按此概率回复；表情回应不受影响" },
+      { label: "响应私聊", value: String(qq.friends), kind: "bool", hint: "关闭后忽略所有私聊消息" },
+      { label: "自动表情回应", value: String(qq.autoReact !== false), kind: "bool", hint: "每条群消息按情绪自动贴表情；模型也可用 qq_react 精准追加" },
+      { label: "回复附带表情包概率", value: String(qq.memeChance ?? 0.3), kind: "text", hint: "0-1 小数（0.3 = 30%），回复后按概率补一张随机表情包；库空自动跳过" },
+      { label: "被戳戳回去", value: String(qq.pokeBack), kind: "bool", hint: "收到戳一戳时自动戳回去" },
+      { label: "自动同意请求", value: String(qq.autoApprove), kind: "bool", hint: "自动同意好友/群邀请（默认关，请求只打日志）" },
+      { label: "仅唤醒响应的群号", value: qq.wakeOnlyGroups.join(","), kind: "text", hint: "这些群不参与概率回复，只有 @/唤醒词 才回话（表情回应仍跟随回复）" }
+    ]
+  });
+  if (!result) return;
+  qq.enabled = parseBool(result[0].value);
+  qq.url = result[1].value.trim() || "ws://127.0.0.1:3001";
+  qq.accessToken = result[2].value.trim();
+  qq.command = result[3].value.trim();
+  qq.autoStart = parseBool(result[4].value);
+  qq.owners = parseNumberList(result[5].value);
+  qq.groups = parseNumberList(result[6].value);
+  qq.wakeKeywords = result[7].value.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
+  const replyChanceNum = Number(result[8].value);
+  qq.groupReplyChance = Number.isFinite(replyChanceNum) ? Math.max(0, Math.min(1, replyChanceNum)) : 0.2;
+  qq.friends = parseBool(result[9].value);
+  qq.autoReact = parseBool(result[10].value);
+  const chanceNum = Number(result[11].value);
+  qq.memeChance = Number.isFinite(chanceNum) ? Math.max(0, Math.min(1, chanceNum)) : 0.3;
+  qq.pokeBack = parseBool(result[12].value);
+  qq.autoApprove = parseBool(result[13].value);
+  qq.wakeOnlyGroups = parseNumberList(result[14].value);
+  persist(cfg);
+}
+async function matrixChannelScreen(cfg) {
+  const mx = cfg.channels.matrix;
+  const result = await formScreen({
+    crumbParts: ["配置", "频道", "Matrix"],
+    panelTitle: "Matrix 频道",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "启用", value: String(mx.enabled), kind: "bool", hint: "启用后用 `dito matrix` 启动频道进程" },
+      { label: "Homeserver", value: mx.homeserver, kind: "text", hint: "如 https://matrix.org" },
+      { label: "Access Token", value: mx.accessToken, kind: "sensitive", hint: "进入编辑即清空；Element：设置 → 帮助与关于 → 高级 → Access Token" },
+      { label: "响应房间（逗号分隔）", value: mx.rooms.join(","), kind: "text", hint: "房间 ID 如 !xxx:server；留空 = 所有已加入房间" }
+    ]
+  });
+  if (!result) return;
+  mx.enabled = parseBool(result[0].value);
+  mx.homeserver = result[1].value.trim() || "https://matrix.org";
+  mx.accessToken = result[2].value.trim();
+  mx.rooms = result[3].value.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
+  persist(cfg);
+}
+async function mobileChannelScreen(cfg) {
+  const items = () => [
+    {
+      label: "连接设置",
+      detail: cfg.channels.mobile.relayUrl ? `远程中继 · ${cfg.channels.mobile.relayUrl}` : "局域网模式（内嵌中继）",
+      hint: "中继地址、配对免确认、PWA 页面目录与隧道映射",
+      onEnter: () => mobileSettingsScreen(cfg)
+    },
+    {
+      label: "已配对设备",
+      detail: `${cfg.channels.mobile.devices.length} 台`,
+      hint: "选中后按 d 吊销设备；吊销后手机需重新扫码配对",
+      onEnter: () => mobileDevicesScreen(cfg)
+    }
+  ];
+  await menuScreen({
+    crumbParts: ["配置", "频道", "手机连接"],
+    panelTitle: "手机连接",
+    items,
+    status: () => statusOf(cfg)
+  });
+}
+async function mobileSettingsScreen(cfg) {
+  const mb = cfg.channels.mobile;
+  const result = await formScreen({
+    crumbParts: ["配置", "频道", "手机连接", "连接设置"],
+    panelTitle: "手机连接 · 设置",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "远程中继地址", value: mb.relayUrl, kind: "text", hint: "如 https://relay.example.com；留空 = 局域网模式（电脑内嵌中继，手机需同一网络）。公网部署见 relay/README.md" },
+      { label: "配对免确认", value: String(mb.autoApprove), kind: "bool", hint: "开 = 新设备扫码直接连入（主人级权限）；默认关，配对需在 dito mobile 终端按 y 确认" },
+      { label: "PWA 页面目录", value: mb.pwaDir, kind: "text", hint: "可选；局域网模式下 /p/<房间> 服务该目录的网页构建产物，供 iPhone 添加到主屏幕" },
+      { label: "隧道映射（JSON）", value: JSON.stringify(mb.tunnel ?? {}), kind: "text", hint: '高级：把公网请求转发到本机服务，如 {"/mcp":"http://127.0.0.1:3878"}；接入 MCP 后由桌面端自动填写' }
+    ]
+  });
+  if (!result) return;
+  mb.relayUrl = result[0].value.trim().replace(/\/+$/, "");
+  mb.autoApprove = parseBool(result[1].value);
+  mb.pwaDir = result[2].value.trim();
+  try {
+    const parsed = JSON.parse(result[3].value || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) mb.tunnel = parsed;
+  } catch {
+  }
+  persist(cfg);
+}
+async function mobileDevicesScreen(cfg) {
+  const items = () => cfg.channels.mobile.devices.map((d) => ({
+    label: d.name || "未命名设备",
+    detail: `${d.platform || "未知平台"} · ${String(d.pairedAt).slice(0, 10)} · ${d.id.slice(0, 8)}…`,
+    hint: "按 d 吊销设备：令牌立即失效，手机需重新扫码配对",
+    onDelete: async () => {
+      const ok = await confirmOverlay("吊销设备", `确定吊销「${d.name || d.id.slice(0, 8)}」？该设备的令牌将立即失效。`);
+      if (!ok) return;
+      cfg.channels.mobile.devices = cfg.channels.mobile.devices.filter((x) => x.id !== d.id);
+      persist(cfg, `已吊销设备「${d.name || d.id.slice(0, 8)}」`);
+    }
+  }));
+  await menuScreen({
+    crumbParts: ["配置", "频道", "手机连接", "已配对设备"],
+    panelTitle: "已配对设备",
+    items,
+    status: () => statusOf(cfg)
+  });
+}
+async function mcpScreen(cfg) {
+  const mcp = cfg.plugins.mcp;
+  const result = await formScreen({
+    crumbParts: ["配置", "MCP 服务"],
+    panelTitle: "MCP 服务",
+    status: () => statusOf(cfg),
+    fields: [
+      { label: "总开关", value: String(mcp.enabled), kind: "bool", hint: "关闭后 dito mobile 不再内嵌启动 MCP Server，`dito mcp` 也不可用" },
+      { label: "对外暴露", value: String(mcp.server.enabled), kind: "bool", hint: "把知识库/记忆/联网搜索/系统信息等桥接工具以 MCP 暴露给手机端与本机客户端（只绑 127.0.0.1）" },
+      { label: "端口", value: String(mcp.server.port), kind: "text", hint: "默认 3878；dito mobile 会自动把 /mcp 隧道指到这里，手机经中继调用" },
+      { label: "Bearer 令牌", value: mcp.server.token, kind: "sensitive", hint: "留空 = 信任本机连接与已配对设备的隧道访问（隧道侧已完成设备鉴权）" },
+      { label: "允许 pc_bash", value: String(mcp.server.allowBash), kind: "bool", hint: "开放「在电脑上执行命令」的 MCP 工具（内置危险命令拦截）；默认关" },
+      { label: "外部 MCP 服务器（JSON）", value: JSON.stringify(mcp.clients ?? []), kind: "text", hint: "Dito 自己接入的外部 MCP 服务器列表；接外部工具能力后续版本提供，可先留空" }
+    ]
+  });
+  if (!result) return;
+  mcp.enabled = parseBool(result[0].value);
+  mcp.server.enabled = parseBool(result[1].value);
+  const portNum = Number(result[2].value);
+  mcp.server.port = Number.isFinite(portNum) && portNum > 0 && portNum < 65536 ? portNum : 3878;
+  mcp.server.token = result[3].value.trim();
+  mcp.server.allowBash = parseBool(result[4].value);
+  try {
+    const parsed = JSON.parse(result[5].value || "[]");
+    if (Array.isArray(parsed)) mcp.clients = parsed;
+  } catch {
+  }
+  persist(cfg);
+}
+async function mainMenu(cfg) {
+  const searchSources = () => {
+    const ws = cfg.plugins.web_search;
+    return (ws.tavilyKeys.length ? 1 : 0) + (ws.firecrawlKeys.length ? 1 : 0) + (ws.anysearchKeys.length ? 1 : 0) + (ws.exaKeys.length ? 1 : 0) + (ws.perplexityKey ? 1 : 0) + (ws.searxngUrl ? 1 : 0);
+  };
+  const items = () => [
+    {
+      label: "模型与供应商",
+      detail: `${activeProvider(cfg)?.name ?? "未配置"} · ${cfg.model.chat || "—"}`,
+      hint: "切换供应商、聊天/视觉模型，管理自定义供应商",
+      onEnter: () => modelScreen(cfg)
+    },
+    {
+      label: "提示词设定",
+      detail: `${cfg.persona.active} / ${cfg.persona.identity}`,
+      hint: "Dito 人设与用户身份，切换后下一轮对话生效",
+      onEnter: () => personaScreen(cfg)
+    },
+    {
+      label: "知识库",
+      detail: cfg.plugins.knowledge_base.enabled ? "启用" : "停用",
+      hint: "本地 SQLite + 中文检索，内置 Arch Linux 等 Linux 知识",
+      onEnter: () => kbScreen(cfg)
+    },
+    {
+      label: "记忆",
+      detail: cfg.plugins.memory.enabled ? `启用 · 自动日记${cfg.plugins.memory.autoDiary ? "开" : "关"} · 自动联想${cfg.plugins.memory.associationEnabled ? "开" : "关"}` : "停用",
+      hint: "知识点 + 历史对话，自动记忆、跨会话持久",
+      onEnter: () => memoryScreen(cfg)
+    },
+    {
+      label: "网络搜索",
+      detail: !cfg.plugins.web_search.enabled ? "停用" : searchSources() > 0 ? `启用 · ${searchSources()} 个搜索源` : "启用 · 无 Key（DuckDuckGo 兜底）",
+      hint: "Tavily / Firecrawl / Exa / Perplexity / SearXNG，无 Key 走免费源",
+      onEnter: () => searchScreen(cfg)
+    },
+    {
+      label: "语音",
+      detail: cfg.plugins.voice.enabled ? `STT ${cfg.plugins.voice.stt} · TTS ${cfg.plugins.voice.tts}` : "停用",
+      hint: "whisper / espeak / piper / 小米 MiMo，`dito voice` 全屏水波界面",
+      onEnter: () => voiceScreen(cfg)
+    },
+    {
+      label: "权限与 sudo",
+      detail: cfg.plugins.permission.sudoMode ? "sudo 模式（权限门关闭）" : "权限门开启",
+      hint: "高危命令拦截/确认；sudo 模式下需要 root 的命令自动加 sudo",
+      onEnter: () => permissionScreen(cfg)
+    },
+    {
+      label: "频道（QQ / Matrix / 手机）",
+      detail: cfg.channels.qq.enabled ? "QQ 已启用" : cfg.channels.matrix.enabled ? "Matrix 已启用" : cfg.channels.mobile.devices.length > 0 ? `手机已配 ${cfg.channels.mobile.devices.length} 台` : "停用",
+      hint: "dito qq 连 SnowLuma 收发 QQ（含戳一戳/空间）；dito matrix 连 Matrix 房间；dito mobile 扫码连手机",
+      onEnter: () => channelsScreen(cfg)
+    },
+    {
+      label: "QQ 智能自动回复",
+      detail: cfg.plugins["dito-re"].enabled ? `启用 · 普通 ${Math.round(cfg.plugins["dito-re"].defaultReplyChance * 100)}% · ${cfg.plugins["dito-re"].topics.length} 个爱好主题` : "停用",
+      hint: "dito-re：爱好主题概率、直接对话识别、全群上下文",
+      onEnter: () => ditoReScreen(cfg)
+    },
+    {
+      label: "子代理调度",
+      detail: cfg.plugins.subagent.enabled ? `启用 · 最多 ${cfg.plugins.subagent.maxAgents} · 并发 ${cfg.plugins.subagent.maxConcurrency}` : "停用",
+      hint: "主代理按任务内容、模型价格和预算分配隔离子代理",
+      onEnter: () => subagentScreen(cfg)
+    },
+    {
+      label: "MCP 服务",
+      detail: cfg.plugins.mcp?.enabled ? cfg.plugins.mcp.server.enabled ? `对外暴露 · 端口 ${cfg.plugins.mcp.server.port}${cfg.plugins.mcp.server.allowBash ? " · pc_bash 开" : ""}` : "仅接入外部（未实现）" : "停用",
+      hint: "把 Dito 能力以 MCP 暴露给手机端/本机客户端；`dito mcp` 独立运行，dito mobile 自动内嵌",
+      onEnter: () => mcpScreen(cfg)
+    },
+    {
+      label: "保存并退出",
+      detail: "~/.pi/agent/dito/config.json",
+      hint: "所有改动在每一步都已即时写入，这里只是体面的出口",
+      onEnter: () => {
+        throw new QuitSignal();
+      }
+    }
+  ];
+  await menuScreen({
+    crumbParts: ["配置"],
+    panelTitle: "Dito 配置",
+    items,
+    status: () => statusOf(cfg)
+  });
+}
+async function runConfigTui() {
+  if (!process.stdin.isTTY) {
+    console.error("配置页面需要真实终端（TTY）。请在终端里运行 `dito config`。");
+    return;
+  }
+  const cfg = loadConfig();
+  process.stdout.write(ALT + HIDE);
+  startRaw();
+  const onResize = () => {
+    requestClear();
+    drawCurrent?.();
+  };
+  process.on("SIGWINCH", onResize);
+  try {
+    await mainMenu(cfg);
+  } catch (err) {
+    if (!(err instanceof QuitSignal)) throw err;
+  } finally {
+    process.off("SIGWINCH", onResize);
+    stopRaw();
+    process.stdout.write(SHOW + LEAVE);
+    console.log("配置已存到 ~/.pi/agent/dito/config.json，改动即时生效");
+  }
+}
+export {
+  runConfigTui
+};

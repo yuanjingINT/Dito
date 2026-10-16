@@ -1,44 +1,19 @@
 #!/usr/bin/env bash
-# Dito RPM 打包脚本：生成源码包并调用 rpmbuild 构建 .rpm。
-# 用法：./packaging/build.sh [--srpm-only]
+# Native RPM source build. The RPM contains C functionality; optional legacy
+# dependencies are supplied by the user installer/portable distribution.
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NAME="dito"
-VERSION="$(node -p "require('$ROOT/package.json').version")"
-# rpm 的 Version 字段不允许连字符：预发布版本 0.2.1-alpha → 0.2.1~alpha（rpm ≥ 4.14 支持 ~ 排序）
-# （不能用 ${var//-/~}：替换串里的 ~ 会被 bash 做 tilde 展开成家目录）
-RPM_VERSION="$(printf '%s' "$VERSION" | tr '-' '~')"
-RPMBUILD="${RPMBUILD_DIR:-$HOME/rpmbuild}"
-STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
-
-mkdir -p "$RPMBUILD"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-
-# ── 先在本地生成加密提示词包（AES-256-GCM）──
-
-# ── 组装源码树（排除 node_modules / docs / 计划文档 / 原始人设副本）──
-# node_modules 不打包：COPR 构建时用 --enable-net on 联网跑 npm ci。
-SRC="$STAGE/$NAME-$RPM_VERSION"
-mkdir -p "$SRC"
-cp -a \
-  bin extensions kb config skills .pi personas identities system-prompts web-ui \
-  package.json package-lock.json README.md \
-  "$SRC"/
-
-# ── 打包源码 tarball ──
-tar -C "$STAGE" -czf "$RPMBUILD/SOURCES/$NAME-$RPM_VERSION.tar.gz" "$NAME-$RPM_VERSION"
-echo "[build] 源码包：$RPMBUILD/SOURCES/$NAME-$RPM_VERSION.tar.gz"
-
-cp -f "$ROOT/packaging/$NAME.spec" "$RPMBUILD/SPECS/$NAME.spec"
-
-# ── 构建 ──
-if [[ "${1:-}" == "--srpm-only" ]]; then
-  rpmbuild -bs "$RPMBUILD/SPECS/$NAME.spec"
-else
-  rpmbuild -bb "$RPMBUILD/SPECS/$NAME.spec"
-fi
-
-echo
-echo "[build] 完成。产物："
-ls -lh "$RPMBUILD/RPMS"/*/*.rpm 2>/dev/null || true
+command -v rpmbuild >/dev/null || { echo '需要 rpmbuild；Linux 便携包请用 build-portable.sh。' >&2; exit 1; }
+version="$(tr '-' '~' < "$ROOT/VERSION")"
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+rpmroot="${RPMBUILD_DIR:-$ROOT/dist/rpmbuild}"
+mkdir -p "$rpmroot"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$work/dito-$version"
+for name in c config personas identities system-prompts kb skills web-ui LICENSE NOTICE README.md VERSION; do
+  cp -a "$ROOT/$name" "$work/dito-$version/"
+done
+rm -rf -- "$work/dito-$version/c/build" "$work/dito-$version/c/build-asan"
+tar -C "$work" --exclude='c/build*' --exclude='__pycache__' -czf "$rpmroot/SOURCES/dito-$version.tar.gz" "dito-$version"
+cp "$ROOT/packaging/dito.spec" "$rpmroot/SPECS/dito.spec"
+if [[ "${1:-}" == '--srpm-only' ]]; then mode=-bs; else mode=-bb; fi
+rpmbuild --define "_topdir $rpmroot" "$mode" "$rpmroot/SPECS/dito.spec"

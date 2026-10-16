@@ -1,0 +1,19 @@
+{
+  "measurement": "offline doctor process launch, wall time and peak RSS",
+  "runs": 7,
+  "limitations": "C doctor currently checks fewer capabilities; not a complete application or LLM throughput comparison",
+  "typescript": {
+    "median_ms": 2171.454,
+    "min_ms": 1931.422,
+    "max_ms": 2308.266,
+    "median_peak_rss_kib": 224484
+  },
+  "c": {
+    "median_ms": 13.114,
+    "min_ms": 12.806,
+    "max_ms": 13.368,
+    "median_peak_rss_kib": 18120
+  },
+  "launch_speedup": 165.58,
+  "peak_rss_reduction_percent": 91.9
+}

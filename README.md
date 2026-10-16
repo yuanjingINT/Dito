@@ -1,321 +1,76 @@
 # Dito（蒂特）
 
-基于 [pi](https://pi.dev) 打造的个人 AI 助手——跑在你电脑里的虚拟生命。
+Dito 0.3.0-alpha 以 **C17 程序作为 `dito` 默认入口**。终端对话、流式模型请求、工具循环、知识库、记忆和双会话并行由 C 运行时处理。未完成原生迁移的功能通过 `legacy/` 中的 JavaScript 兼容层运行；项目自有 TypeScript 源码、tsx 启动链和根目录 npm 发行包已移除。
 
-- **多端接入**：终端 TUI、QQ（SnowLuma）、Matrix（E2EE 加密房间）、手机 App / iPhone PWA（扫码配对、公网中继）
-- **网页管理后台**（`dito qqadmin`）：QQ 频道与 Matrix 频道的图形化管理——状态总览、实时消息流、聊天查看与手动发送、好友/群深度配置、好感度、表情包库、频道配置表单、OneBot 动作台
-- **MCP 双向**：MCP Server 把 Dito 的工具（知识库/记忆/联网搜索/系统信息/命令行）暴露给手机和其他客户端；MCP Client 接入外部 MCP 服务器扩充 Dito 自己的工具箱
-- **语音对话**：全屏水波界面，唤醒词 → STT（whisper-cli / 小米 MiMo）→ 大模型 → TTS（espeak-ng / piper / 小米 MiMo），Windows/macOS/Linux 三平台录音适配
-- **知识库**：本地 SQLite + 中文检索，内置 Arch Linux 等 Linux 知识；**记忆**：知识点 + 历史对话，按聊天隔离、跨会话持久
-- **人设系统**：Dito 人设 + 用户身份可切换；系统检测自动匹配 14 份发行版专属运维提示词
-- **权限门 / sudo 模式**：高危命令拦截/确认；sudo 模式下需要 root 的命令自动提权
-- **默认模型免 Key 开箱即用**：opencode 免费公共模型；内置智谱 GLM-4-Flash（免费·国内直连）等可一键切换
+这次切换改变默认实现，**不代表所有功能都已用 C 重写**。兼容频道和旧界面仍需 Node ≥22.5。详细边界见 [迁移记录](C_MIGRATION.md)。
 
-## 目录
+## 构建与安装
 
-- [安装与体检](#安装与体检)
-- [命令总览](#命令总览)
-- [终端对话](#终端对话)
-- [语音对话](#语音对话)
-- [配置页面](#配置页面)
-- [QQ 频道（SnowLuma）](#qq-频道snowluma)
-- [QQ / 频道管理后台（dito qqadmin）](#qq--频道管理后台dito-qqadmin)
-- [Matrix 频道](#matrix-频道)
-- [手机频道（扫码配对）](#手机频道扫码配对)
-- [MCP（双向）](#mcp双向)
-- [常驻服务（systemd）](#常驻服务systemd)
-- [数据位置](#数据位置)
-- [默认模型说明](#默认模型说明)
-- [人设与提示词文件](#人设与提示词文件)
-- [打包与全平台](#打包与全平台)
-- [许可证](#许可证)
-
-## 安装与体检
-
-要求 Node ≥ 22.5（`node:sqlite`）。三种安装方式：
+当前原生版本支持 Linux/POSIX。需要 C17 编译器、CMake、pkg-config，以及 libcurl、json-c、SQLite、ncursesw、OpenSSL 和 libxml2 的开发文件。
 
 ```bash
-npm i -g dito-agent@alpha         # 当前 alpha 版：dito-agent@0.2.1-alpha
-./packaging/build-portable.sh    # 或本地打包 AppImage / exe / .app（见下文打包章节）
-git clone ... && npm install && ./bin/dito   # 源码直接跑
+git clone https://github.com/yuanjingINT/Dito.git
+cd Dito
+make
+bash packaging/install-native.sh
+dito
 ```
 
-> 注：npm 上的 `dito` 包名属于无关第三方，Dito 发布为 `dito-agent`。
-> 当前版本为 `v0.2.1-alpha`，终端和配置界面会显示 `ALPHA` 标记；该标记随版本号自动消失。打包：`./packaging/build-npm.sh` 组装并冒烟 npm 包（`--publish` 按版本通道发布）。
+默认安装到 `~/.local/bin/dito`，程序与公开资源位于 `~/.local/lib/dito`。安装器会验证 C 核心和兼容模块，保留旧安装与启动器的私有备份，然后替换默认命令。已有 `dito-c` 安装会退役。已经打开的进程需退出后重新运行 `dito`。
 
-装完先体检一次，任何环境问题都会给出修复提示：
+默认包含旧功能兼容层；首次安装需要 Node、npm 和网络来安装锁定版本的兼容依赖及 Matrix 加密库。只安装 C 功能可运行：
 
 ```bash
-dito doctor          # Node 版本/配置/模型连通性/录音/STT/TTS/频道/MCP/外部命令 全项检查
-dito doctor --ci     # CI/脚本用：失败项不改变退出码
+bash packaging/install-native.sh --without-legacy
+# 自定义位置
+bash packaging/install-native.sh --prefix /绝对路径
 ```
 
-## 命令总览
+源码目录可用 `./bin/dito` 启动已构建的 C 程序。`cmake --install c/build --prefix /绝对路径` 提供只含原生功能的安装。Linux 便携包可用 `bash packaging/build-portable.sh` 构建，不携带 Node 解释器。
 
-| 命令 | 作用 |
-|---|---|
-| `dito` | 全屏对话 TUI（无参数）；`dito "消息"` 单次问答 |
-| `dito send` / `msg` / `message` / `-m` | 显式单次问答（支持管道输入、`--fresh` 开新会话） |
-| `dito voice` | 全屏语音对话（水波界面 + 唤醒词） |
-| `dito config` | 终端配置界面（模型/供应商/人设/知识库/记忆/搜索/语音/权限/频道/MCP/手机连接） |
-| `dito qq` | QQ 频道守护进程（自动拉起 SnowLuma） |
-| `dito qqadmin` | **网页管理后台**（QQ + Matrix，默认 http://127.0.0.1:3880/） |
-| `dito matrix` | Matrix 频道守护进程（E2EE 加密房间） |
-| `dito mobile` | 手机频道（终端显示二维码，扫码配对；自动内嵌中继与 MCP 隧道） |
-| `dito mcp` | MCP Server 独立运行（默认 `dito mobile` 会内嵌启动） |
-| `dito plugins` | 插件安装器：选择启用的能力、QQ、Matrix、Bridge、手机和 MCP 模块 |
-| `dito doctor` | 环境体检 |
+## 使用
 
-## 插件安装
+| 命令 | 实现 |
+| --- | --- |
+| `dito` / `dito send "你好"` | C 终端、流式请求和工具循环 |
+| `dito send --image 图片路径 "描述图片"` | C 图片请求；支持 PNG/JPEG/WebP |
+| `dito sessions` | C 历史会话列表 |
+| `dito config get model` / `dito config set 路径 JSON` | C 配置读取和保存，保留未知字段 |
+| `dito config` / `dito plugins` | 旧版专用配置、模型元数据和插件界面的 JavaScript 兼容层 |
+| `dito --native config` | C ncurses 通用配置编辑器 |
+| `dito qq` / `dito qqadmin` | 旧版完整 QQ 频道和网页后台兼容层 |
+| `dito matrix` / `dito mobile` / `dito bridge` | 旧版加密频道、手机配对和频道桥接兼容层 |
+| `dito voice` / `dito relay` | 旧版语音和中继兼容层 |
+| `dito mcp` / `dito web` | C 本机 MCP / 部分 JSON、SSE 管理接口 |
+| `dito legacy` | 完整旧版终端界面，含附件、Markdown 和专用交互 |
+| `dito legacy config` / `dito legacy doctor --ci` | 显式调用旧版功能 |
+| `dito doctor` / `dito capabilities` | C 本地运行时检查 / 原生及兼容功能状态 |
 
-Dito 的能力和频道统一由插件目录管理。安装包已经包含插件代码，首次启动 `dito`、`dito config` 或频道命令时会显示选择器；用方向键移动、Space 勾选、Enter 保存。选择 `QQ ↔ Matrix Bridge` 会自动安装并启用 QQ 与 Matrix 依赖。
+`--native` 禁止默认命令转交兼容层；未实现的原生功能会明确报错。`DITO_DISABLE_LEGACY=1` 可在整个进程中关闭兼容层。普通 C 终端不加载 Node；选择未原生支持的模型协议、使用 SDK 保存的 OAuth 鉴权或启用加密提示词包时，会自动转交兼容实现。子代理单任务默认使用 C 子进程；传入并行 tasks、chain、选模或预算参数时，由 JavaScript 兼容调度器执行，并保留 C 权限与取消门控。
 
-之后可运行 `dito plugins` 重新选择。插件状态保存在用户配置的 `plugins.manager` 节中，QQ、Matrix 和 Bridge 的账号令牌仍分别保存在 `user/qq`、`user/matrix` 与 `user/bridge`，不会写入仓库。
+C 终端恢复原版工作台布局：历史标签、可展开的思考/工具、Bash 实时侧栏、边框输入和模型/上下文状态。Ctrl+T 新建，Alt+1…9 选标签，Ctrl+W 或终端支持的 Ctrl+Tab 切换。两个会话可同时运行，提问、输入草稿和取消操作各自独立。Alt+W 打开历史，鼠标点击展开记录，滚轮分别滚动正文与 Bash；Ctrl+B / Ctrl+Shift+B 展开 Bash。空闲时输入 `/legacy` 可恢复当前会话的完整旧界面，运行中的两个任务不会被静默中断。
 
-## 终端对话
+## 配置、对话与记忆
+
+原数据目录继续沿用 `~/.pi/agent/dito/`；兼容层和 C 运行时读取同一份会话、配置及 SQLite 记忆。QQ/Matrix 私有凭据仍位于 `~/.pi/agent/dito/user/`。`PI_CODING_AGENT_DIR` 和 `DITO_USER_DIR` 可指定其它位置；`DITO_RESOURCE_DIR` 指向公开程序资源，`--config` 可指定独立配置文件。
+
+API Key 应在个人配置中设置，或使用配置里的 `$环境变量` / `${环境变量}` 引用。仓库的 `config/dito.json` 仅为公开默认模板。模型上下文窗口未知时显示未知，不使用按名称猜测的容量。
+
+安装器不搬移、不清空对话或记忆，也不把它们打进程序目录。需要额外备份可运行 `python3 packaging/backup-user-data.py`：SQLite 使用在线备份以包含 WAL 已提交数据，并校验快照；备份只保存在本机私有目录。
+
+**GitHub 仅上传源码和公开资源。** 对话 JSONL、记忆数据库、私有配置、凭据、用户目录、机器校验快照和旧安装备份均排除。`python3 packaging/audit-upload.py` 检查暂存区；加 `--tree` 检查整个已跟踪文件集合。
+
+## 验证与许可
 
 ```bash
-dito "今天天气怎么样"          # 单次问答，打印回复后退出
-echo "看看这个目录" | dito send # 管道输入
-dito                           # 进入全屏对话 TUI
+make test
+node --import ./legacy/register-loader.mjs --test legacy/tests/*.test.js
+cmake -S c -B c/build-asan -DCMAKE_BUILD_TYPE=Debug -DDITO_SANITIZE=ON
+cmake --build c/build-asan --parallel 4
+ASAN_OPTIONS=detect_leaks=1 ctest --test-dir c/build-asan --output-on-failure
+ASAN_OPTIONS=detect_leaks=1 DITO_C_BINARY="$PWD/c/build-asan/dito" python3 c/tests/integration.py
 ```
 
-**TUI 快捷键**：
+测试使用临时用户目录和本机模拟模型、HTTP/SSE、MCP、OneBot 及 PTY，不调用真实模型、QQ 或麦克风。Matrix 兼容模块的加载检查包括加密库，真实账号端到端联调仍需另行验收。C17 实现与旧功能兼容层的具体说明见 [c/README.md](c/README.md) 和 [legacy/README.md](legacy/README.md)。
 
-- **Tab** 循环切换运行模式：`闲聊`（纯聊天不调用工具）→ `标准`（完整助手）→ `计划`（只读探索、产出计划、不执行）
-- 顶部标签栏显示当前会话与历史会话：**Ctrl+Tab** 切换，**Alt+1…9** 直接选择，鼠标点击标签也可切换；输入框为空时也可用 **Alt+←→**；**Ctrl+T** / **alt+d** 新会话
-- **alt+a** 上一会话；**alt+w** 会话选择器（↑↓ / j-k 移动、enter 恢复）；**Ctrl+Shift+B** 展开 Bash 活动
-- **esc** 中断当前任务；任务运行中可直接打字插话（排队为 followUp）
-- 思考过程默认以灰色标题折叠；点击「◇ 思考」展开或收起，底部模型名左侧显示当前上下文的已用 token、模型窗口和使用率
-- `web_search`、`subagent` 等工具调用会显示运行或完成状态；点击工具标题可展开参数、实时输出与最终结果，恢复历史会话后也可查看
-- `/compact` 手动压缩上下文；达到上下文压力阈值时也会自动压缩，并在上下文溢出后压缩重试
-- `/sudo on` / `/sudo off` 切换 sudo 权限模式；`/persona`、`/identity` 切换人设与用户身份；`/model` 切换模型
-- 启动自动恢复上次会话；宽窗口右侧显示 Bash 命令和实时输出，窄窗口自动隐藏侧栏与次要状态信息
-
-自动压缩采用 laozhou 的窗口策略：按当前模型的上下文窗口显示 `已用/窗口 (百分比)`，达到窗口 80% 时触发，压缩后固定保留最近 16384 token，并保证至少有窗口 10%（至少 4096 token）的响应余量。可以在 `~/.pi/agent/dito/config.json` 的 `contextCompaction` 中调整 `enabled`、`trimAtRatio`、`trimBatchRatio`、`reservedRatio`、`minReservedTokens` 和 `compactTailTokens`；摘要、工具调用边界、溢出恢复和会话落盘由 pi-coding-agent 负责。
-
-模型上下文窗口从供应商 API 动态读取（如 `/models` 中的 `context_length`、`context_window`、`limit.context`；Ollama 使用 `/api/show`）。接口未提供时查询 [models.dev 动态模型目录](https://models.dev/)，元数据在 `~/.pi/agent/dito/model-metadata/` 缓存 6 小时，离线时保留最近成功结果；「刷新模型列表（API）」可强制更新。API/目录结果优先于旧配置，显式配置的 `contextWindow` 仅在查不到元数据时作为备用值。窗口仍未知时显示「未知」，暂停按窗口比例触发的压缩，仍保留 API 上下文溢出后的压缩恢复；切换模型时同步更新窗口和压缩预算。
-
-QQ 的 `dito-re` 配置位于 `~/.pi/agent/dito/config.json` 的 `plugins["dito-re"]`：`defaultReplyChance` 是普通消息概率，`topics` 中每个主题配置 `keywords` 与 `replyChance`，主题数组可以自由添加和删除，不受固定枚举限制；`contextMessages` / `contextChars` 控制每个群注入的上下文上限。`dito config` →「QQ 智能自动回复」可直接追加一个主题 JSON 或按 ID 删除主题。群上下文保存在 QQ 私有数据目录的 `dito-re-context.json`，只在本机使用。
-
-**子代理调度**：主代理可以调用 `subagent` 工具创建隔离上下文的单个任务、并行任务或串行任务链。TUI 中会显示各任务的排队、运行、完成、失败或取消状态；点击 `subagent` 标题可查看分配任务、所用模型、当前工具和返回结果。任务支持 `workType`、`model` 和 `budgetUsd`；留空模型时会结合任务内容、模型推理能力和价格自动选择。并行任务最多 100 个，`plugins.subagent.maxConcurrency` 控制同时运行的数量；`dito config` →「子代理调度」可调整上限和默认预算。
-
-**长记忆**参考 laozhou 的“短日记 → 长期整理 → 自动联想”流程。每轮结束会按聊天 scope 保存短日记；“请记住”“我喜欢”“我的目标”等明确的稳定信息会整理为知识点，重要或反复被回忆的经历会升级为长期记忆。下一轮提问前，相关知识和经历会自动作为不可信历史资料注入上下文，并按回忆次数强化、按半衰期衰减。运行 `/memory-stats` 查看统计，运行 `/memory-clear` 清空；`dito config` →「记忆」可调整自动联想、短日记保留天数、联想条数和遗忘策略。记忆库仍保存在各聊天隔离的 `memory.db` / `memory-<scope>.db` 中，旧版数据库会自动迁移。
-
-**权限门**：`rm -rf /`、fork 炸弹、格式化等高危命令直接拦截；改动类命令弹确认。sudo 模式（`/sudo on`）下权限门关闭、需要 root 的命令自动加 `sudo`（Windows 无 sudo，自动跳过）。
-
-## 语音对话
-
-```bash
-dito voice
-```
-
-- 空格键手动说话；配置唤醒词后待机本地 whisper 轮询 2.5 秒短音频（零 API 成本），命中后蒂特应一声「在的啊」进入对话
-- 提问/请求许可时自动「朗读 → 录音」听取回答；`continuous` 开连续对话
-- STT/TTS 均可选：本地 whisper-cli / espeak-ng / piper，或小米 MiMo 云端（`mimo-v2.5-asr` / `mimo-v2.5-tts`，支持音色设计）；按平台自动探测录音器（Linux pw-record→parec→arecord，macOS/Windows 走 ffmpeg）
-- 配置都在 `dito config` →「语音」
-
-## 配置页面
-
-```bash
-dito config
-```
-
-分区：**模型与供应商**（模型列表从 API 实时刷新，可增删供应商）、**提示词设定**、**知识库**、**记忆**、**网络搜索**（Tavily/Exa/SearXNG/免 Key DuckDuckGo）、**语音**、**权限与 sudo**、**频道**（QQ / Matrix / 手机连接）、**MCP 服务**。全部改动即时写盘。
-
-子代理调度也作为内置能力提供：主代理调用 `subagent` 工具后，可以把任务交给隔离上下文的 scout、planner、reviewer 或 worker，按任务类型、模型能力、价格和预算自动选模，支持最多 100 个并行任务。
-
-## QQ 频道（SnowLuma）
-
-1. 安装 [SnowLuma](https://www.npmjs.com/package/@snowluma/sdk) 本体（QQ 协议端）
-2. `dito config` →「频道」→「QQ（SnowLuma）」：启用、填地址（默认 `ws://127.0.0.1:3001`）与 Token、配置响应范围
-3. `dito qq` 启动——**自动拉起 SnowLuma**（探测端口 → 自动找启动命令 PATH/systemd/docker → 拉起 → 自动填配置；已在运行则直连）
-
-能力：
-
-- 私聊/群聊对话，每聊天独立持久会话，QQ 专属人设（纯文本风格）；主人私聊全量工具，其余会话受限（屏蔽电脑控制/凭据类，保留搜索/知识库/记忆/娱乐）
-- **184 个 OneBot 动作**注册为独立工具（`snowluma_*`）由模型自主选择：查好友/群成员/群公告、群签到、AI 语音、**QQ 空间全套**（发说说/动态/点赞）等
-- 被戳自动戳回去；按消息情绪自动贴表情回应；回复超 100 字自动转图片；概率附赠随机表情包
-- **群聊好感度**：每个群友 0-100 分，模型自主加减（单次 ±20），语气随分数变化；**低于 20 分直接忽略其消息**
-- 群聊白名单 + 唤醒词 + 概率回复（被 @/唤醒词必答）；好友/群请求自动同意可选
-- **dito-re 智能自动回复**：命中 Dito 的爱好主题使用主题专属概率；明显在和 Dito 对话时直接回复；每条群消息先进入该群滚动上下文，触发回复时把未触发的消息和 Dito 最近回复一起交给模型
-- **行为字段（owners/groups/概率/开关）后台改动即时生效**——频道进程每条消息重读配置，无需重启
-
-## QQ / 频道管理后台（dito qqadmin）
-
-```bash
-dito qqadmin                # http://127.0.0.1:3880/（channels.qq.admin.port 可改）
-dito qqadmin --port 9000 --token xxx --host 0.0.0.0   # 局域网开放必须配令牌
-dito qqadmin --no-bot       # SnowLuma 离线时纯管理本地数据
-```
-
-页面与 QQ 频道深度管理：
-
-| 页面 | 功能 |
-|---|---|
-| 总览 | 登录号/在线状态/数据统计（表情包·好感度·会话数）、快捷开关（私聊/戳回/自动表情/自动同意） |
-| 消息流 | SSE 实时推送所有 QQ 消息/通知/请求，按私聊/群/通知/请求过滤 |
-| 聊天 | 会话列表 → **OneBot 原始记录 + Dito 会话合并展示**，底部手动发送（超 100 字自动转图） |
-| 好友 | 列表；**点击好友打开深度配置**：资料/点赞×10/戳一戳/发私信/查看记录/重置 Dito 会话 |
-| 群列表 | 列表；**点击群打开深度配置**：群信息、Dito 行为开关（响应此群/仅唤醒响应）、机器人群名片、群公告查看+发布、全员禁言、退群（双重确认）、发消息、会话重置、**成员逐人操作**（设名片/禁言 N 分钟/戳一戳） |
-| 好感度 | 按群分组表格，行内 ±/设定，低于 20 标红；**改动热同步到 dito qq 进程**（互不覆盖） |
-| 表情包 | 网格预览 + 元信息 + 删除 |
-| Matrix | 见下节 |
-| 配置 | QQ 频道全部字段表单化保存 |
-| 动作台 | OneBot 动作白名单透传（21 个常用动作；凭据类动作永不暴露） |
-
-- **安全**：默认只绑 127.0.0.1；`channels.qq.admin.token` 非空时非本机访问强制 `?token=` / Bearer
-- **手机远程管理**：mobile 频道启用时自动挂载隧道 `/qq`，配对设备经 `https://<中继>/t/<房间>/qq/` 打开同一个后台
-- 多客户端并存：后台自建一条 SnowLuma 连接，与 `dito qq`、终端 TUI 互不干扰
-
-## Matrix 频道
-
-1. 在 Matrix 客户端（如 Element）里创建机器人账号，取 Access Token（Element：设置 → 帮助与关于 → 高级）
-2. `dito config` →「频道」→「Matrix」，或 **后台「Matrix」页** 填写：启用、Homeserver、Access Token、响应房间（留空 = 所有已加入房间）、主人列表
-3. `dito matrix` 启动
-
-- **E2EE 端到端加密房间支持**（Rust crypto store 持久化于 `matrix-crypto-store/`，跨重启稳定）；受邀自动进房
-- 主人判定：DM 且成员仅 bot + 主人 → 全量工具；其余房间受限（与 QQ 语义一致）
-- 行为字段（rooms/owners/enabled）后台改动即时生效；Homeserver/Token 改动需重启 `dito matrix`
-- 后台「Matrix」页可看：守护进程运行状态（PID/时长）、令牌有效性、机器人账号、全部已加入房间（名称/人数/是否响应中）
-
-## 手机频道（扫码配对）
-
-让手机（Android App / iPhone PWA）连上电脑上的 Dito——局域网直连，或经公网中继连回家。
-
-1. 电脑运行 `dito mobile`，终端显示**配对二维码**
-2. 手机扫码（或浏览器打开二维码地址）→ 电脑端按 `y` 确认 → 配对成功
-3. 手机上直接和 Dito 对话：流式回复、工具执行可见（主人级权限）
-
-手机端（重制版，界面与 [dito.dito.asia](https://dito.dito.asia) 同一设计语言）：
-
-- **扫码连接**：系统相机扫终端二维码直接进入；粘贴配对链接、已保存电脑一键重连
-- **多对话**：抽屉里新建 / 切换 / 删除对话，每个对话独立持久会话与记忆，标题自动取首条消息
-- **dito voice**：全屏水波球语音模式——按住说话 → 电脑 ASR → 回复自动 TTS 朗读回来；文字消息也可点喇叭随时重播
-- **局域网模式**（默认）：电脑内嵌中继监听 8787，无需任何外部服务
-- **公网模式**：把 `relay/` 部署到 VPS（见 `relay/README.md`，单文件仅依赖 `ws`），`channels.mobile.relayUrl` 填中继地址——无需公网 IP/端口转发，电脑侧只做出站连接
-- **Android App**：见 [dito-mobile 仓库](https://github.com/yuanjingINT/dito-mobile)（「电脑」屏幕粘贴配对链接即连）
-- **iPhone / PWA**：把移动端仓库 `pwa/` 目录配到 `channels.mobile.pwaDir`，扫码即用；Safari「添加到主屏幕」成独立应用
-- **安全**：配对令牌一次性；deviceToken 可在 `dito config` →「手机连接」→「已配对设备」随时吊销
-- **HTTP 隧道**：`channels.mobile.tunnel` 把公网请求转发到本机服务——自动挂载 `/mcp`（手机调 Dito 工具）与 `/qq`（手机开管理后台）
-- 调试：`node scripts/simulate-phone.mjs "<配对URL>"` 模拟全流程；协议规格见 `docs/protocol.md`
-
-## MCP（双向）
-
-**MCP Server**——把 Dito 能力暴露给手机和其他客户端：
-
-```bash
-dito mcp        # 独立运行，streamable HTTP @127.0.0.1:3878
-```
-
-- 工具集：`kb_search` / `kb_read` / `kb_list` / `kb_upload`（知识库）、`memory_remember` / `memory_recall`（记忆）、`web_search` / `web_fetch`（联网）、`system_info`
-- `allowBash: true` 额外暴露 `pc_bash`（在电脑上执行命令，内置危险命令拦截）
-- `dito mobile` 启动时自动内嵌并挂载隧道 `/mcp`——手机 MCP 客户端配置端点 `https://<中继>/t/<房间>/mcp/`、Bearer = deviceToken 即可调用电脑工具
-- 本机客户端（Claude Desktop 等）直接连 `http://127.0.0.1:3878/`
-
-**MCP Client**——Dito 接入外部 MCP 服务器：`dito config` →「MCP 服务」→「外部 MCP 服务器」，或直接编辑 config：
-
-```jsonc
-"mcp": {
-  "enabled": true,
-  "server": { "enabled": true, "port": 3878, "token": "", "allowBash": false },
-  "clients": [
-    { "name": "github", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"], "enabled": true },
-    { "name": "remote", "transport": "http", "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer xxx" }, "enabled": true }
-  ]
-}
-```
-
-远端工具以 `mcp_<服务器>_<工具>` 命名注册进对话，与内置工具同等参与；连接 15s 超时，单个坏服务器不阻塞对话。
-
-## 常驻服务（systemd）
-
-```ini
-# ~/.config/systemd/user/dito-qq.service
-[Unit]
-Description=Dito QQ Channel
-After=network-online.target
-
-[Service]
-ExecStart=/usr/bin/env dito qq
-Restart=on-failure
-Environment=NODE_OPTIONS=--experimental-sqlite
-
-[Install]
-WantedBy=default.target
-```
-
-同理可写 `dito-matrix.service`（ExecStart 换 `dito matrix`）、`dito-qqadmin.service`（换 `dito qqadmin`）。启用：`systemctl --user enable --now dito-qq`。（Node ≥23.4 可去掉 NODE_OPTIONS 行。）
-
-## 数据位置
-
-| 用途 | 路径 |
-|---|---|
-| 配置 | `~/.pi/agent/dito/config.json` |
-| 供应商模型表 | `~/.pi/agent/dito/models.json`（自动生成） |
-| pi 共享鉴权 | `~/.pi/agent/auth.json` |
-| 知识库 | `~/.pi/agent/dito/kb.db`（每聊天隔离：`kb-<scope>.db`） |
-| 记忆 | `~/.pi/agent/dito/memory.db`（每聊天隔离：`memory-<scope>.db`） |
-| 终端会话 | `~/.pi/agent/dito/sessions/*.jsonl` |
-| QQ 私有配置 / 会话 / 记忆 | `~/.pi/agent/dito/user/qq/` |
-| Matrix 私有配置 / 会话 / 加密库 | `~/.pi/agent/dito/user/matrix/` |
-| 手机会话映射 / 会话 | `~/.pi/agent/dito/mobile/mobile-chats.json` / `mobile/mobile-sessions/` |
-| 群聊好感度 | `~/.pi/agent/dito/user/qq/affinity.json` |
-| 表情包库 | `~/.pi/agent/dito/user/qq/memes/`（索引 `memes.json`） |
-
-QQ / Matrix 的账号、群号、房间、令牌及运行数据集中存入 `user/`，与公共配置分开。源码开发可设置 `DITO_USER_DIR="$PWD/user"` 使用项目内的目录；该目录仅 README 受 Git 跟踪，个人数据不会提交或打包。新版自动复制旧数据并更新会话索引，保留旧文件作为备份。迁移前停止旧频道进程，详见 [用户数据说明](user/README.md)。
-
-## 默认模型说明
-
-**默认 = OpenCode Zen 公共端点（`opencode-free`）**：keyless OpenAI 兼容服务，零注册零 Key 开箱即用（聊天 `big-pickle`，视觉 `mimo-v2.5-free`）。免费额度有限可能 429 限流，稍后重试即可；服务器在海外，国内延迟偏高。
-
-**国内直连 + 免费**：`dito config` 切到「智谱 GLM（BigModel）」，选 GLM-4-Flash（官方永久免费，128K）或 GLM-4V-Flash（免费视觉）。在 [open.bigmodel.cn](https://open.bigmodel.cn) 免费注册 Key 填入即可。
-
-其他内置供应商随时可切：
-
-| 供应商 | 端点 | 说明 |
-|--------|------|------|
-| 智谱 GLM（`zhipu`） | `open.bigmodel.cn/api/paas/v4` | GLM-4-Flash / 4V-Flash 免费，GLM-5.x 全系 |
-| DeepSeek 官方（`deepseek`） | `api.deepseek.com` | V4 Flash/Pro，国内直连 |
-| 阿里云百炼（`dashscope`） | `dashscope.aliyuncs.com/compatible-mode/v1` | Qwen 系列 |
-| 月之暗面（`moonshot`） | `api.moonshot.cn/v1` | Kimi 系列 |
-| 硅基流动（`siliconflow`） | `api.siliconflow.cn/v1` | 开源模型多，部分免费 |
-| 火山方舟（`volcengine`） | `ark.cn-beijing.volces.com/api/v3` | 豆包系列 |
-| Ollama（`ollama`） | `localhost:11434` | 本地离线，免费 |
-| OpenCode Go（`opencode-go`） | `opencode.ai/zen/go` | 付费中转（DeepSeek V4 / Kimi K3 / GLM / MiniMax），需 `OPENCODE_API_KEY` |
-
-## 人设与提示词文件
-
-- `personas/dito.md`：Dito 主人设；`personas/dito-qq.md`：QQ 专属人设
-- `identities/*.md`：用户身份（默认 / linux小白 / 老板），决定回答方式
-- `system-prompts/*.md`：14 份系统/发行版专属运维提示词（arch/debian/fedora/windows/macos…）
-
-在 `personas/` 或 `identities/` 新增 `.md` 后，`/persona`、`/identity` 即可看到并切换。
-
-## 打包与全平台
-
-```bash
-packaging/build-portable.sh       # 三平台产物，见下
-```
-
-- `dist/dito-linux-x64.AppImage`（55M，双击即用，内置 Node）
-- `dist/dito-win-x64.zip`（解压 `dito.exe` 为 SEA 单文件可执行 + `dito.cmd`）
-- `dist/dito-macos-arm64.zip`（`Dito.app`；首启需 `xattr -cr Dito.app`）
-- Linux 另有 `packaging/build.sh`（RPM）/ `packaging/build-deb.sh`（DEB）
-- Android APK：[dito-mobile 仓库](https://github.com/yuanjingINT/dito-mobile)（本地 `./gradlew :app:assembleDebug` 或其 GitHub Actions）
-
-| 能力 | Linux | macOS | Windows |
-|---|---|---|---|
-| 终端对话 / 频道 / 管理后台 / MCP / 手机连接 | ✓ | ✓ | ✓ |
-| 系统提示词 | 按发行版 14 份 | macos.md | windows.md |
-| AUR / COPR 工具 | ✓（仅 Linux 注册） | — | — |
-| 语音录音 | pw-record → parec → arecord | ffmpeg avfoundation | ffmpeg dshow |
-| sudo 权限模式 | ✓ | ✓ | 无 sudo，自动跳过提权 |
-
-QQ 频道依赖的 @snowluma/* 包为其自有许可（源可见、非 OSI 开源、非商业使用），不装它或停用 snowluma 插件即可规避；详见 NOTICE。
-
-## 许可证
-
-本项目采用 [GPL-3.0-only](LICENSE)（GNU General Public License v3.0）开源发布。
-源码仓库即官方分发渠道，二进制打包（deb/rpm/npm 包）随包附同一许可证文本。
-Android 移动端（dito-mobile 仓库）基于 Operit（LGPL-3.0）修改，依 LGPL §3 以 GPL-3.0 发布。
+项目许可证为 GPL-3.0-only，见 [LICENSE](LICENSE)。第三方声明见 [NOTICE](NOTICE)。扫描动画参考 MiyuAgent 的 MIT 许可实现，保留上游声明。

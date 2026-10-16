@@ -1,11 +1,11 @@
 Package: dito
-Version: 0.1.0
+Version: 0.3.0-alpha
 Section: utils
 Priority: optional
 Architecture: amd64
-Depends: nodejs (>= 22.5), bash
+Depends: libc6, libcurl4, libjson-c5, libsqlite3-0, libncursesw6, libssl3, libxml2
+Recommends: nodejs (>= 22.5)
 Maintainer: yuanjingINT <yuanjing@localhost>
-Description: Dito (TiTe) - AI assistant based on the pi agent
- Dito（蒂特）——基于 pi agent 的个人 AI 助手。
- 提供语音对话、本地知识库、跨会话记忆、提示词设定、联网搜索，
- 以及高危命令确认门。默认模型为 opencode 免费公共模型。
+Description: Dito native C AI assistant with optional JavaScript compatibility
+ Native terminal, streaming models, tools, sessions and memory.
+ Optional legacy channels and interfaces require Node.js.

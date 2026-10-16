@@ -1,5 +1,7 @@
 # Dito Rust 重写方案
 
+> 本方案已被用户指定的全量 C 重写目标取代；本次实现与进度见 [C_MIGRATION.md](C_MIGRATION.md)。现有 Rust 文件保留作为历史参考。
+
 ## 目标
 
 在保持现有用户行为、配置文件、数据目录、工具名称、频道协议和移动端协议兼容的前提下，把 Dito 的运行时从 Node/TypeScript 迁移到 Rust。
