@@ -76,3 +76,5 @@ python c/tests/benchmark.py --runs 7 --output c/benchmark-results.json
 动画参考 [MiyuAgent cc7613d 的 wait_spinner.rs](https://github.com/SHORiN-KiWATA/miyu-agent/blob/cc7613dda387ee365f64cbbcdba17ecaf24095fa/crates/miyu-hosts/src/render/wait_spinner.rs) 与 `live_area.rs`。上游 MIT 声明见 `third_party/MiyuAgent-LICENSE`，Dito 原生代码使用本仓库 GPL-3.0-only。
 
 `/compact`、`/mode`、`/memory-stats` 等常用命令在 C 中执行；专用人设、模型、权限、附件与剪贴板命令可携带会话进入旧交互界面。`legacy/tool-catalog.json` 公开列出尚未原生化工具，缺失工具经固定注册表调用旧执行器，单次桥接不会迁移或改写个人配置。
+
+**复制输出**：F2 / Alt+C 进入冻结画面的复制模式，鼠标拖选后用终端 Ctrl+Shift+C，F2 / Esc 返回；PgUp/PgDn 可翻页，后台会话继续运行。`/copy` 将最近回复或错误复制到本机剪贴板，失败时回退到终端 OSC 52 请求。模型请求的函数定义最多 128 项，其余工具由 tool_search / tool_call 访问，保留原权限限制。

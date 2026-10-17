@@ -233,6 +233,15 @@ int main(int argc, char **argv) {
   assert(strstr(plain, "Bash  ● 运行中"));
   free(plain);
   json_object_put(rows);
+  char *copied = workbench_copy_text(&r);
+  assert(strstr(copied, "检查完成") && !strstr(copied, "展开思考测试内容") &&
+         !strstr(copied, "实时输出测试"));
+  free(copied);
+  workbench_event(&r, "new_user", "新问题", NULL);
+  workbench_event(&r, "error", "可复制的错误", NULL);
+  copied = workbench_copy_text(&r);
+  assert(!strcmp(copied, "可复制的错误"));
+  free(copied);
   render_finish(&r);
   json_object_put(config.json);
   puts("C workbench: history disclosures, Bash output, Unicode widths, resize, "

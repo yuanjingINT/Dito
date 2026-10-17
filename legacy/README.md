@@ -22,3 +22,5 @@ node --import ./legacy/register-loader.mjs --test legacy/tests/*.test.js
 兼容层从公开资源根目录读取人设、知识库默认资料和静态页面；个人数据始终使用原有 `PI_CODING_AGENT_DIR`、`DITO_USER_DIR` 和 C 传入的配置路径，不复制到此目录，不进入 Git。`check.mjs` 仅用于模块加载，建议在临时用户目录中执行。
 
 许可证与项目相同：GPL-3.0-only。外部依赖保留各自许可，见根目录 NOTICE。此目录仍是 JavaScript，不能被计为已完成 C 重写的功能。
+
+`withToolBudget` 包装内置及频道额外扩展，保留完整注册表和原权限/结果钩子。请求序列化前最多保留 128 项定义；溢出工具通过 tool_search 获取参数、tool_call 执行，仍检查活动工具集合与参数。OpenAI/Anthropic 的平铺格式以及 Google/Bedrock 的嵌套工具格式均做数量限制。

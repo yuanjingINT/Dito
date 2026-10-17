@@ -679,8 +679,11 @@ static void draw_footer(Renderer *r, Grid *g, int input_height) {
   int right_width = right ? length(right) : 0;
   if (right_width > g->cols / 2)
     right_width = g->cols / 2;
-  const char *help = "Tab 模式 · Ctrl+Tab 会话 · Alt+W 历史";
-  if (r->waiting) {
+  const char *help = "F2 复制 · Tab 模式 · Alt+W 历史";
+  if (r->copy_mode)
+    put(g, y, x, "复制模式 · 拖选后 Ctrl+Shift+C · F2/Esc 返回", g->cols - x,
+        ACCENT | NAV);
+  else if (r->waiting) {
     Buffer scanner = {0};
     scanner_frame(r->frame, false, &scanner);
     char *running = format("%s %s · %.1fs · Esc 中断", scanner.data, r->phase,
@@ -690,12 +693,29 @@ static void draw_footer(Renderer *r, Grid *g, int input_height) {
     buf_free(&scanner);
   } else
     put(g, y, x, help, g->cols - x - right_width - 1, MUTED | NAV);
-  if (right && g->cols >= 85) {
+  if (right && g->cols >= 85 && !r->copy_mode) {
     char *short_right = truncate_text(right, right_width);
     put(g, y, g->cols - right_width, short_right, right_width, DIM | NAV);
     free(short_right);
   }
   free(right);
+}
+char *workbench_copy_text(Renderer *r) {
+  Workbench *w = view(r);
+  size_t start = 0;
+  for (size_t i = 0; i < w->count; i++)
+    if (w->blocks[i].kind == USER)
+      start = i + 1;
+  Buffer out = {0};
+  for (size_t i = start; i < w->count; i++) {
+    Block *block = &w->blocks[i];
+    if ((block->kind != ASSISTANT && block->kind != ERROR) || !block->body.len)
+      continue;
+    if (out.len)
+      buf_puts(&out, "\n\n");
+    buf_add(&out, block->body.data, block->body.len);
+  }
+  return out.data ? out.data : xstrdup("");
 }
 static void draw_conversation(Renderer *r, Grid *g, int top, int height,
                               int width) {

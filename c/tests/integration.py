@@ -129,6 +129,14 @@ class Provider(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
             return
+        if len(body.get("tools", [])) > 128:
+            raw = json.dumps({"error": {"message": "tools must contain at most 128 function definitions"}}).encode()
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
         messages = body.get("messages", body.get("input", []))
         users = [m for m in messages if m.get("role") == "user" and not any(p.get("type") == "tool_result" for p in m.get("content", []) if isinstance(p, dict))]
         content = users[-1].get("content", "") if users else ""
@@ -1286,6 +1294,76 @@ console.log("pi-compatible");'''
         self.run_c("send", "--fresh", "tool-json:" + json.dumps(["remember_fact", {"content": "测试偏好是原生 C 工具"}]))
         self.run_c("send", "--fresh", "tool-json:" + json.dumps(["memory_recall", {"query": "原生", "max": 1}]))
         self.assertIn("测试偏好", REQUESTS[-1][1]["messages"][-1]["content"])
+
+    def test_64_tool_limit_retains_overflow_discovery_and_execution(self):
+        self.env.pop("DITO_DISABLE_LEGACY")
+        self.value["channels"] = {"qq": {"enabled": True, "url": f"ws://127.0.0.1:{self.server.server_port}/onebot-tool"}}
+        self.save()
+        self.run_c("send", "--fresh", "hello")
+        names = [tool["function"]["name"] for tool in REQUESTS[-1][1]["tools"]]
+        self.assertEqual(len(names), 128)
+        self.assertIn("tool_search", names)
+        self.assertIn("tool_call", names)
+        self.assertIn("qq_affinity", names)
+        self.assertNotIn("snowluma_get_version_info", names)
+        self.run_c("send", "--fresh", "tool-json:" + json.dumps(["tool_search", {"query": "snowluma_get_version_info"}]))
+        definition = json.loads(REQUESTS[-1][1]["messages"][-1]["content"])["tools"][0]
+        self.assertEqual(definition["name"], "snowluma_get_version_info")
+        self.assertEqual(definition["parameters"]["type"], "object")
+        self.run_c("send", "--fresh", "tool-json:" + json.dumps(["tool_call", {"name": "snowluma_get_version_info", "arguments": {}}]))
+        self.assertIn("mock-qq-tool", REQUESTS[-1][1]["messages"][-1]["content"])
+        for api in ["openai-responses", "anthropic-messages"]:
+            self.value["providers"][0]["api"] = api
+            self.save()
+            self.run_c("send", "--fresh", "hello")
+            self.assertEqual(len(REQUESTS[-1][1]["tools"]), 128)
+            self.assertIn("tool_call", [tool["name"] for tool in REQUESTS[-1][1]["tools"]])
+
+    def test_65_copy_mode_freezes_redraw_while_background_work_continues(self):
+        frames = []
+        ready = lambda output: "复制模式" in output
+        output = self.pty_process([], [(b"wait\r", .15), (b"\x1b[12~", ready), (b"", 2.3),
+                                      (b"\x1b", .2), b"\x03"], snapshots=frames)
+        self.assertIn("\x1b[?1000l\x1b[?1006l", frames[2])
+        self.assertEqual(frames[3], "", "background output must not destroy terminal selection")
+        self.assertIn("slow-session-complete", frames[4])
+        self.assertIn("\x1b[?1000h\x1b[?1006h", frames[4])
+        self.assertEqual(len(REQUESTS), self.request_start + 1)
+
+    def test_66_copy_reply_uses_literal_utf8_clipboard_and_terminal_fallback(self):
+        fake = self.dir / "clipboard-bin"
+        fake.mkdir()
+        clipboard = self.dir / "clipboard.txt"
+        self.env["DITO_TEST_CLIPBOARD"] = str(clipboard)
+        import sys
+        program = fake / "wl-copy"
+        program.write_text(f"#!{sys.executable}\nimport os,sys\nfrom pathlib import Path\nPath(os.environ['DITO_TEST_CLIPBOARD']).write_bytes(sys.stdin.buffer.read())\n")
+        program.chmod(0o755)
+        self.env["PATH"] = str(fake)
+        output = self.pty_process([], [(b"hello\r", .3), b"/copy\r", b"\x03"])
+        self.assertEqual(clipboard.read_text(), "原生 C 回复你好😀")
+        self.assertNotIn("思考测试", clipboard.read_text())
+        self.assertIn("已复制到剪贴板", output)
+        program.unlink()
+        output = self.pty_process([], [b"/copy\r", b"\x03"])
+        encoded = re.search(r"\x1b]52;c;([A-Za-z0-9+/=]+)\x07", output)[1]
+        self.assertEqual(base64.b64decode(encoded).decode(), "原生 C 回复你好😀")
+        self.assertIn("已请求终端复制", output)
+
+    def test_67_legacy_sdk_provider_limit_and_overflow_round_trip(self):
+        self.compat_subagent_fixture()
+        self.env["DITO_CONFIG_FILE"] = str(self.config)
+        self.value["plugins"]["snowluma"] = {"enabled": True}
+        self.value["channels"] = {"qq": {"enabled": True, "url": f"ws://127.0.0.1:{self.server.server_port}/onebot-tool"}}
+        self.save()
+        script = "const {createSession}=await import(" + json.dumps((ROOT / "legacy/bin/session.js").as_uri()) + ");" +             "const {loadConfig}=await import(" + json.dumps((ROOT / "legacy/extensions/util.js").as_uri()) + ");" +             "if(loadConfig().model.provider!=='mock')throw new Error('Refusing non-fixture provider');" +             "const {session}=await createSession({fresh:true});try{await session.prompt(" +             json.dumps("tool-json:" + json.dumps(["tool_call", {"name": "snowluma_get_version_info", "arguments": {}}])) +             ");}finally{session.dispose();}process.exit(0);"
+        result = subprocess.run(["node", "--import", str(ROOT / "legacy/register-loader.mjs"), "--input-type=module", "--eval", script],
+                                env=self.env, capture_output=True, text=True, timeout=25)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        models = [body for path, body in REQUESTS[self.request_start:] if path.endswith("chat/completions")]
+        self.assertEqual(len(models), 2, result.stdout + result.stderr)
+        self.assertTrue(all(len(body["tools"]) <= 128 for body in models))
+        self.assertIn("mock-qq-tool", models[-1]["messages"][-1]["content"])
 
 
 if __name__ == "__main__":

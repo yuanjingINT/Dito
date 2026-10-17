@@ -30,6 +30,12 @@ int main(void) {
   assert(has(tools, "ask_question") && has(tools, "grep") &&
          has(tools, "find"));
   assert(has(tools, "qq_react") && has(tools, "remember_fact"));
+  assert(jlen(tools) > DITO_MAX_FUNCTIONS);
+  json_object *bounded = tool_model_definitions(tools);
+  assert(jlen(bounded) == DITO_MAX_FUNCTIONS);
+  assert(has(bounded, "tool_search") && has(bounded, "tool_call") &&
+         has(bounded, "qq_affinity"));
+  json_object_put(bounded);
   json_object_put(tools);
   bool failed;
   json_object *args =
@@ -53,6 +59,20 @@ int main(void) {
   args = json_tokener_parse("{\"message_id\":1,\"emoji_id\":\"13\"}");
   answer = tool_execute(&s, "qq_react", args, NULL, &failed);
   assert(failed && strstr(answer, "无权"));
+  free(answer);
+  json_object_put(args);
+  args =
+      json_tokener_parse("{\"name\":\"write\",\"arguments\":{\"path\":\"/tmp/"
+                         "dito-forbidden-write\",\"content\":\"forbidden\"}}");
+  answer = tool_execute(&s, "tool_call", args, NULL, &failed);
+  assert(failed && strstr(answer, "无权"));
+  free(answer);
+  json_object_put(args);
+  args = json_tokener_parse("{\"query\":\"qq_react\"}");
+  answer = tool_execute(&s, "tool_search", args, NULL, &failed);
+  json_object *found = json_tokener_parse(answer);
+  assert(!failed && jint(found, "total", -1) == 0);
+  json_object_put(found);
   free(answer);
   json_object_put(args);
   s.allow_host = false;

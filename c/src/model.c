@@ -394,9 +394,10 @@ int model_request(Session *s, json_object *tools, Events *events,
                            responses ? responses_input(s->messages)
                                      : json_copy(s->messages));
   if (jlen(tools)) {
+    json_object *bounded = tool_model_definitions(tools);
     json_object *defs = json_object_new_array();
-    for (size_t i = 0; i < jlen(tools); i++) {
-      json_object *original = jat(tools, i), *fn = jget(original, "function");
+    for (size_t i = 0; i < jlen(bounded); i++) {
+      json_object *original = jat(bounded, i), *fn = jget(original, "function");
       if (anthropic || responses) {
         json_object *d = json_object_new_object();
         if (responses)
@@ -411,6 +412,7 @@ int model_request(Session *s, json_object *tools, Events *events,
         json_object_array_add(defs, json_copy(original));
     }
     json_object_object_add(body, "tools", defs);
+    json_object_put(bounded);
   }
   char *payload = json_text(body);
   json_object_put(body);

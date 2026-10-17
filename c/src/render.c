@@ -60,6 +60,8 @@ static void clear_wait(Renderer *r) {
   r->waiting = false;
 }
 void render_tick(Renderer *r) {
+  if (r->copy_mode)
+    return;
   uint64_t now = mono_ms();
   if (now - r->last_frame < DITO_FRAME_MS)
     return;

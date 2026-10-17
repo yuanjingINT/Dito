@@ -1,10 +1,10 @@
 {
-  "checkedAt": "2026-10-17T00:37:21.898322+00:00",
+  "checkedAt": "2026-10-17T01:16:13.900150+00:00",
   "runtime": "C17",
-  "binarySha256": "bab52d295c441dcf9beea4ec3675ff6aafa41bfe1b2c9ce2fb3e393540e741e9",
+  "binarySha256": "17948639acb053878d6c889fe92b831be014ced6914c8059c96943ae995c9cd9",
   "releaseCoreTests": "passed",
-  "releaseIntegrationContracts": 63,
-  "asanUbsanLeakIntegrationContracts": 63,
+  "releaseIntegrationContracts": 67,
+  "asanUbsanLeakIntegrationContracts": 67,
   "asanUbsanLeakCoreTests": "passed",
   "gccAnalyzerWarnings": 0,
   "modelAndChannelTests": "Temporary fixtures and local mocks; no real model, QQ account or microphone requests",
@@ -19,7 +19,7 @@
   "version": "0.3.0-alpha",
   "legacyRuntime": "JavaScript / Node >=22.5",
   "ownTypeScriptSourcesRemoved": true,
-  "legacyUnitTests": 73,
+  "legacyUnitTests": 76,
   "legacyIntegrationContracts": 9,
   "privateDataIncludedInUpload": false,
   "defaultEntryIsNativeC": true,
@@ -38,5 +38,10 @@
   "readmeParity": "All previous README sections, commands and keys compared in README_PARITY.md; remaining native differences explicitly recorded",
   "legacyToolBridge": "SDK file tools, distro tools, complete system info, QQ actions and affinity; fixed registry with configuration read-only",
   "legacyModelPicker": "Real model selector and persistence verified; never submits /model as a model prompt",
-  "nativeCommandContracts": "Alt+W/A/D, forward/backward history cycling, command completion and manual compaction verified"
+  "nativeCommandContracts": "Alt+W/A/D, forward/backward history cycling, command completion and manual compaction verified",
+  "toolDefinitionLimit": 128,
+  "toolOverflow": "Discovery and gated execution retained; native Chat/Responses/Anthropic and legacy SDK local round trips verified",
+  "legacyToolBudget": "Flat provider tools, Google declarations and Bedrock specs bounded; active-tool, argument and permission/result hooks retained",
+  "outputCopy": "F2/Alt+C native terminal selection with frozen redraw; /copy UTF-8 local clipboard and OSC52 fallback verified",
+  "privateDataUnchangedByThisUpdate": true
 }

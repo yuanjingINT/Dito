@@ -12,6 +12,7 @@
 #define DITO_MAX_BODY (10u * 1024u * 1024u)
 #define DITO_MAX_SESSION_LINE (256u * 1024u * 1024u)
 #define DITO_MAX_TOOL (128u * 1024u)
+#define DITO_MAX_FUNCTIONS 128
 #define DITO_FRAME_MS 40
 extern volatile sig_atomic_t dito_exit_requested;
 typedef struct {
@@ -62,7 +63,7 @@ typedef struct {
   char error[512];
 } ModelResult;
 typedef struct {
-  bool tty, full, thinking, waiting, hidden, invalidated, dirty;
+  bool tty, full, thinking, waiting, hidden, invalidated, dirty, copy_mode;
   unsigned frame;
   uint64_t last_frame, started;
   int rows, cols, scroll;
@@ -158,6 +159,7 @@ json_object *session_view(const char *);
 char *build_prompt(Config *);
 int agent_turn(Session *, const char *, json_object *, Events *);
 json_object *tool_definitions(Session *);
+json_object *tool_model_definitions(json_object *);
 char *tool_execute(Session *, const char *, json_object *, Events *, bool *);
 bool tool_args_valid(json_object *, json_object *);
 void mcp_append_tools(Session *, json_object *);
@@ -178,6 +180,8 @@ void workbench_free(Renderer *);
 bool workbench_toggle(Renderer *, int);
 const char *workbench_tab_path(Renderer *, int);
 json_object *workbench_snapshot(Renderer *, int, int);
+char *workbench_copy_text(Renderer *);
+int clipboard_write(const char *);
 void scanner_frame(unsigned, bool, Buffer *);
 int terminal_chat(Config *, bool);
 int terminal_parallel(Config *, bool);

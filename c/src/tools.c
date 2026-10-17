@@ -14,6 +14,18 @@ typedef struct {
   bool write, host;
 } Tool;
 static const Tool tools[] = {
+    {"tool_search",
+     "搜索当前可用工具并获取完整参数定义。工具超过请求上限时，先搜索，再用 "
+     "tool_call 调用。支持分页。",
+     "\"query\":{\"type\":\"string\"},\"limit\":{\"type\":\"integer\","
+     "\"minimum\":1,\"maximum\":32},\"offset\":{\"type\":\"integer\","
+     "\"minimum\":0}",
+     "", false, false},
+    {"tool_call",
+     "调用未直接列出的工具。先用 tool_search "
+     "查询名称和参数；原工具的插件、身份、只读权限仍会检查。",
+     "\"name\":{\"type\":\"string\"},\"arguments\":{\"type\":\"object\"}",
+     "\"name\",\"arguments\"", false, false},
     {"bash", "运行 Bash 命令。危险操作经过权限门。",
      "\"command\":{\"type\":\"string\"},\"timeout\":{\"type\":\"integer\"}",
      "\"command\"", true, true},
@@ -284,6 +296,50 @@ json_object *tool_definitions(Session *s) {
     mcp_append_tools(s, out);
   return out;
 }
+json_object *tool_model_definitions(json_object *all) {
+  json_object *out = json_object_new_array();
+  /* Keep ordinary tools and the discovery/call pair ahead of the large QQ
+   * action catalog. Overflow stays registered and callable, never deleted. */
+  for (int pass = 0; pass < 2; pass++)
+    for (size_t i = 0; i < jlen(all) && jlen(out) < DITO_MAX_FUNCTIONS; i++) {
+      json_object *def = jat(all, i);
+      bool action =
+          !strncmp(jstr(jget(def, "function"), "name", ""), "snowluma_", 9);
+      if (action == (pass == 1))
+        json_object_array_add(out, json_copy(def));
+    }
+  return out;
+}
+static char *search_tools(Session *s, json_object *args) {
+  json_object *all = tool_definitions(s), *matches = json_object_new_array();
+  const char *query = jstr(args, "query", "");
+  int offset = jint(args, "offset", 0), limit = jint(args, "limit", 10),
+      total = 0;
+  for (size_t i = 0; i < jlen(all); i++) {
+    json_object *fn = jget(jat(all, i), "function");
+    const char *name = jstr(fn, "name", "");
+    if (!strcmp(name, "tool_search") || !strcmp(name, "tool_call"))
+      continue;
+    if (*query && !strcasestr(name, query) &&
+        !strcasestr(jstr(fn, "description", ""), query))
+      continue;
+    if (total >= offset && jlen(matches) < (size_t)limit)
+      json_object_array_add(matches, json_copy(fn));
+    total++;
+  }
+  json_object *result = json_object_new_object();
+  json_object_object_add(result, "total", json_object_new_int(total));
+  json_object_object_add(result, "offset", json_object_new_int(offset));
+  json_object_object_add(result, "next_offset",
+                         offset + (int)jlen(matches) < total
+                             ? json_object_new_int(offset + (int)jlen(matches))
+                             : NULL);
+  json_object_object_add(result, "tools", matches);
+  char *text = json_text(result);
+  json_object_put(result);
+  json_object_put(all);
+  return text;
+}
 static bool matches(const char *pattern, const char *text) {
   regex_t r;
   if (regcomp(&r, pattern, REG_EXTENDED | REG_ICASE | REG_NOSUB))
@@ -391,6 +447,16 @@ char *tool_execute(Session *s, const char *name, json_object *a, Events *events,
     return xstrdup("工具参数缺失或类型错误，未执行操作");
   }
   name = t->name;
+  if (!strcmp(name, "tool_search"))
+    return search_tools(s, a);
+  if (!strcmp(name, "tool_call")) {
+    const char *target = jstr(a, "name", "");
+    if (!strcmp(target, "tool_call") || !*target) {
+      *failed = true;
+      return xstrdup("禁止递归或空工具调用");
+    }
+    return tool_execute(s, target, jget(a, "arguments"), events, failed);
+  }
   if (!strncmp(name, "web_", 4))
     return web_tool(s, name, a, events, failed);
   if (!strncmp(name, "kb_", 3) || !strncmp(name, "memory_", 7)) {

@@ -10,6 +10,7 @@ import {
   SettingsManager
 } from "@earendil-works/pi-coding-agent";
 import { buildDitoSystemPrompt } from "../extensions/persona.js";
+import { withToolBudget } from "../extensions/tool-budget.js";
 import { setMemoryScope } from "../extensions/memory.js";
 import { setKbScope } from "../extensions/knowledge-base.js";
 import { bootDitoPlugins } from "../extensions/plugin-kernel.js";
@@ -226,7 +227,7 @@ async function createSessionInner(options) {
     cwd: process.cwd(),
     agentDir: getAgentDir(),
     settingsManager,
-    extensionFactories: [makeExtensionFactory(options.skipPluginIds, settingsManager, cfg), ...options.extraExtensions ?? []],
+    extensionFactories: withToolBudget([makeExtensionFactory(options.skipPluginIds, settingsManager, cfg), ...options.extraExtensions ?? []]),
     systemPrompt: options.systemPrompt ?? buildDitoSystemPrompt()
   });
   await resourceLoader.reload();

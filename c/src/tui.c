@@ -569,6 +569,30 @@ static bool handoff(Pane panes[2], int active, const char *command,
   }
   return true;
 }
+static void copy_mode(Pane *p, bool enabled) {
+  Renderer *r = &p->renderer;
+  r->copy_mode = enabled;
+  /* Draw the mode hint once, then freeze automatic redraw while the terminal
+   * owns selection. Background workers continue accumulating their events. */
+  workbench_draw(r);
+  fputs(enabled ? "\x1b[?1000l\x1b[?1006l" : "\x1b[?1000h\x1b[?1006h", stdout);
+  fflush(stdout);
+  if (!enabled)
+    render_draw(r);
+}
+static void copy_reply(Pane *p) {
+  char *text = workbench_copy_text(&p->renderer);
+  if (!*text)
+    pane_notice(p, "当前会话还没有可复制的回复");
+  else {
+    int rc = clipboard_write(text);
+    pane_notice(
+        p, rc == 0   ? "最近回复已复制到剪贴板"
+           : rc == 1 ? "已请求终端复制最近回复；若终端不支持，请按 F2 拖选复制"
+                     : "复制失败或回复超过 1 MiB；请按 F2 拖选复制");
+  }
+  free(text);
+}
 static bool legacy_slash(const char *text) {
   const char *commands[] = {"/persona",      "/identity", "/model",    "/sudo",
                             "/memory-clear", "/system",   "/kb-stats", "/image",
@@ -586,7 +610,8 @@ static void complete_command(Pane *p) {
       "/sessions",     "/bash",         "/prev",    "/new",      "/compact",
       "/memory-stats", "/memory-clear", "/persona", "/identity", "/model",
       "/system",       "/kb-stats",     "/image",   "/images",   "/unimage",
-      "/legacy",       "/cancel",       "/help",    "/exit"};
+      "/legacy",       "/cancel",       "/copy",    "/select",   "/help",
+      "/exit"};
   Buffer matches = {0};
   const char *first = NULL;
   size_t prefix = 0;
@@ -695,6 +720,8 @@ int terminal_parallel(Config *c, bool fresh) {
       quit = true;
       continue;
     }
+    if (r->copy_mode && key != 27)
+      continue;
     if (r->history_open && key != 27) {
       if (key == 'j')
         history_move(r, 1);
@@ -753,6 +780,10 @@ int terminal_parallel(Config *c, bool fresh) {
         size_t size = 0;
         if (read(STDIN_FILENO, seq, 1) == 1)
           size = 1;
+        if (size && seq[0] == 'O' && poll(&next, 1, 15) > 0) {
+          if (read(STDIN_FILENO, seq + size, 1) == 1)
+            size++;
+        }
         if (size && seq[0] == '[')
           while (size < sizeof seq - 1 && poll(&next, 1, 15) > 0) {
             if (read(STDIN_FILENO, seq + size, 1) != 1)
@@ -762,6 +793,24 @@ int terminal_parallel(Config *c, bool fresh) {
               break;
           }
         if (size > 0) {
+          if (!strcmp(seq, "[12~") || !strcmp(seq, "OQ") || !strcmp(seq, "c")) {
+            copy_mode(p, !r->copy_mode);
+            continue;
+          }
+          if (r->copy_mode) {
+            if (!strcmp(seq, "[5~"))
+              r->scroll += 10;
+            else if (!strcmp(seq, "[6~"))
+              r->scroll = r->scroll > 10 ? r->scroll - 10 : 0;
+            else if (!strcmp(seq, "[H"))
+              r->scroll = 1000000;
+            else if (!strcmp(seq, "[F"))
+              r->scroll = 0;
+            else
+              continue;
+            workbench_draw(r);
+            continue;
+          }
           if (!strncmp(seq, "[<", 2)) {
             int button, column, row;
             char action;
@@ -919,7 +968,9 @@ int terminal_parallel(Config *c, bool fresh) {
             buf_free(&paste);
           }
         }
-      } else if (p->question && r->question_skip)
+      } else if (r->copy_mode)
+        copy_mode(p, false);
+      else if (p->question && r->question_skip)
         answer_question(p, NULL);
       else if (r->history_open)
         r->history_open = false;
@@ -940,6 +991,10 @@ int terminal_parallel(Config *c, bool fresh) {
         buf_reset(&r->input);
         if (!strcmp(text, "/exit") || !strcmp(text, "/quit"))
           quit = true;
+        else if (!strcmp(text, "/copy"))
+          copy_reply(p);
+        else if (!strcmp(text, "/select"))
+          copy_mode(p, true);
         else if (!strcmp(text, "/legacy")) {
           if (handoff(panes, active, NULL, false))
             legacy_handoff = quit = true;
@@ -976,7 +1031,8 @@ int terminal_parallel(Config *c, bool fresh) {
         } else if (!strcmp(text, "/help"))
           pane_notice(
               p,
-              "Alt+W 历史选择 · Alt+A 上一会话 · Alt+D/Ctrl+T 新建 · Ctrl+Tab "
+              "F2/Alt+C 拖选复制 · /copy 复制最近回复 · Alt+W 历史选择 · Alt+A "
+              "上一会话 · Alt+D/Ctrl+T 新建 · Ctrl+Tab "
               "/ Alt+←→ 切换 · /compact 压缩 · /mode 模式 · /memory-stats 记忆 "
               "· /model /persona /identity /sudo /image 使用旧交互兼容层");
         else if (!strcmp(text, "/sessions") || !strcmp(text, "/history") ||
