@@ -32,6 +32,8 @@ if (major < 24 && (major < 23 || minor < 4) && !process.execArgv.includes("--exp
 try {
   if (process.argv[2] === "--subagent") {
     await import("./subagent-bridge.mjs");
+  } else if (process.argv[2] === "--tool") {
+    await import("./tool-bridge.mjs");
   } else if (["--help", "-h"].includes(process.argv[2])) {
     console.log("Dito JavaScript 兼容层：dito legacy [旧版命令]\n无参数恢复完整旧版终端；config/plugins/qq/qqadmin/matrix/mobile/bridge/voice/relay。\n--check 离线模块检查；--version 版本。无需 TS 或 tsx。");
   } else if (process.argv[2] === "--version") {

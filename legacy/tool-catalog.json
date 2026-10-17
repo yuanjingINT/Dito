@@ -1,0 +1,5284 @@
+[
+  {
+    "name": "grep",
+    "description": "Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to 100 matches or 50KB (whichever is hit first). Long lines are truncated to 500 chars.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "pattern"
+      ],
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Search pattern (regex or literal string)"
+        },
+        "path": {
+          "type": "string",
+          "description": "Directory or file to search (default: current directory)"
+        },
+        "glob": {
+          "type": "string",
+          "description": "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'"
+        },
+        "ignoreCase": {
+          "type": "boolean",
+          "description": "Case-insensitive search (default: false)"
+        },
+        "literal": {
+          "type": "boolean",
+          "description": "Treat pattern as literal string instead of regex (default: false)"
+        },
+        "context": {
+          "type": "number",
+          "description": "Number of lines to show before and after each match (default: 0)"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of matches to return (default: 100)"
+        }
+      }
+    },
+    "group": "files",
+    "plugin": null,
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "find",
+    "description": "Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to 1000 results or 50KB (whichever is hit first).",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "pattern"
+      ],
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'"
+        },
+        "path": {
+          "type": "string",
+          "description": "Directory to search in (default: current directory)"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of results (default: 1000)"
+        }
+      }
+    },
+    "group": "files",
+    "plugin": null,
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "ls",
+    "description": "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or 50KB (whichever is hit first).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Directory to list (default: current directory)"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of entries to return (default: 500)"
+        }
+      }
+    },
+    "group": "files",
+    "plugin": null,
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "aur_search",
+    "description": "在 Arch 用户仓库（AUR）里搜索软件包，返回包名、版本、简介、维护者、投票数、是否过期、上游链接。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "搜索关键词，如 hyprland、wechat、nvidia"
+        }
+      }
+    },
+    "group": "system",
+    "plugin": "system",
+    "host": false,
+    "write": false
+  },
+  {
+    "name": "aur_review",
+    "description": "拉取指定 AUR 包的元数据与 PKGBUILD（含 .SRCINFO），做危险信号初筛，输出「红/黄/绿」初步结论与命中项，供你结合审查规则给出最终红绿灯结论。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "pkgname"
+      ],
+      "properties": {
+        "pkgname": {
+          "type": "string",
+          "description": "AUR 包名（PackageBase 或 Name），如 yay、wechat-universal-bwrap"
+        }
+      }
+    },
+    "group": "system",
+    "plugin": "system",
+    "host": false,
+    "write": false
+  },
+  {
+    "name": "aur_install",
+    "description": "检查指定 AUR 包是否存在，并生成 paru/yay 安装命令。命令本身不在此工具内执行，请用 bash 工具执行（会经过权限门与用户确认）。默认不传 helper 时自动检测 paru 或 yay。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "pkg"
+      ],
+      "properties": {
+        "pkg": {
+          "type": "string",
+          "description": "要安装的 AUR 包名（可多个，空格分隔），如 yay wechat-universal-bwrap"
+        },
+        "helper": {
+          "type": "string",
+          "description": "AUR helper：paru 或 yay；留空自动检测"
+        }
+      }
+    },
+    "group": "system",
+    "plugin": "system",
+    "host": false,
+    "write": false
+  },
+  {
+    "name": "copr_search",
+    "description": "在 Fedora COPR（第三方软件仓库）里搜索项目，返回 owner/项目名、简介、主页、安装说明与启用命令（sudo dnf copr enable …）。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "搜索关键词，如 nvidia、hyprland、wezterm"
+        }
+      }
+    },
+    "group": "system",
+    "plugin": "system",
+    "host": false,
+    "write": false
+  },
+  {
+    "name": "copr_install",
+    "description": "针对指定 COPR 项目（owner/name），生成「启用仓库 + 安装/更新软件包」的确切 dnf 命令（先经 COPR 校验项目是否存在）。命令本身不在此工具内执行，请用 bash 工具逐条执行（会经过权限门与用户确认）。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "project"
+      ],
+      "properties": {
+        "project": {
+          "type": "string",
+          "description": "COPR 项目全名 owner/name（从 copr_search 结果的 full_name 取）"
+        },
+        "packages": {
+          "type": "string",
+          "description": "要安装/更新的软件包名，多个用空格或逗号分隔；留空则只启用仓库"
+        },
+        "update_only": {
+          "type": "boolean",
+          "description": "true=只升级已安装的包（dnf upgrade）；默认 false（dnf install，安装或升级到最新）"
+        }
+      }
+    },
+    "group": "system",
+    "plugin": "system",
+    "host": false,
+    "write": false
+  },
+  {
+    "name": "get_system_info",
+    "description": "返回自动检测到的本机操作系统、Linux 发行版、内核、架构、包管理器、初始化系统、会话类型等信息（只读）。",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    },
+    "group": "system",
+    "plugin": "system",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_del_group_notice",
+    "description": "[SnowLuma/扩展] 删除群公告（fid 或 notice_id 二选一）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "fid": {
+          "type": "string"
+        },
+        "notice_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_friend_dress",
+    "description": "[SnowLuma/扩展] 获取指定 QQ 号正在使用的个性装扮（挂件/名片/来电/输入状态等） 返回：装扮信息；目标未使用任何可查询装扮时 items 为空数组。网络失败、未登录态/风控、页面改版、返回账号与请求不一致时返回失败并附具体原因（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "目标 QQ 号",
+          "x-role": "user_id"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_notice",
+    "description": "[SnowLuma/扩展] 获取群公告 返回：普通公告与新成员公告的合并数组；send_to_new_members 标识后者（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_model_show",
+    "description": "[SnowLuma/扩展] 获取机型展示（兼容 mock） 返回：数组，每项含 variants（回显请求的机型名与 need_pay 标记）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_mark_all_as_read",
+    "description": "[SnowLuma/扩展] 标记全部已读（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_send_group_notice",
+    "description": "[SnowLuma/扩展] 发送群公告（支持置顶、弹窗、新成员、群昵称引导与确认）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "description": "公告正文"
+        },
+        "image": {
+          "type": "string",
+          "description": "可选公告图片（本地路径、URL 或 base64）",
+          "default": "",
+          "x-role": "image"
+        },
+        "pinned": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "是否置顶：1=置顶，0=不置顶",
+          "default": 0
+        },
+        "type": {
+          "type": "integer",
+          "description": "发布类型：1=普通公告，20=新成员公告；建议使用 send_to_new_members"
+        },
+        "send_to_new_members": {
+          "type": "boolean",
+          "description": "是否在成员新加入群时发送（与 type=20 等价）"
+        },
+        "is_show_edit_card": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "是否引导群成员修改群昵称：1=是，0=否",
+          "default": 1
+        },
+        "tip_window_type": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "弹窗展示：0=开启弹窗，1=关闭弹窗（QQ 原始字段为反向语义）",
+          "default": 1
+        },
+        "confirm_required": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "是否需要群成员确认收到：1=是，0=否",
+          "default": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "content"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_model_show",
+    "description": "[SnowLuma/扩展] 设置机型展示（占位）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_word_slices",
+    "description": "[SnowLuma/扩展] 分词（未实现）（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_add_custom_face",
+    "description": "[SnowLuma/扩展] 添加收藏表情（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "image"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_can_send_image",
+    "description": "[SnowLuma/信息] can_send_image 返回：能力查询结果。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_can_send_record",
+    "description": "[SnowLuma/信息] can_send_record 返回：能力查询结果。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_cancel_group_album_media_like",
+    "description": "[SnowLuma/群相册] cancel_group_album_media_like（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "album_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "batch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lloc": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_id",
+        "album_id",
+        "batch_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_cancel_group_todo",
+    "description": "[SnowLuma/扩展] 取消群待办（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "group_id",
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_check_url_safely",
+    "description": "[SnowLuma/扩展] 检查链接安全性 返回：{ level }：安全等级（占位实现，恒为 1）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_clean_cache",
+    "description": "[SnowLuma/扩展] 清理缓存（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_clean_stream_temp_file",
+    "description": "[SnowLuma/流式接口] 清理流式传输临时文件(仅清理 stream 上传/下载目录) 返回：{ message, removed }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_click_inline_keyboard_button",
+    "description": "[SnowLuma/扩展] 点击内联键盘按钮（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "bot_appid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "msg_seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "button_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "callback_data": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id",
+        "bot_appid",
+        "msg_seq",
+        "button_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_comment_qzone",
+    "description": "[SnowLuma/空间] 评论一条说说（QQ 空间，支持纯文字或带图；传 images 自动上传）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tid": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说说 tid"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "description": "评论内容"
+        },
+        "target_uin": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "说说所属 QQ 号，省略则为机器人自己",
+          "x-role": "user_id"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "图片数组（可选），支持 file:// http:// base64://；自动上传"
+        }
+      },
+      "required": [
+        "tid",
+        "content"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_complete_group_todo",
+    "description": "[SnowLuma/扩展] 完成群待办（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "group_id",
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_create_collection",
+    "description": "[SnowLuma/扩展] 创建收藏（未实现）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_create_flash_task",
+    "description": "[SnowLuma/扩展] 创建闪传任务（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "description": "路径、{ file, name }，或它们的数组"
+        },
+        "name": {
+          "type": "string"
+        },
+        "thumb_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_create_group_file_folder",
+    "description": "[SnowLuma/群文件] 创建群文件夹 返回：{ result: { retCode, retMsg }, groupItem: { folderInfo: { folderId, folderName, folderPath, createTime, modifyTime, createUin, modifyUin } } }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_id": {
+          "type": "string",
+          "default": "/"
+        }
+      },
+      "required": [
+        "group_id",
+        "name"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_del_group_album_media",
+    "description": "[SnowLuma/群相册] 删除群相册图片或视频（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "album_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lloc": {
+          "type": "string",
+          "minLength": 1,
+          "description": "图片长定位标识，或视频 id"
+        }
+      },
+      "required": [
+        "group_id",
+        "album_id",
+        "lloc"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_custom_face",
+    "description": "[SnowLuma/扩展] 删除收藏表情（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "emoji_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "emoji_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_essence_msg",
+    "description": "[SnowLuma/扩展] 移除精华消息（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_flash_file",
+    "description": "[SnowLuma/扩展] 删除闪传文件（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "fileset_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_friend",
+    "description": "[SnowLuma/好友] 删除好友（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "user_id"
+        },
+        "block": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_group_file",
+    "description": "[SnowLuma/群文件] 删除群文件（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file_id"
+        }
+      },
+      "required": [
+        "group_id",
+        "file_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_group_file_folder",
+    "description": "[SnowLuma/群文件] 删除群文件夹（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "folder_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "folder_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_group_folder",
+    "description": "[SnowLuma/扩展] 删除群文件夹（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "folder_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "folder_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_msg",
+    "description": "[SnowLuma/消息] 撤回消息（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_delete_qzone_msg",
+    "description": "[SnowLuma/空间] 删除一条说说（QQ 空间，按 tid）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tid": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说说 tid（来自 get_qzone_msg_list / send_qzone_msg）"
+        }
+      },
+      "required": [
+        "tid"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_do_group_album_comment",
+    "description": "[SnowLuma/群相册] do_group_album_comment（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "album_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lloc": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "album_id",
+        "lloc",
+        "content"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_download_file",
+    "description": "[SnowLuma/扩展] 下载文件（url 或 base64）到 data/downloads 返回：{ file }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "default": ""
+        },
+        "base64": {
+          "type": "string",
+          "default": ""
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        },
+        "headers": {}
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_download_file_image_stream",
+    "description": "[SnowLuma/流式接口] 以流式方式下载图片(缓存图片 id / URL / stream 目录本地文件) 返回：流式帧:file_info → file_chunk* → file_complete（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "文件路径(限 stream 临时目录)/ http(s) URL",
+          "x-role": "file"
+        },
+        "file_id": {
+          "type": "string",
+          "description": "文件 ID(缓存的图片/语音 id)",
+          "x-role": "file_id"
+        },
+        "chunk_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "分块大小(字节,默认 64KB)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_download_file_record_stream",
+    "description": "[SnowLuma/流式接口] 以流式方式下载语音(缓存语音 id / URL / stream 目录本地文件) 返回：流式帧:file_info → file_chunk* → file_complete（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "文件路径(限 stream 临时目录)/ http(s) URL",
+          "x-role": "file"
+        },
+        "file_id": {
+          "type": "string",
+          "description": "文件 ID(缓存的图片/语音 id)",
+          "x-role": "file_id"
+        },
+        "chunk_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "分块大小(字节,默认 64KB)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_download_file_stream",
+    "description": "[SnowLuma/流式接口] 以流式方式下载文件(stream 目录本地文件 / URL / 缓存媒体) 返回：流式帧:file_info → file_chunk* → file_complete（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "文件路径(限 stream 临时目录)/ http(s) URL",
+          "x-role": "file"
+        },
+        "file_id": {
+          "type": "string",
+          "description": "文件 ID(缓存的图片/语音 id)",
+          "x-role": "file_id"
+        },
+        "chunk_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "分块大小(字节,默认 64KB)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_download_fileset",
+    "description": "[SnowLuma/扩展] 解析闪传文件下载直链（不下载，由调用方实现下载） 返回：{ url, file_name, file_size }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file_name": {
+          "type": "string"
+        },
+        "file_index": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "fileset_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_fetch_custom_face",
+    "description": "[SnowLuma/扩展] 获取自定义表情 返回：字符串数组：return_type=url 时为图片 URL，return_type=id 时为 emoji_id。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10
+        },
+        "return_type": {
+          "type": "string",
+          "default": "url"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_fetch_custom_face_detail",
+    "description": "[SnowLuma/扩展] 获取自定义表情详情 返回：自定义表情详情数组，包含资源标识、图片地址、摘要与描述。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 48
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_fetch_emoji_like",
+    "description": "[SnowLuma/扩展] 获取表情回应用户（NapCat 分页） 返回：分页的表情回应用户列表（NapCat 形状），含分页游标 cookie 与首/末页标记。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "emojiId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10
+        },
+        "cookie": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "message_id",
+        "emojiId"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_fetch_face_entity",
+    "description": "[SnowLuma/系统表情] 按编号查询 QQ 系统表情 返回：表情详情；编号不存在时返回 null。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "face_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "QQ 系统表情编号",
+          "x-role": "face_id"
+        },
+        "refresh": {
+          "type": "boolean",
+          "description": "是否强制从 QQ 刷新目录",
+          "default": false
+        }
+      },
+      "required": [
+        "face_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_fetch_ptt_text",
+    "description": "[SnowLuma/扩展] 获取语音转文字结果 返回：{ text }：语音识别出的文本。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_fetch_super_face_id",
+    "description": "[SnowLuma/系统表情] 判断 QQ 系统表情是否使用超级表情格式 返回：是否使用超级表情格式。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "face_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "QQ 系统表情编号",
+          "x-role": "face_id"
+        },
+        "refresh": {
+          "type": "boolean",
+          "description": "是否强制从 QQ 刷新目录",
+          "default": false
+        }
+      },
+      "required": [
+        "face_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_fetch_sys_faces",
+    "description": "[SnowLuma/系统表情] 获取 QQ 系统表情目录 返回：按分组返回完整的 QQ 系统表情映射。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "refresh": {
+          "type": "boolean",
+          "description": "是否强制从 QQ 刷新目录",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_forward_friend_single_msg",
+    "description": "[SnowLuma/扩展] 转发单条消息给好友（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        }
+      },
+      "required": [
+        "message_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_forward_group_single_msg",
+    "description": "[SnowLuma/扩展] 转发单条消息到群（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "message_id",
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_friend_poke",
+    "description": "[SnowLuma/扩展] 好友拍一拍（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "target_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_ai_characters",
+    "description": "[SnowLuma/扩展] 获取 AI 语音角色 返回：按分类分组的 AI 语音角色列表，每组含分类名与角色（id、名称、试听 URL）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "chat_type": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_ai_record",
+    "description": "[SnowLuma/扩展] 生成 AI 语音（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "character": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chat_type": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "character",
+        "text"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_clientkey",
+    "description": "[SnowLuma/扩展] 获取 clientkey 返回：{ clientKey, expireTime, keyIndex }：clientkey 及其过期时间与索引。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_collection_list",
+    "description": "[SnowLuma/扩展] 获取收藏列表 返回：返回收藏条目、是否还有更多数据及底部时间游标。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "收藏分类 ID；0 表示全部分类",
+          "default": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "description": "最多返回的收藏数量",
+          "default": 50
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_cookies",
+    "description": "[SnowLuma/扩展] 获取 Cookies 返回：{ cookies }：指定域名的 Cookie 字符串。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "default": "qun.qq.com"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_credentials",
+    "description": "[SnowLuma/扩展] 获取凭证 返回：{ cookies, token, csrf_token }：Cookie 字符串与 CSRF 令牌（token 与 csrf_token 同值）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "default": "qun.qq.com"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_csrf_token",
+    "description": "[SnowLuma/扩展] 获取 CSRF 令牌 返回：{ token }：CSRF 令牌（bkn，数值）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_doubt_friends_add_request",
+    "description": "[SnowLuma/扩展] 获取可疑好友申请 返回：可疑好友申请数组，每项含 uid（作为处理用 flag）、昵称、来源、留言与申请时间。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 50
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_emoji_likes",
+    "description": "[SnowLuma/扩展] 获取表情回应用户 返回：{ emoji_like_list }：回应该表情的用户列表（nick_name 恒为空串）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "emoji_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "message_id",
+        "emoji_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_essence_msg_list",
+    "description": "[SnowLuma/扩展] 获取精华消息列表（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_file",
+    "description": "[SnowLuma/扩展] 获取文件信息（仅图片/语音缓存；群文件请用 get_group_file_url）（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_id": {
+          "type": "string",
+          "default": "",
+          "x-role": "file_id"
+        },
+        "file": {
+          "type": "string",
+          "default": "",
+          "x-role": "file"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_fileset_id",
+    "description": "[SnowLuma/扩展] 从 QQ 闪传分享码或官方分享链接获取 fileset_id 返回：{ fileset_id }：解析出的文件集 ID。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "share_code": {
+          "type": "string",
+          "minLength": 1,
+          "description": "QQ 闪传分享码，或 https://qfile.qq.com/q/... 官方分享链接"
+        }
+      },
+      "required": [
+        "share_code"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_fileset_info",
+    "description": "[SnowLuma/扩展] 获取文件集信息（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "fileset_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_flash_file_list",
+    "description": "[SnowLuma/扩展] 获取闪传文件列表（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "fileset_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_flash_file_url",
+    "description": "[SnowLuma/扩展] 获取闪传文件链接（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file_name": {
+          "type": "string"
+        },
+        "file_index": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "fileset_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_forward_msg",
+    "description": "[SnowLuma/扩展] 获取合并转发消息（id 或 message_id） 返回：{ messages }：转发内的消息节点数组（每项为 OneBot 消息事件，内部字段不固定）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "message_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_friend_list",
+    "description": "[SnowLuma/好友] 获取好友列表 返回：好友列表数组，每项含 QQ 号、昵称与备注。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_friend_msg_history",
+    "description": "[SnowLuma/扩展] 获取好友消息历史（无锚点时从服务器获取最新双向记录） 返回：{ messages }：好友消息事件对象数组（每项为 OneBot 消息事件，内部字段不固定）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "message_id": {
+          "type": "integer",
+          "default": 0,
+          "x-role": "message_id"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "无锚点时从 QQ 服务器获取最新双向历史；服务器或身份解析失败时动作失败，不返回不完整的本地缓存",
+          "default": 20
+        },
+        "reverse_order": {
+          "type": "boolean",
+          "description": "仅在 message_id 非 0 时生效；true 返回锚点及更旧消息，false 返回锚点及更新消息",
+          "default": true
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_friends_with_category",
+    "description": "[SnowLuma/扩展] 获取分组好友列表 返回：好友分组数组；每组包含 categoryId、categoryName、categoryMbCount 和 buddyList。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_admin_settings",
+    "description": "[SnowLuma/群管理] 获取群管理设置的当前值 返回：与对应设置接口字段对齐的当前群管理设置。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_album_list",
+    "description": "[SnowLuma/群相册] get_group_album_list 返回：群相册列表数组，每项为一个相册的基本信息。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_album_media_list",
+    "description": "[SnowLuma/群相册] get_group_album_media_list 返回：相册图片/视频列表及下一页分页游标；视频项包含 id、url、cover、尺寸、时长和多规格地址。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "album_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attach_info": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id",
+        "album_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_at_all_remain",
+    "description": "[SnowLuma/扩展] 获取群 @全体成员 剩余次数 返回：{ can_at_all, remain_at_all_count_for_group, remain_at_all_count_for_uin }：@全体可用性与剩余次数。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_detail_info",
+    "description": "[SnowLuma/扩展] 获取群详细信息（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "no_cache": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_file_system_info",
+    "description": "[SnowLuma/扩展] 获取群文件系统信息 返回：{ file_count, limit_count, used_space, total_space }：群文件数量与容量信息（均为服务端实际值）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_file_url",
+    "description": "[SnowLuma/群文件] 获取群文件下载链接 返回：群文件下载链接。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file_id"
+        },
+        "busid": {}
+      },
+      "required": [
+        "group_id",
+        "file_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_files_by_folder",
+    "description": "[SnowLuma/群文件] 获取群子目录文件列表 返回：群文件系统信息（文件与文件夹列表）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "folder_id": {
+          "type": "string",
+          "default": ""
+        },
+        "folder": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_honor_info",
+    "description": "[SnowLuma/群信息] 获取群荣誉信息（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_ignore_add_request",
+    "description": "[SnowLuma/扩展] 获取被忽略的入群请求（NapCat） 返回：被忽略的入群请求数组（NapCat 字段命名），每项含请求序列、邀请人、群信息与处理标记。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_ignored_notifies",
+    "description": "[SnowLuma/扩展] 获取被过滤的入群请求 返回：被过滤的入群请求数组，每项含群号、申请人、邀请人、留言与处理标记。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_info",
+    "description": "[SnowLuma/群信息] 获取群信息 返回：群信息对象。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "no_cache": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_info_ex",
+    "description": "[SnowLuma/扩展] 获取群信息（扩展）（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "no_cache": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_list",
+    "description": "[SnowLuma/群信息] 获取群列表 返回：群信息对象数组。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "no_cache": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_member_info",
+    "description": "[SnowLuma/群信息] 获取群成员信息 返回：群成员信息对象。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "member_id"
+        },
+        "no_cache": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_member_list",
+    "description": "[SnowLuma/群信息] 获取群成员列表 返回：群成员信息对象数组。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "no_cache": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_msg_history",
+    "description": "[SnowLuma/扩展] 获取群消息历史 返回：{ messages }：群消息事件对象数组（每项为 OneBot 消息事件，内部字段不固定）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "message_id": {
+          "type": "integer",
+          "default": 0,
+          "x-role": "message_id"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 20
+        },
+        "reverse_order": {
+          "type": "boolean",
+          "description": "仅在 message_id 非 0 时生效；true 返回锚点及更旧消息，false 返回锚点及更新消息",
+          "default": true
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_root_files",
+    "description": "[SnowLuma/群文件] 获取群根目录文件列表 返回：群文件系统信息（文件与文件夹列表）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_shut_list",
+    "description": "[SnowLuma/扩展] 获取群禁言列表 返回：仍在禁言中的成员数组，每项含 QQ 号、昵称与禁言到期时间戳（秒）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_signed_list",
+    "description": "[SnowLuma/扩展] 获取群今日打卡列表（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_system_msg",
+    "description": "[SnowLuma/群信息] 获取群系统消息 返回：群系统消息数组，可按群号或未处理状态过滤。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "only_pending": {
+          "type": "boolean",
+          "default": false
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "每个收件箱最多读取的记录数",
+          "default": 50
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_group_todo_list",
+    "description": "[SnowLuma/扩展] 获取群待办列表 返回：群待办数组，包含可用于待办操作的消息标识、服务端摘要与时间（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_image",
+    "description": "[SnowLuma/扩展] 获取图片信息（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "default": "",
+          "x-role": "image"
+        },
+        "file_id": {
+          "type": "string",
+          "default": "",
+          "x-role": "file_id"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_login_info",
+    "description": "[SnowLuma/信息] get_login_info 返回：当前登录账号的 QQ 号与昵称。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_mini_app_ark",
+    "description": "[SnowLuma/扩展] 获取小程序卡片 ark（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "desc": {
+          "type": "string"
+        },
+        "picUrl": {
+          "type": "string"
+        },
+        "pic_url": {
+          "type": "string"
+        },
+        "jumpUrl": {
+          "type": "string"
+        },
+        "jump_url": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_msg",
+    "description": "[SnowLuma/消息] 获取消息 返回：消息事件对象（首次收到时存储的副本，已去除 post_type/self_id、附带 real_id 字段并刷新图片 URL）。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_msg_emoji_likes",
+    "description": "[SnowLuma/扩展] 获取一条消息的全部表情回应 返回：该消息上每个表情回应的编号、数量与用户列表。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_online_clients",
+    "description": "[SnowLuma/扩展] 获取在线客户端 返回：{ clients }：QQ 本次会话最近推送的在线设备快照。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "no_cache": {
+          "type": "boolean",
+          "description": "是否强制刷新；QQ 当前仅暴露本地快照，true 会明确失败",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_private_file_url",
+    "description": "[SnowLuma/群文件] 获取私聊文件下载链接 返回：私聊文件下载链接。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file_id"
+        },
+        "file_hash": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "file_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_profile_like",
+    "description": "[SnowLuma/扩展] 获取资料点赞 返回：点赞资料：uid、最近点赞时间、收藏与点赞统计及用户明细。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "x-role": "user_id"
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_qun_album_list",
+    "description": "[SnowLuma/群相册] get_qun_album_list 返回：NapCat 风格的相册列表封套：{album_list, attach_info, has_more}。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "attach_info": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_qzone_feeds",
+    "description": "[SnowLuma/空间] 获取 QQ 空间好友动态（feed）；page_num 仅首页可靠，深翻页需时间游标（暂未实现） 返回：好友动态对象，含本页 feed 数组与是否有更多页。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "page_num": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "页码（1 起；仅首页可靠）",
+          "default": 1
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "本页数量",
+          "default": 10
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_qzone_msg_list",
+    "description": "[SnowLuma/空间] 获取 QQ 空间说说列表（默认机器人自己的空间） 返回：说说列表对象，含说说总数与本页说说数组。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "target_uin": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "目标 QQ 号，省略则取机器人自己",
+          "x-role": "user_id"
+        },
+        "pos": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "起始偏移",
+          "default": 0
+        },
+        "num": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "本页数量",
+          "default": 20
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_recent_contact",
+    "description": "[SnowLuma/扩展] 获取最近会话（占位） 返回：占位实现，恒返回空数组。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_record",
+    "description": "[SnowLuma/扩展] 获取语音信息；传 out_format 则服务端转码并附带 base64（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "default": "",
+          "x-role": "record"
+        },
+        "file_id": {
+          "type": "string",
+          "default": "",
+          "x-role": "file_id"
+        },
+        "out_format": {
+          "enum": [
+            "mp3",
+            "amr",
+            "wma",
+            "m4a",
+            "spx",
+            "ogg",
+            "wav",
+            "flac"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_rkey",
+    "description": "[SnowLuma/扩展] 获取下载 rkey（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_rkey_server",
+    "description": "[SnowLuma/扩展] 获取 rkey 服务器信息 返回：{ expired_time, name, private_rkey?, group_rkey? }：rkey 过期时间与（存在时的）私聊/群聊 rkey。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_share_link",
+    "description": "[SnowLuma/扩展] 获取文件分享链接（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "fileset_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_get_status",
+    "description": "[SnowLuma/信息] get_status 返回：运行状态。`online` 表示账号在线；`good` 表示已确认的收发链路健康状态。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_stranger_info",
+    "description": "[SnowLuma/好友] 获取陌生人信息 返回：用户资料：QQ 号、昵称、好友备注、性别、年龄与个性签名，命中资料时另含等级、企点标志与企业名称。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "user_id"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_unidirectional_friend_list",
+    "description": "[SnowLuma/扩展] 获取单向好友列表（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_get_version_info",
+    "description": "[SnowLuma/信息] get_version_info 返回：实现与协议版本信息。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_group_poke",
+    "description": "[SnowLuma/扩展] 群拍一拍（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "member_id"
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_like_qzone",
+    "description": "[SnowLuma/空间] 给一条说说点赞（QQ 空间）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tid": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说说 tid"
+        },
+        "target_uin": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "说说所属 QQ 号，省略则为机器人自己",
+          "x-role": "user_id"
+        },
+        "abstime": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "说说发表时间（unix 秒），传真实值更可靠",
+          "default": 0,
+          "x-role": "timestamp"
+        }
+      },
+      "required": [
+        "tid"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_list_filesets",
+    "description": "[SnowLuma/扩展] 列出当前账号的所有闪传文件集（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_mark_group_msg_as_read",
+    "description": "[SnowLuma/扩展] 标记群消息已读（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_mark_msg_as_read",
+    "description": "[SnowLuma/扩展] 标记消息已读（群聊/私聊自动路由）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "target_id": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_mark_private_msg_as_read",
+    "description": "[SnowLuma/扩展] 标记私聊消息已读（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_modify_custom_face",
+    "description": "[SnowLuma/扩展] 修改收藏表情备注（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "emoji_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "desc": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "emoji_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_move_custom_face_to_front",
+    "description": "[SnowLuma/扩展] 收藏表情移到最前（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "emoji_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "emoji_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_move_group_file",
+    "description": "[SnowLuma/群文件] 移动群文件（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file_id"
+        },
+        "parent_directory": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_directory": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "file_id",
+        "parent_directory",
+        "target_directory"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_nc_get_packet_status",
+    "description": "[SnowLuma/扩展] 获取 packet 状态（占位） 返回：占位实现，恒返回 null。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_nc_get_user_status",
+    "description": "[SnowLuma/扩展] 获取用户在线/扩展状态 返回：{ status, ext_status }：用户在线状态码与扩展状态码。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_ocr_image",
+    "description": "[SnowLuma/扩展] OCR 图片（服务端，需图片 URL 或已缓存的图片 file_id） 返回：{ texts, language }：识别文本数组（含置信度与坐标）与识别语言。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "image"
+        }
+      },
+      "required": [
+        "image"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_rename_flash_file",
+    "description": "[SnowLuma/扩展] 重命名闪传文件（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "new_name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "fileset_id",
+        "new_name"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_rename_group_file",
+    "description": "[SnowLuma/群文件] 重命名群文件（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file_id"
+        },
+        "current_parent_directory": {
+          "type": "string",
+          "default": "/"
+        },
+        "new_name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "file_id",
+        "new_name"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_rename_group_file_folder",
+    "description": "[SnowLuma/群文件] 重命名群文件夹（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "folder_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "new_folder_name": {
+          "type": "string",
+          "default": ""
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id",
+        "folder_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_request_decrypt_key",
+    "description": "[SnowLuma/扩展] 请求数据库解密密钥（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "db_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "db_path"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_search_sys_faces",
+    "description": "[SnowLuma/系统表情] 搜索 QQ 系统表情 返回：匹配编号、名称、别名或分组名的表情列表。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "description": "编号、名称、别名或分组名"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_send_ark_share",
+    "description": "[SnowLuma/扩展] 分享用户/群 Ark 卡片（NapCat 标准名） 返回：{ arkMsg }：服务端生成的推荐联系人 Ark 卡片 JSON 字符串。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "phone_number": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_send_flash_msg",
+    "description": "[SnowLuma/扩展] 发送闪传消息（私聊或群聊，引用 fileset_id 让对端下载） 返回：{ message_id }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fileset_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "fileset_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_send_group_ai_record",
+    "description": "[SnowLuma/扩展] 发送 AI 语音到群 返回：{ message_id }：已发送 AI 语音的 OneBot 消息 ID。（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "character": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chat_type": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        }
+      },
+      "required": [
+        "group_id",
+        "character",
+        "text"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_send_group_ark_share",
+    "description": "[SnowLuma/扩展] 分享群 Ark 卡片（NapCat 标准名） 返回：服务端生成的群推荐 Ark 卡片 JSON 字符串。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_send_like",
+    "description": "[SnowLuma/扩展] 点赞（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "times": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_send_packet",
+    "description": "[SnowLuma/扩展] 发送原始 SSO 包（cmd + hex data）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "cmd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data": {
+          "type": "string",
+          "default": ""
+        },
+        "rsp": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "cmd"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_send_poke",
+    "description": "[SnowLuma/扩展] 拍一拍（群聊/私聊自动路由）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_send_qzone_msg",
+    "description": "[SnowLuma/空间] 发表说说（QQ 空间，支持纯文字或带图；传 images 自动上传；可设置查看权限）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说说正文"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "图片数组（可选），支持 file:// http:// base64://；自动上传"
+        },
+        "ugc_right": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "查看权限：1=所有人可见，4=好友可见，16=部分好友可见，64=仅自己可见，128=部分好友不可见",
+          "default": 1
+        },
+        "target_uins": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "权限作用 QQ 号数组；ugc_right=16 时表示可见名单，128 时表示不可见名单"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_send_tuwen_ark",
+    "description": "[SnowLuma/扩展] 发送图文 Ark 卡片（私聊/群聊） 返回：null（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "title": {
+          "type": "string"
+        },
+        "desc": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string",
+          "default": "[分享]"
+        },
+        "preview_url": {
+          "type": "string",
+          "default": "https://tangram-1251316161.file.myqcloud.com/files/20210721/e50a8e37e08f29bf1ffc7466e1950690.png"
+        },
+        "jump_url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "desc",
+        "jump_url"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_diy_online_status",
+    "description": "[SnowLuma/扩展] 设置自定义在线状态（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "face_id": {
+          "type": "integer",
+          "minimum": 0,
+          "x-role": "face_id"
+        },
+        "face_type": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        },
+        "wording": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "face_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_doubt_friends_add_request",
+    "description": "[SnowLuma/扩展] 处理可疑好友申请（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "flag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approve": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "flag"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_essence_msg",
+    "description": "[SnowLuma/扩展] 设置精华消息（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_friend_add_request",
+    "description": "[SnowLuma/请求] 处理好友添加请求（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "flag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approve": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "flag"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_friend_remark",
+    "description": "[SnowLuma/扩展] 设置好友备注（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "remark": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "remark"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_friends_category",
+    "description": "[SnowLuma/扩展] 移动好友到指定分组 返回：成功时返回空数据。（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "uin": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "要移动的好友 QQ 号",
+          "x-role": "user_id"
+        },
+        "categoryId": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "目标分组 ID"
+        },
+        "categoryName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "目标分组名称（必须唯一且完全匹配）"
+        }
+      },
+      "required": [
+        "uin"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_add_option",
+    "description": "[SnowLuma/群管理] 设置加群选项（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "add_type": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "group_question": {
+          "type": "string"
+        },
+        "group_answer": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_add_request",
+    "description": "[SnowLuma/请求] 处理加群请求（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "flag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sub_type": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "approve": {
+          "type": "boolean",
+          "default": true
+        },
+        "reason": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "flag"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_admin",
+    "description": "[SnowLuma/群管理] 设置/取消管理员（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "member_id"
+        },
+        "enable": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_album_media_like",
+    "description": "[SnowLuma/群相册] set_group_album_media_like（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "album_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "batch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lloc": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_id",
+        "album_id",
+        "batch_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_anonymous",
+    "description": "[SnowLuma/群管理] 匿名开关（未实现，返回 ok）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_anonymous_ban",
+    "description": "[SnowLuma/群管理] 匿名禁言（未实现，返回 ok）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_ban",
+    "description": "[SnowLuma/群管理] 禁言群成员（duration=0 解除）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "member_id"
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1800,
+          "x-role": "duration"
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_card",
+    "description": "[SnowLuma/群管理] 设置群名片（空字符串清除）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "member_id"
+        },
+        "card": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_kick",
+    "description": "[SnowLuma/群管理] 踢出群成员（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "member_id"
+        },
+        "reject_add_request": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_kick_members",
+    "description": "[SnowLuma/群管理] 批量踢出群成员（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "x-role": "member_id"
+          },
+          "minItems": 1
+        },
+        "reject_add_request": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_leave",
+    "description": "[SnowLuma/群管理] 退群（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_member_invite_policy",
+    "description": "[SnowLuma/群管理] 设置群成员邀请策略（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "policy": {
+          "enum": [
+            "disabled",
+            "require_approval",
+            "no_approval",
+            "no_approval_under_100"
+          ]
+        }
+      },
+      "required": [
+        "group_id",
+        "policy"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_member_permissions",
+    "description": "[SnowLuma/群管理] 设置群成员权限（仅群主可改）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "allow_member_upload_album": {
+          "type": "boolean"
+        },
+        "allow_member_temporary_session": {
+          "type": "boolean"
+        },
+        "allow_member_create_group": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_name",
+    "description": "[SnowLuma/群管理] 设置群名（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "group_name": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_new_member_history_visibility",
+    "description": "[SnowLuma/群管理] 设置新成员是否可查看历史消息（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "visible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group_id",
+        "visible"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_portrait",
+    "description": "[SnowLuma/群管理] 设置群头像（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "image"
+        }
+      },
+      "required": [
+        "group_id",
+        "file"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_reaction",
+    "description": "[SnowLuma/扩展] 群聊表情回应（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "is_set": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "message_id",
+        "code"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_remark",
+    "description": "[SnowLuma/扩展] 设置群备注（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "remark": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_id",
+        "remark"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_robot_add_option",
+    "description": "[SnowLuma/扩展] 设置群机器人加群选项（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "robot_member_switch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "robot_member_examine": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_search",
+    "description": "[SnowLuma/群管理] 设置群被搜索方式（群指纹 / 群号搜索开关）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "no_finger_open": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "no_code_finger_open": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_sign",
+    "description": "[SnowLuma/扩展] 群签到（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_special_title",
+    "description": "[SnowLuma/群管理] 设置群头衔（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "QQ 号",
+          "x-role": "member_id"
+        },
+        "special_title": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "group_id",
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_todo",
+    "description": "[SnowLuma/扩展] 设置群待办（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        }
+      },
+      "required": [
+        "group_id",
+        "message_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_group_whole_ban",
+    "description": "[SnowLuma/群管理] 全员禁言开关（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "enable": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_input_status",
+    "description": "[SnowLuma/扩展] 设置输入状态（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "event_type": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_msg_emoji_like",
+    "description": "[SnowLuma/扩展] 设置消息表情回应（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          },
+          "x-role": "message_id"
+        },
+        "emoji_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "set": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "message_id",
+        "emoji_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_online_status",
+    "description": "[SnowLuma/扩展] 设置在线状态（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "integer",
+          "not": {
+            "const": 0
+          }
+        },
+        "ext_status": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "battery_status": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 100
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_qq_avatar",
+    "description": "[SnowLuma/扩展] 设置 QQ 头像（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "image"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_qq_profile",
+    "description": "[SnowLuma/扩展] 设置 QQ 资料（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "nickname": {
+          "type": "string"
+        },
+        "personal_note": {
+          "type": "string"
+        },
+        "sex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "0 未知，1 男，2 女"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_qzone_ban",
+    "description": "[SnowLuma/空间] 拉黑或解除拉黑某人（修改机器人自身 QQ 空间黑名单；enable=true 拉黑，false 解除）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "目标 QQ 号",
+          "x-role": "user_id"
+        },
+        "enable": {
+          "type": "boolean",
+          "description": "true 拉黑，false 解除拉黑",
+          "default": true
+        }
+      },
+      "required": [
+        "user_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_qzone_msg_right",
+    "description": "[SnowLuma/空间] 修改一条已发说说的查看权限（QQ 空间，按 tid） 返回：更新后的权限对象。（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tid": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说说 tid（来自 get_qzone_msg_list / send_qzone_msg）"
+        },
+        "ugc_right": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "查看权限：1=所有人可见，4=好友可见，16=部分好友可见，64=仅自己可见，128=部分好友不可见"
+        },
+        "target_uins": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "权限作用 QQ 号数组；ugc_right=16 时表示可见名单，128 时表示不可见名单"
+        }
+      },
+      "required": [
+        "tid",
+        "ugc_right"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_set_self_longnick",
+    "description": "[SnowLuma/扩展] 设置个性签名（longNick/long_nick，严格 string）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "longNick": {
+          "type": "string"
+        },
+        "long_nick": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_share_group_ex",
+    "description": "[SnowLuma/扩展] 分享群 Ark 卡片 返回：服务端生成的群推荐 Ark 卡片 JSON 字符串。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_share_peer",
+    "description": "[SnowLuma/扩展] 分享用户/群 Ark 卡片 返回：{ arkMsg }：服务端生成的推荐联系人 Ark 卡片 JSON 字符串。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "phone_number": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_test_download_stream",
+    "description": "[SnowLuma/流式接口] 测试下载流(推送 10 个数据帧,验证流式传输,不触达 QQ) 返回：流式帧:data_chunk*10 → data_complete(error=true 时以 error 帧结束)（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "boolean",
+          "description": "是否触发测试错误",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_trans_group_file",
+    "description": "[SnowLuma/扩展] 转存群文件 返回：{ ok: true }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file_id"
+        }
+      },
+      "required": [
+        "group_id",
+        "file_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_translate_en2zh",
+    "description": "[SnowLuma/扩展] 英译中 返回：{ words }：与输入等长的中文译文字符串数组。（只读动作，可放心调用）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "words": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "words"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "snowluma_unlike_qzone",
+    "description": "[SnowLuma/空间] 取消对一条说说的点赞（QQ 空间；取消赞端点待真机核实）（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tid": {
+          "type": "string",
+          "minLength": 1,
+          "description": "说说 tid"
+        },
+        "target_uin": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "说说所属 QQ 号，省略则为机器人自己",
+          "x-role": "user_id"
+        },
+        "abstime": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "说说发表时间（unix 秒），传真实值更可靠",
+          "default": 0,
+          "x-role": "timestamp"
+        }
+      },
+      "required": [
+        "tid"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_upload_file_stream",
+    "description": "[SnowLuma/流式接口] 以流式分块方式上传文件到机器人本地(返回可用于发送的本地路径) 返回：流式帧:分块确认 type=stream、完成 type=response(含 file_path/file_name/file_size/sha256)（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "stream_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "流 ID(客户端生成的 UUID,限 [A-Za-z0-9_-])"
+        },
+        "chunk_data": {
+          "type": "string",
+          "description": "分块数据(Base64)"
+        },
+        "chunk_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "分块索引(从 0 开始)"
+        },
+        "total_chunks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "总分块数(新流必填)"
+        },
+        "file_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "文件总大小(字节)"
+        },
+        "expected_sha256": {
+          "type": "string",
+          "description": "期望的整文件 SHA256(校验)"
+        },
+        "is_complete": {
+          "type": "boolean",
+          "description": "是否为最后一个分块/触发合并"
+        },
+        "filename": {
+          "type": "string",
+          "description": "文件名"
+        },
+        "reset": {
+          "type": "boolean",
+          "description": "重置并丢弃该流"
+        },
+        "verify_only": {
+          "type": "boolean",
+          "description": "仅查询当前流状态"
+        },
+        "file_retention": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "合并文件保留毫秒(0=不回收)",
+          "default": 300000
+        }
+      },
+      "required": [
+        "stream_id"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_upload_forward_msg",
+    "description": "[SnowLuma/扩展] 上传转发消息（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "description": "OneBot message: string | segment[] | object. In segment arrays, text segments whose text field is exactly \"\" are compatibility placeholders and do not count as sendable segments; missing, null, and whitespace-only text remain subject to normal validation."
+        },
+        "message": {
+          "description": "OneBot message: string | segment[] | object. In segment arrays, text segments whose text field is exactly \"\" are compatibility placeholders and do not count as sendable segments; missing, null, and whitespace-only text remain subject to normal validation."
+        },
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "group_id"
+        }
+      },
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_upload_group_file",
+    "description": "[SnowLuma/群文件] 上传群文件 返回：{ file_id: string }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file"
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        },
+        "folder": {
+          "type": "string",
+          "default": ""
+        },
+        "folder_id": {
+          "type": "string",
+          "default": ""
+        },
+        "upload_file": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "group_id",
+        "file"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_upload_image_to_qun_album",
+    "description": "[SnowLuma/群相册] upload_image_to_qun_album（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "group_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "群号",
+          "x-role": "group_id"
+        },
+        "album_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "album_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "image"
+        }
+      },
+      "required": [
+        "group_id",
+        "album_id",
+        "album_name",
+        "file"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "snowluma_upload_private_file",
+    "description": "[SnowLuma/群文件] 上传私聊文件 返回：{ file_id: string }（会改动状态，调用前先与对方/主人确认）",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "integer",
+          "minimum": 1,
+          "x-role": "user_id"
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "x-role": "file"
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        },
+        "upload_file": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "user_id",
+        "file"
+      ],
+      "additionalProperties": true
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "qq_react",
+    "description": "给一条 QQ 群消息贴表情回应（消息情绪的轻量参与）。注意：表情回应仅群聊可用，私聊不支持（QQ 协议限制）。根据消息情绪挑表情：认同/没问题 → 124 OK 手势，赞/厉害 → 398 超级ok，认同/开心 → 13 呲牙，好笑 → 28 偷笑，无语 → 32 疑问，感动/难过 → 5 流泪，佩服 → 4 得意，害羞 → 6 害羞。不要频繁使用，一条消息最多回应一次。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "message_id",
+        "emoji_id"
+      ],
+      "properties": {
+        "message_id": {
+          "type": "number",
+          "description": "要回应的消息 id"
+        },
+        "emoji_id": {
+          "type": "string",
+          "description": "QQ 系统表情 ID（如 13 呲牙、28 偷笑、32 疑问）"
+        },
+        "set": {
+          "type": "boolean",
+          "description": "false = 取消回应，默认 true"
+        }
+      }
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "qq_poke",
+    "description": "在 QQ 上戳一戳某人。私聊传 user_id，群聊传 group_id + user_id。被别人戳了或想调侃朋友时用。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "user_id"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "number",
+          "description": "要戳的 QQ 号"
+        },
+        "group_id": {
+          "type": "number",
+          "description": "群号；不传则戳好友"
+        }
+      }
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "qq_send_like",
+    "description": "给某个 QQ 号点赞（赞名片，每天有次数上限）。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "user_id"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "number",
+          "description": "QQ 号"
+        },
+        "times": {
+          "type": "number",
+          "description": "次数，默认 1，最多 10"
+        }
+      }
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "qq_qzone_post",
+    "description": "发一条主人的 QQ 空间说说（走 SnowLuma 原生 send_qzone_msg）。只应在主人明确要求发空间时使用，内容与主人确认过再发。可用 images 传图片。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "说说正文"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "图片（file:// http:// base64://），可选"
+        }
+      }
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "qq_meme_send",
+    "description": "从偷来的表情包库里挑一张发送。不传任何参数 = 全库随机发一张。想精准表达情绪时传 emotion（搞笑/无语/认可/生气…）或 query 内容关键词（如 猫、摆烂、鼓掌）；没有匹配的也会全库随机兜底。group_id 和 user_id 二选一，指定发到哪个聊天。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "emotion": {
+          "type": "string",
+          "description": "想要的情绪：开心/搞笑/无语/生气/惊讶/认可/无奈 等"
+        },
+        "query": {
+          "type": "string",
+          "description": "内容关键词，如 猫、干饭"
+        },
+        "group_id": {
+          "type": "number",
+          "description": "发到群聊"
+        },
+        "user_id": {
+          "type": "number",
+          "description": "发到私聊"
+        }
+      }
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  },
+  {
+    "name": "qq_meme_list",
+    "description": "列出偷来的表情包库存（情绪、内容、来源）。",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": false
+  },
+  {
+    "name": "qq_affinity",
+    "description": "查询/调整你对某个群友的好感度（0-100，初始 50，数值注入在每条群消息的头部）。根据对话的真实体验加减：礼貌、有趣、帮了忙 → 加分；骂人、引战、刷屏骚扰 → 减分；单次幅度不要超过 20，不是每条消息都要调，有明显情绪倾向时才调。对方主动要求加好感时，按其真实表现判断，不要盲从。不传 delta 则只查询当前分数。",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "user_id",
+        "group_id"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "number",
+          "description": "群友 QQ 号"
+        },
+        "group_id": {
+          "type": "number",
+          "description": "所在群号"
+        },
+        "delta": {
+          "type": "number",
+          "description": "加减分，范围 -20 ~ 20"
+        },
+        "reason": {
+          "type": "string",
+          "description": "加减分原因（一句话，会记录在日志）"
+        }
+      }
+    },
+    "group": "snowluma",
+    "plugin": "snowluma",
+    "host": true,
+    "write": true
+  }
+]

@@ -4,9 +4,8 @@ import net from "node:net";
 import { randomBytes } from "node:crypto";
 import { Type } from "typebox";
 import { SnowLumaWebSocketClient, message } from "@snowluma/sdk";
-import { loadConfig, ROOT_DIR } from "./util.js";
+import { loadConfig, ROOT_DIR, ditoChannelDir } from "./util.js";
 import { MemeStore } from "../bin/memes.js";
-import { homedir } from "node:os";
 const SNOWLUMA_ACTIONS = JSON.parse(
   readFileSync(join(ROOT_DIR, "extensions", "snowluma-actions.json"), "utf-8")
 );
@@ -92,7 +91,7 @@ async function callBot(action, params) {
 let memeStore = null;
 function getMemeStore() {
   if (!memeStore) {
-    const dir = join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"), "dito", "memes");
+    const dir = join(ditoChannelDir("qq"), "memes");
     memeStore = new MemeStore(dir);
   }
   return memeStore;

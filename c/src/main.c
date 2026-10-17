@@ -22,13 +22,15 @@ static void help(void) {
        "sessions                 列出已有会话\n  config [get 路径|set 路径 "
        "JSON]\n  doctor [--ci]            离线检查本地运行时\n  mcp [--port "
        "3878]        MCP HTTP 服务（仅本机）\n  web|qqadmin [--port 3880] "
-       "本地管理 HTTP 服务\n  qq|matrix                原生频道\n  voice       "
+       "本地管理 HTTP 服务\n  qq|matrix                频道（默认兼容层）\n  "
+       "voice       "
        "             语音输入\n  animation [毫秒]         Miyu 扫描动画演示\n  "
        "capabilities             显示真实迁移状态\n  无参数                   "
        "进入 C 终端对话（支持两个会话同时工作）\n"
        "  legacy [旧版命令]       旧功能兼容入口（需要 Node）\n"
        "  qq/matrix/mobile/bridge/relay/voice/qqadmin/plugins 通过兼容层运行\n"
-       "  Ctrl+T 新建 · Alt+1…9 标签 · Ctrl+W 会话 · Alt+W 历史 · Esc "
+       "  Ctrl+T/Alt+D 新建 · Alt+A 上一会话 · Alt+1…9 标签 · Ctrl+W 会话 · "
+       "Alt+W 历史 · Esc "
        "取消当前任务\n");
 }
 static json_object *image(const char *file) {
@@ -161,7 +163,8 @@ int main(int argc, char **argv) {
         "{\"runtime\":\"C17\",\"nodeRequired\":false,\"migrationComplete\":"
         "false,\"implemented\":[\"config-json\",\"configuration-tui\","
         "\"sessions-jsonl\",\"openai-sse\",\"anthropic-sse\",\"responses-sse\","
-        "\"tools\",\"sqlite-kb-long-memory\",\"context-compaction\",\"web-"
+        "\"tools\",\"ask-question-options\",\"legacy-tool-catalog\",\"sqlite-"
+        "kb-long-memory\",\"context-compaction\",\"web-"
         "search-fetch\",\"scanner-animation\",\"terminal-"
         "chat\",\"parallel-terminal-sessions\",\"history-tabs\",\"thinking-"
         "tool-"

@@ -12,7 +12,7 @@ import {
 import { basename } from "node:path";
 import { MODE_DEFS, getMode, nextMode, readOnlyTools, setMode } from "../extensions/mode.js";
 import { sudoModeEnabled, toggleSudoMode } from "../extensions/permission.js";
-import { DITO_IS_ALPHA } from "../extensions/util.js";
+import { DITO_IS_ALPHA, loadConfig, saveConfig } from "../extensions/util.js";
 import { createSession, listSessions } from "./session.js";
 import { TuiDialogs } from "./tui-dialogs.js";
 import { assertImageSupport, MAX_IMAGES, readClipboardInput, readImageAttachment } from "./image-input.js";
@@ -50,6 +50,14 @@ function formatContextTokens(value) {
   return String(Math.floor(value));
 }
 const slashCommands = [
+  { name: "model", description: "选择当前模型", argumentHint: "provider/id" },
+  { name: "persona", description: "切换 AI 人格" },
+  { name: "identity", description: "切换用户身份" },
+  { name: "compact", description: "手动压缩上下文" },
+  { name: "memory-stats", description: "查看记忆统计" },
+  { name: "memory-clear", description: "清空记忆" },
+  { name: "system", description: "查看系统信息" },
+  { name: "kb-stats", description: "查看知识库统计" },
   { name: "chat", description: "闲聊模式（不调用工具）" },
   { name: "standard", description: "标准模式（完整助手）" },
   { name: "plan", description: "计划模式（只读探索）" },
@@ -430,6 +438,47 @@ async function runTui(session, modelName, newSession, terminal = new ProcessTerm
       return;
     }
     const modes = { "/chat": "chat", "/闲聊": "chat", "/standard": "standard", "/标准": "standard", "/plan": "plan", "/计划": "plan" };
+    if (/^\/model(?:\s|$)/.test(lower)) {
+      if (current.session.isStreaming) {
+        notice("请先完成或取消当前任务，再切换模型");
+        return;
+      }
+      try {
+        const cfg = loadConfig();
+        const configured = new Set(cfg.providers.map((provider) => provider.id));
+        const available = (await current.session.modelRuntime.getAvailable()).filter((model) => configured.has(model.provider));
+        if (!available.length) {
+          notice("没有可用模型，请先运行 dito config 配置模型供应商");
+          return;
+        }
+        const names = available.map((model) => `${model.provider}/${model.id}`);
+        const requested = text.slice(6).trim();
+        const chosen = requested || await dialogs.select("选择模型", names);
+        if (!chosen) return;
+        const model = available.find((item) => `${item.provider}/${item.id}` === chosen || item.id === chosen);
+        if (!model) {
+          notice(`未找到可用模型：${chosen}`);
+          return;
+        }
+        await current.session.setModel(model);
+        const provider = cfg.providers.find((item) => item.id === model.provider);
+        if (!provider.models.some((item) => item.id === model.id)) {
+          const metadata = { id: model.id, name: model.name || model.id };
+          for (const key of ["api", "contextWindow", "maxTokens", "reasoning", "input", "cost"])
+            if (model[key] !== undefined) metadata[key] = model[key];
+          provider.models.push(metadata);
+        }
+        cfg.model.provider = model.provider;
+        cfg.model.chat = model.id;
+        saveConfig(cfg);
+        current.modelName = model.name || model.id;
+        applyMode(getMode());
+        notice(`已切换模型：${current.modelName}`);
+      } catch (error) {
+        notice(`切换模型失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
+    }
     if (modes[lower]) {
       applyMode(modes[lower]);
       return;
@@ -611,6 +660,15 @@ async function runTui(session, modelName, newSession, terminal = new ProcessTerm
     await bindSessionUi(current);
     applyMode(getMode());
     subscribeEvents();
+    const startupCommand = process.env.DITO_STARTUP_COMMAND;
+    const startupClipboard = process.env.DITO_STARTUP_CLIPBOARD === "1";
+    const startupDraft = process.env.DITO_STARTUP_DRAFT;
+    delete process.env.DITO_STARTUP_DRAFT;
+    delete process.env.DITO_STARTUP_COMMAND;
+    delete process.env.DITO_STARTUP_CLIPBOARD;
+    if (startupDraft) editor.setText(startupDraft);
+    if (startupCommand) await handleSubmit(startupCommand);
+    if (startupClipboard) await addImage(imageInput.readClipboard);
     await shutdownPromise;
   } finally {
     process.off("SIGINT", shutdown);

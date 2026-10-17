@@ -67,9 +67,7 @@ static void worker_event(void *opaque, const char *kind, const char *text,
   free(raw);
   json_object_put(j);
 }
-static char *worker_ask(void *opaque, const char *prompt) {
-  Worker *w = opaque;
-  worker_event(w, "question", prompt, NULL);
+static char *worker_answer(Worker *w) {
   Buffer answer = {0};
   while (!w->session->cancelled) {
     struct pollfd fd = {w->input, POLLIN, 0};
@@ -100,6 +98,22 @@ static char *worker_ask(void *opaque, const char *prompt) {
   }
   buf_free(&answer);
   return NULL;
+}
+static char *worker_ask(void *opaque, const char *prompt) {
+  Worker *w = opaque;
+  worker_event(w, "question", prompt, NULL);
+  return worker_answer(w);
+}
+static char *worker_choose(void *opaque, const char *prompt,
+                           json_object *options) {
+  Worker *w = opaque;
+  json_object *data = json_object_new_object();
+  json_object_object_add(
+      data, "options", options ? json_copy(options) : json_object_new_array());
+  json_object_object_add(data, "allowSkip", json_object_new_boolean(true));
+  worker_event(w, "question", prompt, data);
+  json_object_put(data);
+  return worker_answer(w);
 }
 static void remove_char(Buffer *b) {
   if (!b->len)
@@ -180,9 +194,22 @@ static int start_turn(Pane panes[2], int index, const char *text) {
     sigaction(SIGINT, &action, NULL);
     p->session.interactive = true;
     p->session.ask = worker_ask;
+    p->session.choose = worker_choose;
     p->session.ask_opaque = &worker;
     Events events = {worker_event, &worker};
-    int rc = agent_turn(&p->session, text, NULL, &events);
+    int rc;
+    if (!strcmp(text, "/compact") || !strcmp(text, "/压缩上下文")) {
+      event(&events, "start", "压缩上下文", NULL);
+      rc = compact_context(&p->session, &events, true);
+      event(&events, "notice",
+            rc > 0   ? "上下文已压缩"
+            : rc < 0 ? "上下文压缩失败"
+                     : "当前无需压缩",
+            NULL);
+      event(&events, "settled", "", NULL);
+      rc = rc < 0 ? 1 : 0;
+    } else
+      rc = agent_turn(&p->session, text, NULL, &events);
     session_close(&p->session);
     curl_global_cleanup();
     worker_session = NULL;
@@ -199,7 +226,8 @@ static int start_turn(Pane panes[2], int index, const char *text) {
   p->answers = in[1];
   p->cancelled_at = 0;
   buf_reset(&p->wire);
-  workbench_event(&p->renderer, "new_user", text, NULL);
+  if (strcmp(text, "/compact") && strcmp(text, "/压缩上下文"))
+    workbench_event(&p->renderer, "new_user", text, NULL);
   if (p->history)
     for (size_t i = 0; i < jlen(p->history->items); i++) {
       json_object *item = jat(p->history->items, i);
@@ -215,9 +243,36 @@ static void clear_question(Pane *p) {
   if (!p->question)
     return;
   p->question = false;
+  free(p->renderer.question_text);
+  p->renderer.question_text = NULL;
+  if (p->renderer.question_options)
+    json_object_put(p->renderer.question_options);
+  p->renderer.question_options = NULL;
+  p->renderer.dirty = true;
   buf_free(&p->renderer.input);
   p->renderer.input = p->saved_input;
   memset(&p->saved_input, 0, sizeof p->saved_input);
+}
+static void answer_question(Pane *p, const char *text) {
+  json_object *answer = text ? json_object_new_string(text) : NULL;
+  char *raw = answer ? json_text(answer) : xstrdup("null");
+  if (write_all(p->answers, raw, strlen(raw)) || write_all(p->answers, "\n", 1))
+    pane_notice(p, "回答发送失败");
+  free(raw);
+  if (answer)
+    json_object_put(answer);
+  clear_question(p);
+  render_event(&p->renderer, "phase", "继续工作", NULL);
+}
+static void question_move(Renderer *r, int delta) {
+  int count = (int)jlen(r->question_options) + 1;
+  r->question_selected = (r->question_selected + delta) % count;
+  if (r->question_selected < 0)
+    r->question_selected += count;
+  /* Arrow selection takes precedence over an unfinished custom answer. */
+  if (r->question_selected < count - 1)
+    buf_reset(&r->input);
+  r->dirty = true;
 }
 static void receive_events(Pane *p) {
   char bytes[8192];
@@ -247,8 +302,16 @@ static void receive_events(Pane *p) {
           memset(&p->renderer.input, 0, sizeof p->renderer.input);
         }
         p->question = true;
-        pane_notice(p, text);
-        render_event(&p->renderer, "phase", "需要回答 · 输入后回车", NULL);
+        Renderer *r = &p->renderer;
+        free(r->question_text);
+        r->question_text = safe_text(text);
+        if (r->question_options)
+          json_object_put(r->question_options);
+        r->question_options = json_copy(jget(jget(j, "data"), "options"));
+        r->question_selected = r->question_top = 0;
+        r->question_skip = jbool(jget(j, "data"), "allowSkip", false);
+        r->history_open = false;
+        render_event(r, "phase", "需要回答 · ↑↓ 选项 · 输入或回车", NULL);
       } else
         render_event(&p->renderer, kind, text, jget(j, "data"));
       p->unread = p->renderer.hidden;
@@ -459,6 +522,97 @@ static int history_enter(Pane panes[2], Config *c, int *active) {
   free(copy);
   return rc;
 }
+static int history_switch(Pane panes[2], Config *c, int *active, int delta,
+                          bool previous) {
+  json_object *items = session_list(c, NULL);
+  int index = -1, count = (int)jlen(items);
+  for (int i = 0; i < count; i++)
+    if (!strcmp(jstr(jat(items, (size_t)i), "path", ""),
+                panes[*active].session.file))
+      index = i;
+  int target = previous ? index + 1
+               : count  ? (index + delta + count) % count
+                        : -1;
+  int rc = 0;
+  if (target >= 0 && target < count) {
+    char *path = xstrdup(jstr(jat(items, (size_t)target), "path", ""));
+    rc = open_path(panes, c, path, active);
+    free(path);
+  } else
+    pane_notice(&panes[*active], "已经是最早的会话了");
+  json_object_put(items);
+  return rc;
+}
+static bool handoff(Pane panes[2], int active, const char *command,
+                    bool clipboard) {
+  Pane *p = &panes[active];
+  if (panes[0].pid || panes[1].pid) {
+    pane_notice(p,
+                "请先完成或取消运行中的任务，再使用此旧版交互功能；命令已保留");
+    if (command)
+      buf_puts(&p->renderer.input, command);
+    return false;
+  }
+  if (!legacy_available(p->config)) {
+    pane_notice(p, "旧功能兼容层未安装或已禁用");
+    if (command)
+      buf_puts(&p->renderer.input, command);
+    return false;
+  }
+  setenv("DITO_SESSION_FILE", p->session.file, 1);
+  if (command)
+    setenv("DITO_STARTUP_COMMAND", command, 1);
+  if (clipboard) {
+    setenv("DITO_STARTUP_CLIPBOARD", "1", 1);
+    setenv("DITO_STARTUP_DRAFT",
+           p->renderer.input.data ? p->renderer.input.data : "", 1);
+  }
+  return true;
+}
+static bool legacy_slash(const char *text) {
+  const char *commands[] = {"/persona",      "/identity", "/model",    "/sudo",
+                            "/memory-clear", "/system",   "/kb-stats", "/image",
+                            "/images",       "/unimage"};
+  for (size_t i = 0; i < sizeof commands / sizeof *commands; i++) {
+    size_t n = strlen(commands[i]);
+    if (!strncmp(text, commands[i], n) && (!text[n] || text[n] == ' '))
+      return true;
+  }
+  return false;
+}
+static void complete_command(Pane *p) {
+  const char *names[] = {
+      "/chat",         "/standard",     "/plan",    "/mode",     "/sudo",
+      "/sessions",     "/bash",         "/prev",    "/new",      "/compact",
+      "/memory-stats", "/memory-clear", "/persona", "/identity", "/model",
+      "/system",       "/kb-stats",     "/image",   "/images",   "/unimage",
+      "/legacy",       "/cancel",       "/help",    "/exit"};
+  Buffer matches = {0};
+  const char *first = NULL;
+  size_t prefix = 0;
+  for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
+    if (strncmp(names[i], p->renderer.input.data, p->renderer.input.len))
+      continue;
+    if (!first) {
+      first = names[i];
+      prefix = strlen(first);
+    } else {
+      size_t j = 0;
+      while (j < prefix && names[i][j] == first[j])
+        j++;
+      prefix = j;
+    }
+    if (matches.len)
+      buf_puts(&matches, " · ");
+    buf_puts(&matches, names[i]);
+  }
+  if (first && prefix > p->renderer.input.len) {
+    buf_reset(&p->renderer.input);
+    buf_add(&p->renderer.input, first, prefix);
+  } else if (matches.len)
+    pane_notice(p, matches.data);
+  buf_free(&matches);
+}
 int terminal_parallel(Config *c, bool fresh) {
   History history = {.drafts = json_object_new_object()};
   Pane panes[2] = {{.events = -1, .answers = -1, .history = &history},
@@ -565,7 +719,18 @@ int terminal_parallel(Config *c, bool fresh) {
         rc = 1;
       continue;
     }
-    if (key == 9) {
+    if (key == 22) {
+      if (handoff(panes, active, NULL, true)) {
+        legacy_handoff = quit = true;
+      }
+      continue;
+    }
+    if (key == 9 && p->question && jlen(r->question_options)) {
+      question_move(r, 1);
+    } else if (key == 9 && !p->question && r->input.len &&
+               r->input.data[0] == '/') {
+      complete_command(p);
+    } else if (key == 9) {
       if (p->session.readonly) {
         p->session.readonly = false;
         p->session.chat_only = false;
@@ -605,7 +770,20 @@ int terminal_parallel(Config *c, bool fresh) {
                 action == 'M') {
               column--;
               row--;
-              if (r->history_open) {
+              if (p->question && row > 0 && row < r->rows - 3) {
+                if (button == 64 || button == 65)
+                  question_move(r, button == 64 ? -1 : 1);
+                else if (button == 0 && column >= r->cols * 7 / 100 &&
+                         column < r->cols * 93 / 100 && row >= r->question_y &&
+                         row < r->question_y + r->question_visible) {
+                  int index = r->question_top + row - r->question_y;
+                  r->question_selected = index;
+                  if ((size_t)index < jlen(r->question_options))
+                    answer_question(
+                        p, json_object_get_string(
+                               jat(r->question_options, (size_t)index)));
+                }
+              } else if (r->history_open) {
                 if (button == 64)
                   history_move(r, -3);
                 else if (button == 65)
@@ -657,6 +835,9 @@ int terminal_parallel(Config *c, bool fresh) {
                          column < r->body_width)
                 workbench_toggle(r, row);
             }
+          } else if (p->question &&
+                     (!strcmp(seq, "[A") || !strcmp(seq, "[B"))) {
+            question_move(r, !strcmp(seq, "[A") ? -1 : 1);
           } else if (seq[0] >= '1' && seq[0] <= '9' && !seq[1]) {
             const char *file = workbench_tab_path(r, seq[0] - '1');
             if (file) {
@@ -669,17 +850,28 @@ int terminal_parallel(Config *c, bool fresh) {
             } else if (seq[0] <= '2' &&
                        select_pane(panes, c, seq[0] - '1', &active))
               rc = 1;
-          } else if (!strcmp(seq, "w"))
+          } else if (!strcmp(seq, "w") || !strcmp(seq, "W"))
             history_open(p);
-          else if (!strcmp(seq, "b") || !strcmp(seq, "[66;6u") ||
-                   !strcmp(seq, "[27;6;66~"))
+          else if (!strcmp(seq, "a") || !strcmp(seq, "A")) {
+            if (history_switch(panes, c, &active, 1, true))
+              rc = 1;
+          } else if (!strcmp(seq, "d") || !strcmp(seq, "D")) {
+            if (new_tab(panes, c, &active)) {
+              rc = 1;
+              quit = true;
+            }
+          } else if (!strcmp(seq, "b") || !strcmp(seq, "[66;6u") ||
+                     !strcmp(seq, "[27;6;66~"))
             r->bash_expanded = !r->bash_expanded;
           else if (r->history_open &&
                    (!strcmp(seq, "[A") || !strcmp(seq, "[B")))
             history_move(r, !strcmp(seq, "[A") ? -1 : 1);
           else if (strstr(seq, "[9;5u") || strstr(seq, "[27;5;9~") ||
-                   !strcmp(seq, "[1;3C") || !strcmp(seq, "[1;3D")) {
-            if (select_pane(panes, c, 1 - active, &active))
+                   strstr(seq, "[9;6u") || strstr(seq, "[27;6;9~") ||
+                   ((!strcmp(seq, "[1;3C") || !strcmp(seq, "[1;3D")) &&
+                    !r->input.len)) {
+            int delta = strstr(seq, ";6") || !strcmp(seq, "[1;3D") ? -1 : 1;
+            if (history_switch(panes, c, &active, delta, false))
               rc = 1;
           } else if (strstr(seq, "[5~")) {
             if (r->history_open)
@@ -718,13 +910,18 @@ int terminal_parallel(Config *c, bool fresh) {
               }
             }
             char *clean = safe_text(paste.data ? paste.data : "");
-            if (r->input.len + strlen(clean) <= 65536)
+            if (r->input.len + strlen(clean) <= 65536) {
               buf_puts(&r->input, clean);
+              if (p->question)
+                r->question_selected = (int)jlen(r->question_options);
+            }
             free(clean);
             buf_free(&paste);
           }
         }
-      } else if (r->history_open)
+      } else if (p->question && r->question_skip)
+        answer_question(p, NULL);
+      else if (r->history_open)
         r->history_open = false;
       else if (r->bash_expanded)
         r->bash_expanded = false;
@@ -732,32 +929,58 @@ int terminal_parallel(Config *c, bool fresh) {
         cancel(p);
     } else if (key == '\r' || key == '\n') {
       if (p->question) {
-        json_object *answer =
-            json_object_new_string(r->input.data ? r->input.data : "");
-        char *raw_answer = json_text(answer);
-        if (write_all(p->answers, raw_answer, strlen(raw_answer)) ||
-            write_all(p->answers, "\n", 1))
-          pane_notice(p, "回答发送失败");
-        free(raw_answer);
-        json_object_put(answer);
-        clear_question(p);
-        render_event(r, "phase", "继续工作", NULL);
+        const char *answer = r->input.data ? r->input.data : "";
+        if (!*answer &&
+            (size_t)r->question_selected < jlen(r->question_options))
+          answer = json_object_get_string(
+              jat(r->question_options, (size_t)r->question_selected));
+        answer_question(p, answer);
       } else if (r->input.len) {
         char *text = xstrdup(r->input.data);
         buf_reset(&r->input);
-        if (!strcmp(text, "/exit"))
+        if (!strcmp(text, "/exit") || !strcmp(text, "/quit"))
           quit = true;
         else if (!strcmp(text, "/legacy")) {
-          if (panes[0].pid || panes[1].pid)
-            pane_notice(p, "请先完成或取消运行中的任务，再切换到旧功能界面");
-          else if (!legacy_available(c))
-            pane_notice(p, "旧功能兼容层未安装或已禁用");
-          else {
-            setenv("DITO_SESSION_FILE", p->session.file, 1);
-            legacy_handoff = true;
+          if (handoff(panes, active, NULL, false))
+            legacy_handoff = quit = true;
+        } else if (legacy_slash(text)) {
+          if (handoff(panes, active, text, false))
+            legacy_handoff = quit = true;
+        } else if (!strcmp(text, "/new") || !strcmp(text, "/新会话")) {
+          if (new_tab(panes, c, &active)) {
+            rc = 1;
             quit = true;
           }
-        } else if (!strcmp(text, "/sessions") || !strcmp(text, "/history"))
+        } else if (!strcmp(text, "/prev") || !strcmp(text, "/上一会话") ||
+                   !strcmp(text, "/上一个")) {
+          if (history_switch(panes, c, &active, 1, true))
+            rc = 1;
+        } else if (!strcmp(text, "/chat") || !strcmp(text, "/standard") ||
+                   !strcmp(text, "/plan") || !strncmp(text, "/mode ", 6) ||
+                   !strcmp(text, "/mode")) {
+          const char *mode = text + (!strncmp(text, "/mode ", 6) ? 6 : 1);
+          if (!strcmp(mode, "chat") || !strcmp(mode, "standard") ||
+              !strcmp(mode, "plan")) {
+            p->session.chat_only = !strcmp(mode, "chat");
+            p->session.readonly = !strcmp(mode, "plan");
+          } else
+            pane_notice(p, "用法：/mode chat | standard | plan");
+        } else if (!strcmp(text, "/memory-stats")) {
+          json_object *args = json_object_new_object();
+          bool failed = false;
+          char *stats =
+              tool_execute(&p->session, "memory_stats", args, NULL, &failed);
+          pane_notice(p, stats);
+          free(stats);
+          json_object_put(args);
+        } else if (!strcmp(text, "/help"))
+          pane_notice(
+              p,
+              "Alt+W 历史选择 · Alt+A 上一会话 · Alt+D/Ctrl+T 新建 · Ctrl+Tab "
+              "/ Alt+←→ 切换 · /compact 压缩 · /mode 模式 · /memory-stats 记忆 "
+              "· /model /persona /identity /sudo /image 使用旧交互兼容层");
+        else if (!strcmp(text, "/sessions") || !strcmp(text, "/history") ||
+                 !strcmp(text, "/会话列表"))
           history_open(p);
         else if (!strcmp(text, "/bash"))
           r->bash_expanded = !r->bash_expanded;
@@ -766,6 +989,10 @@ int terminal_parallel(Config *c, bool fresh) {
             rc = 1;
         } else if (!strcmp(text, "/cancel"))
           cancel(p);
+        else if (text[0] == '/' && strcmp(text, "/compact") &&
+                 strcmp(text, "/压缩上下文"))
+          pane_notice(p,
+                      "未知命令，输入 /help 查看；完整旧版命令可使用 /legacy");
         else if (p->pid) {
           if (p->queued.len) {
             buf_puts(&r->input, text);
@@ -778,8 +1005,11 @@ int terminal_parallel(Config *c, bool fresh) {
           pane_notice(p, "启动会话任务失败");
         free(text);
       }
-    } else if (key >= 32 && r->input.len < 65536)
+    } else if (key >= 32 && r->input.len < 65536) {
       buf_add(&r->input, &key, 1);
+      if (p->question)
+        r->question_selected = (int)jlen(r->question_options);
+    }
     labels(panes, active);
     render_draw(&panes[active].renderer);
   }

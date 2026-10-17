@@ -417,6 +417,8 @@ function sanitizeProvider(p) {
   p.api = clean(p.api).trim();
 }
 function loadConfig() {
+  // One-shot C tool bridges must never migrate or rewrite the caller's config.
+  const readOnly = process.env.DITO_CONFIG_READONLY === "1";
   const path = ditoConfigPath();
   let config = defaultConfig();
   let legacyChannels = {};
@@ -446,7 +448,7 @@ function loadConfig() {
       console.error(`[dito] 配置解析失败，使用默认配置：${err.message}`);
     }
   }
-  migrateChannelData(ditoDataDir());
+  if (!readOnly) migrateChannelData(ditoDataDir());
   for (const channel of ["qq", "matrix"]) {
     const channelPath = join(ditoChannelDir(channel), "config.json");
     if (existsSync(channelPath)) {
@@ -457,11 +459,11 @@ function loadConfig() {
       if (legacy && typeof legacy === "object") {
         config.channels[channel] = deepMerge(config.channels[channel], legacy);
       }
-      writePrivateJson(channelPath, config.channels[channel]);
+      if (!readOnly) writePrivateJson(channelPath, config.channels[channel]);
       shouldRewritePublicConfig = true;
     }
   }
-  if (shouldRewritePublicConfig) {
+  if (shouldRewritePublicConfig && !readOnly) {
     mkdirSync(ditoDataDir(), { recursive: true });
     writePrivateJson(ditoConfigPath(), { ...config, channels: { mobile: config.channels.mobile } });
   }

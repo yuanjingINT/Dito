@@ -62,6 +62,9 @@ static void widths(json_object *rows, int expected_rows, int expected_width) {
       width += cells;
       p += n;
     }
+    if (width != expected_width)
+      fprintf(stderr, "Frame %dx%d row %zu width %d: %s\n", expected_rows,
+              expected_width, i, width, line);
     assert(width == expected_width);
     free(line);
   }
@@ -194,6 +197,20 @@ int main(int argc, char **argv) {
       widths(rows, height, cols);
       json_object_put(rows);
     }
+  r.question_text = xstrdup("多行问题\n第二行\n第三行\n第四行");
+  r.question_options = json_tokener_parse("[\"选项一\",\"选项二\"]");
+  r.question_skip = true;
+  for (int cols = 12; cols <= 160; cols += 13)
+    for (int height = 6; height <= 48; height += 7) {
+      rows = workbench_snapshot(&r, height, cols);
+      widths(rows, height, cols);
+      assert(r.question_y + r.question_visible <= r.cursor_row);
+      json_object_put(rows);
+    }
+  free(r.question_text);
+  r.question_text = NULL;
+  json_object_put(r.question_options);
+  r.question_options = NULL;
   workbench_event(&r, "start", "", NULL);
   const char *stream = "流式中文😀";
   for (size_t i = 0; i < strlen(stream); i++) {

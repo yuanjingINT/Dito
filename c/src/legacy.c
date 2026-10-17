@@ -109,13 +109,8 @@ int legacy_run(Config *config, const char *command, int nargs, char **args) {
   curl_global_init(CURL_GLOBAL_DEFAULT);
   return 1;
 }
-char *legacy_subagent(Session *session, json_object *args, Events *events,
-                      bool *failed) {
-  if (!legacy_available(session->config) || session->readonly ||
-      !session->allow_host) {
-    *failed = true;
-    return xstrdup("复杂子代理需要启用旧功能兼容层，且只能在标准主人模式使用");
-  }
+static char *legacy_request(Session *session, const char *name,
+                            json_object *args, Events *events, bool *failed) {
   const char *temp = getenv("TMPDIR");
   char *path =
       format("%s/dito-compat-subagent-XXXXXX", temp && *temp ? temp : "/tmp");
@@ -127,6 +122,8 @@ char *legacy_subagent(Session *session, json_object *args, Events *events,
   }
   json_object *payload = json_object_new_object();
   json_object_object_add(payload, "args", json_copy(args));
+  if (name)
+    json_object_object_add(payload, "name", json_object_new_string(name));
   json_object_object_add(payload, "resource",
                          json_object_new_string(session->config->resource));
   json_object_object_add(payload, "config",
@@ -162,9 +159,12 @@ char *legacy_subagent(Session *session, json_object *args, Events *events,
   char *entry = format("%s/legacy/entry.mjs", session->config->resource);
   char *loader =
       format("%s/legacy/register-loader.mjs", session->config->resource);
-  char *argv[] = {"node", "--import", loader, entry, "--subagent", path, NULL};
+  char *argv[] = {
+      "node", "--import", loader, entry, name ? "--tool" : "--subagent",
+      path,   NULL};
   Buffer output = {0};
-  event(events, "tool_progress", "兼容子代理调度中", NULL);
+  event(events, "tool_progress", name ? "兼容工具执行中" : "兼容子代理调度中",
+        NULL);
   *failed = process_run_with_events(argv, NULL, 300000, &session->cancelled,
                                     &output, events) != 0;
   unlink(path);
@@ -172,4 +172,84 @@ char *legacy_subagent(Session *session, json_object *args, Events *events,
   free(entry);
   free(loader);
   return output.data ? output.data : xstrdup("兼容子代理无输出");
+}
+
+char *legacy_subagent(Session *session, json_object *args, Events *events,
+                      bool *failed) {
+  if (!legacy_available(session->config) || session->readonly ||
+      !session->allow_host) {
+    *failed = true;
+    return xstrdup("复杂子代理需要启用旧功能兼容层，且只能在标准主人模式使用");
+  }
+  return legacy_request(session, NULL, args, events, failed);
+}
+static json_object *legacy_catalog(Session *s) {
+  char *path = format("%s/legacy/tool-catalog.json", s->config->resource);
+  json_object *catalog = json_read(path);
+  free(path);
+  return catalog;
+}
+static bool legacy_allowed(Session *s, json_object *tool) {
+  if (s->chat_only || !legacy_available(s->config) ||
+      (s->readonly && jbool(tool, "write", true)) ||
+      (!s->allow_host && jbool(tool, "host", true)))
+    return false;
+  const char *plugin = jstr(tool, "plugin", "");
+  if (*plugin &&
+      !jbool(jget(jget(s->config->json, "plugins"), plugin), "enabled", true))
+    return false;
+  if (!strcmp(plugin, "snowluma") &&
+      !jbool(jpath(s->config->json, "channels.qq"), "enabled", false))
+    return false;
+  return true;
+}
+void legacy_append_tools(Session *s, json_object *out) {
+  if (!legacy_available(s->config) || s->chat_only)
+    return;
+  json_object *catalog = legacy_catalog(s);
+  for (size_t i = 0; i < jlen(catalog); i++) {
+    json_object *tool = jat(catalog, i);
+    const char *name = jstr(tool, "name", "");
+    if (!*name || !legacy_allowed(s, tool))
+      continue;
+    bool exists = false;
+    for (size_t j = 0; j < jlen(out); j++)
+      if (!strcmp(name, jstr(jget(jat(out, j), "function"), "name", "")))
+        exists = true;
+    if (exists)
+      continue;
+    json_object *def = json_object_new_object(), *fn = json_object_new_object();
+    json_object_object_add(def, "type", json_object_new_string("function"));
+    json_object_object_add(fn, "name", json_object_new_string(name));
+    json_object_object_add(fn, "description",
+                           json_copy(jget(tool, "description")));
+    json_object_object_add(fn, "parameters",
+                           json_copy(jget(tool, "parameters")));
+    json_object_object_add(def, "function", fn);
+    json_object_array_add(out, def);
+  }
+  if (catalog)
+    json_object_put(catalog);
+}
+char *legacy_tool(Session *s, const char *name, json_object *args,
+                  Events *events, bool *failed) {
+  json_object *catalog = legacy_catalog(s), *found = NULL;
+  for (size_t i = 0; i < jlen(catalog); i++)
+    if (!strcmp(name, jstr(jat(catalog, i), "name", ""))) {
+      found = jat(catalog, i);
+      break;
+    }
+  const char *error = !found ? "未知或未迁移的工具"
+                      : !legacy_allowed(s, found)
+                          ? "兼容工具未启用或当前身份/模式无权调用"
+                      : !tool_args_valid(jget(found, "parameters"), args)
+                          ? "工具参数缺失或类型错误，未执行操作"
+                          : NULL;
+  if (catalog)
+    json_object_put(catalog);
+  if (error) {
+    *failed = true;
+    return format("%s：%s", error, name);
+  }
+  return legacy_request(s, name, args, events, failed);
 }

@@ -31,9 +31,11 @@ ctest --test-dir c/build --output-on-failure
 
 运行 `dito`，在会话 1 发送任务后，按 **Ctrl+T** 打开会话 2，再输入第二个任务。**Alt+1 / Alt+2** 选择会话，**Ctrl+W** 往返切换；支持终端能够编码的 Ctrl+Tab。每个运行中的会话使用独立 C 工作进程，界面持续接收两个进程的事件，切换时不会中断请求。
 
-上下文、会话文件、输入草稿、输出、模式和取消操作各自独立；标题显示运行、未读和等待回答状态。**Esc** 或 `/cancel` 只取消当前会话；**Ctrl+C** 退出时取消两边并恢复终端。当前会话运行时可排队一条后续消息。工具确认和 `ask_question` 在所属会话中等待回答，另一个会话仍可运行。本地工作目录与用户长期记忆保持原有共享范围。
+上下文、会话文件、输入草稿、输出、模式和取消操作各自独立；标题显示运行、未读和等待回答状态。**Esc** 或 `/cancel` 只取消当前会话；**Ctrl+C** 退出时取消两边并恢复终端。当前会话运行时可排队一条后续消息。工具确认和 `ask_question` 在所属会话中等待回答；后者支持选项弹窗、自定义输入和跳过，另一个会话仍可运行。本地工作目录与用户长期记忆保持原有共享范围。
 
 ## 原版工作台布局
+
+**Alt+A** 上一历史会话，**Alt+D** 与 Ctrl+T 新建，Ctrl+Tab / Ctrl+Shift+Tab 循环历史，空输入时 Alt+←→ 也可切换。完整旧 README 逐项状态见 [README_PARITY.md](../README_PARITY.md)。
 
 顶部显示带标题的历史标签和“历史 / 新建”，底部恢复模式、上下文用量、模型及权限状态。**Alt+1…9** 或鼠标选择可见标签，**Alt+W**、`/history` 或 `/sessions` 打开历史选择器；方向键或 j/k 移动，Enter 或鼠标打开。打开其它历史时保留本次运行中的输入草稿；同时最多运行两个任务。
 
@@ -55,7 +57,7 @@ ctest --test-dir c/build --output-on-failure
 
 ## 尚未完成的范围
 
-Matrix 端到端加密与 CryptoStore 迁移、手机配对/中继/HTTP 隧道、QQ 的完整动作和自动回复策略、频道桥接、网页后台全部接口、语音唤醒和 STT/TTS、模型动态元数据与选模预算、供应商 OAuth、加密提示词包、TUI 附件/完整 Markdown/命令补全/富文本编辑、多平台打包仍需原生迁移和验证；其中原旧版功能可由 JavaScript 兼容层继续运行。长记忆的大规模检索、自动摘要在真实窗口边界和各模型网关的行为也需继续验收。`capabilities` 会明确返回 `migrationComplete:false`；Matrix 原生入口拒绝降级为明文，默认命令转交旧版加密实现。
+Matrix 端到端加密与 CryptoStore 迁移、手机配对/中继/HTTP 隧道、QQ 的完整动作和自动回复策略、频道桥接、网页后台全部接口、语音唤醒和 STT/TTS、模型动态元数据与选模预算、供应商 OAuth、加密提示词包、TUI 附件/完整 Markdown/路径补全/富文本编辑、多平台打包仍需原生迁移和验证；其中原旧版功能可由 JavaScript 兼容层继续运行。长记忆的大规模检索、自动摘要在真实窗口边界和各模型网关的行为也需继续验收。`capabilities` 会明确返回 `migrationComplete:false`；Matrix 原生入口拒绝降级为明文，默认命令转交旧版加密实现。
 
 ## 测试与性能
 
@@ -72,3 +74,5 @@ python c/tests/benchmark.py --runs 7 --output c/benchmark-results.json
 `benchmark-results.json` 记录本机离线 doctor 启动路径的耗时与峰值内存。C 体检检查项目较少，因此该比较只用于观察去除 Node/tsx/SDK 启动链的收益，不能解释为整程序或模型生成速度的倍数提升。
 
 动画参考 [MiyuAgent cc7613d 的 wait_spinner.rs](https://github.com/SHORiN-KiWATA/miyu-agent/blob/cc7613dda387ee365f64cbbcdba17ecaf24095fa/crates/miyu-hosts/src/render/wait_spinner.rs) 与 `live_area.rs`。上游 MIT 声明见 `third_party/MiyuAgent-LICENSE`，Dito 原生代码使用本仓库 GPL-3.0-only。
+
+`/compact`、`/mode`、`/memory-stats` 等常用命令在 C 中执行；专用人设、模型、权限、附件与剪贴板命令可携带会话进入旧交互界面。`legacy/tool-catalog.json` 公开列出尚未原生化工具，缺失工具经固定注册表调用旧执行器，单次桥接不会迁移或改写个人配置。

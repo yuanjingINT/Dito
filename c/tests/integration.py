@@ -58,7 +58,7 @@ class Provider(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
             return
-        if self.path != "/onebot":
+        if self.path not in ("/onebot", "/onebot-tool"):
             self.send_error(404)
             return
         import hashlib
@@ -72,7 +72,8 @@ class Provider(http.server.BaseHTTPRequestHandler):
         payload = json.dumps({"post_type": "message", "message_type": "private", "user_id": 123,
                               "raw_message": "restricted"}).encode()
         split = len(payload) // 2
-        self.connection.sendall(frame(payload[:split], 0x01) + frame(payload[split:], 0x80))
+        if self.path == "/onebot":
+            self.connection.sendall(frame(payload[:split], 0x01) + frame(payload[split:], 0x80))
         def receive(n):
             out = bytearray()
             while len(out) < n:
@@ -92,7 +93,11 @@ class Provider(http.server.BaseHTTPRequestHandler):
             body = receive(length)
             if masked:
                 body = bytes(value ^ mask[i % 4] for i, value in enumerate(body))
-            WS_REPLIES.append(json.loads(body))
+            request = json.loads(body)
+            WS_REPLIES.append(request)
+            if self.path == "/onebot-tool":
+                self.connection.sendall(frame(json.dumps({"status": "ok", "retcode": 0,
+                    "data": {"nickname": "mock-qq-tool", "user_id": 456}, "echo": request.get("echo")}).encode()))
             self.connection.sendall(b"\x88\x02\x03\xe8")
         except (OSError, ValueError):
             pass
@@ -173,6 +178,17 @@ class Provider(http.server.BaseHTTPRequestHandler):
                     return
                 send({"type": "response.output_text.delta", "delta": "Responses你好😀"})
                 send({"type": "response.completed", "response": {"usage": {"input_tokens": 7, "output_tokens": 3}}})
+                return
+            if (prompt.startswith("tool-json:") or prompt in ("ask-options", "ask-invalid")) and messages[-1].get("role") != "tool":
+                if prompt == "ask-options":
+                    name, args = "ask_question", {"question": "选择执行方式", "options": ["仅查看", "开始执行"]}
+                elif prompt == "ask-invalid":
+                    name, args = "ask_question", {"question": "不应弹窗", "options": [123]}
+                else:
+                    name, args = json.loads(prompt[len("tool-json:"):])
+                call = {"index": 0, "id": "restored", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+                send({"choices": [{"delta": {"tool_calls": [call]}, "finish_reason": "tool_calls"}]})
+                send("[DONE]")
                 return
             if prompt in ("tool", "deny", "write", "mcp", "restricted", "search", "fetch", "ask") and messages[-1].get("role") != "tool":
                 name, args = {
@@ -532,6 +548,10 @@ class NativeContracts(unittest.TestCase):
             self.assertIn("error", denied)
             result = rpc("tools/call", {"name": "memory_remember", "arguments": {"content": "native-mcp-test"}})
             self.assertFalse(result["result"]["isError"])
+            legacy_recall = rpc("tools/call", {"name": "memory_recall", "arguments": {"query": "native-mcp-test", "max": 1}})
+            self.assertFalse(legacy_recall["result"]["isError"])
+            self.assertIn("native-mcp-test", str(legacy_recall))
+            self.assertFalse(rpc("tools/call", {"name": "system_info", "arguments": {}})["result"]["isError"])
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/config") as r:
                 raw = r.read().decode()
                 self.assertNotIn("test-secret", raw)
@@ -594,13 +614,18 @@ for line in sys.stdin:
                                  stdin=slave, stdout=slave, stderr=slave, close_fds=True)
         output = bytearray()
         def drain(duration):
-            end = time.monotonic() + duration
+            waiting = callable(duration)
+            end = time.monotonic() + (5 if waiting else duration)
             while time.monotonic() < end:
+                if waiting and duration(output.decode(errors="replace")):
+                    return
                 if select.select([master], [], [], 0.01)[0]:
                     try:
                         output.extend(os.read(master, 65536))
                     except OSError:
                         break
+            if waiting:
+                self.assertTrue(duration(output.decode(errors="replace")), "PTY condition did not become ready")
         try:
             drain(0.15)
             if snapshots is not None:
@@ -808,7 +833,7 @@ for line in sys.stdin:
         fake = self.dir / "fake-bin"
         fake.mkdir()
         node = fake / "node"
-        node.write_text("#!/usr/bin/env python3\nimport json,os,sys\nprint(json.dumps({'argv':sys.argv[1:], 'config':os.environ.get('DITO_CONFIG_FILE'), 'agent':os.environ.get('PI_CODING_AGENT_DIR'), 'user':os.environ.get('DITO_USER_DIR'), 'session':os.environ.get('DITO_SESSION_FILE')}))\n")
+        node.write_text("#!/usr/bin/env python3\nimport json,os,sys\nprint(json.dumps({'argv':sys.argv[1:], 'config':os.environ.get('DITO_CONFIG_FILE'), 'agent':os.environ.get('PI_CODING_AGENT_DIR'), 'user':os.environ.get('DITO_USER_DIR'), 'session':os.environ.get('DITO_SESSION_FILE'), 'startup':os.environ.get('DITO_STARTUP_COMMAND'), 'clipboard':os.environ.get('DITO_STARTUP_CLIPBOARD'), 'draft':os.environ.get('DITO_STARTUP_DRAFT')}))\n")
         node.chmod(0o755)
         self.env.update(DITO_DISABLE_LEGACY="0", DITO_RESOURCE_DIR=str(resource), PATH=str(fake) + os.pathsep + self.env['PATH'])
 
@@ -1073,6 +1098,194 @@ console.log("pi-compatible");'''
         self.assertIn("原生 C 回复", reply["params"]["message"])
         self.assertNotIn("思考测试", reply["params"]["message"])
         self.assertIn("无权", REQUESTS[-1][1]["messages"][-1]["content"])
+
+    def test_51_question_options_and_custom_answer(self):
+        for keys, expected in [(b"\x1b[B\r", "开始执行"), ("自定义答案😀\r".encode(), "自定义答案😀")]:
+            with self.subTest(expected=expected):
+                frames = []
+                output = self.pty_process([], [(b"ask-options\r", .3), (keys, .35), b"\x03"], snapshots=frames)
+                self.assertIn("向用户提问", output)
+                self.assertIn("仅查看", output)
+                self.assertIn("开始执行", output)
+                self.assertEqual(REQUESTS[-1][1]["messages"][-1]["content"], expected)
+
+    def test_52_question_skip_and_separate_session_drafts(self):
+        output = self.pty_process([], [(b"ask-options\r", .25), (b"\x1b2", .05),
+            (b"parallel-second\r", .25), (b"second-draft", .05), (b"\x1b1", .05),
+            (b"\x1b", .3), (b"\x1b2", .05), (b"\r", .3), b"\x03"])
+        requests = REQUESTS[self.request_start:]
+        self.assertTrue(any(request[1]["messages"][-1].get("content") == "用户未作答" for request in requests))
+        self.assertEqual(requests[-1][1]["messages"][-1]["content"], "second-draft")
+        self.assertIn("fast-session-complete", output)
+
+    def test_53_question_text_fallback_invalid_options_and_plugin_switch(self):
+        self.run_c("send", "--fresh", "ask-options")
+        text = REQUESTS[-1][1]["messages"][-1]["content"]
+        self.assertIn("请回答", text)
+        self.assertIn("开始执行", text)
+        tools = {tool["function"]["name"]: tool["function"] for tool in REQUESTS[-1][1]["tools"]}
+        self.assertIn("options", tools["ask_question"]["parameters"]["properties"])
+        self.run_c("send", "--fresh", "ask-invalid")
+        self.assertIn("参数", REQUESTS[-1][1]["messages"][-1]["content"])
+        self.value["plugins"] = {"ask": {"enabled": False}, "subagent": {"enabled": False}}
+        self.save()
+        self.run_c("send", "--fresh", "ask-options")
+        self.assertIn("无权", REQUESTS[-1][1]["messages"][-1]["content"])
+        names = [tool["function"]["name"] for tool in REQUESTS[-1][1]["tools"]]
+        self.assertNotIn("ask_question", names)
+        self.assertNotIn("subagent", names)
+
+    def test_54_legacy_names_visible_and_native_kb_upload_title_optional(self):
+        payload = "tool-json:" + json.dumps(["upload_to_knowledge_base", {"content": "旧工具名测试", "name": "legacy-note.md"}])
+        self.run_c("send", "--fresh", payload)
+        self.assertIn("已保存", REQUESTS[-1][1]["messages"][-1]["content"])
+        names = [tool["function"]["name"] for tool in REQUESTS[-1][1]["tools"]]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertTrue({"remember_fact", "recall_memories", "recall_past_events", "search_knowledge_base", "read_knowledge_base",
+            "list_knowledge_base", "upload_to_knowledge_base", "remove_knowledge_base"}.issubset(names))
+
+    def test_55_compat_file_tools_real_calls_and_private_payload_cleanup(self):
+        self.env.pop("DITO_DISABLE_LEGACY")
+        self.env["TMPDIR"] = str(self.dir)
+        original_config = self.config.read_bytes()
+        directory = self.dir / "files with spaces $(literal)"
+        directory.mkdir()
+        (directory / "note.txt").write_text("compat-needle你好😀\n")
+        for name, args in [("ls", {"path": str(directory)}), ("grep", {"pattern": "compat-needle", "path": str(directory)}),
+                           ("find", {"pattern": "*.txt", "path": str(directory)})]:
+            with self.subTest(name=name):
+                self.run_c("send", "--fresh", "tool-json:" + json.dumps([name, args]))
+                self.assertIn("note.txt", REQUESTS[-1][1]["messages"][-1]["content"])
+                self.assertEqual(list(self.dir.glob("dito-compat-subagent-*")), [])
+                self.assertEqual(self.config.read_bytes(), original_config)
+        names = [tool["function"]["name"] for tool in REQUESTS[-1][1]["tools"]]
+        self.assertTrue({"grep", "find", "ls", "aur_search", "aur_review", "aur_install", "copr_search", "copr_install"}.issubset(names))
+        self.assertFalse(any(name.startswith("snowluma_") for name in names))
+        self.run_c("send", "--fresh", "tool-json:" + json.dumps(["grep", {"pattern": 123}]))
+        self.assertIn("参数", REQUESTS[-1][1]["messages"][-1]["content"])
+
+    def test_56_compat_qq_catalog_and_onebot_call_are_gated(self):
+        self.env.pop("DITO_DISABLE_LEGACY")
+        self.value["channels"] = {"qq": {"enabled": True, "url": f"ws://127.0.0.1:{self.server.server_port}/onebot-tool"}}
+        self.save()
+        original_config = self.config.read_bytes()
+        self.run_c("send", "--fresh", "tool-json:" + json.dumps(["snowluma_get_login_info", {}]))
+        self.assertEqual(self.config.read_bytes(), original_config)
+        self.assertIn("mock-qq-tool", REQUESTS[-1][1]["messages"][-1]["content"])
+        names = [tool["function"]["name"] for tool in REQUESTS[-1][1]["tools"]]
+        self.assertIn("qq_react", names)
+        self.assertIn("qq_meme_list", names)
+        self.assertEqual(len(names), len(set(names)))
+        self.value["plugins"] = {"snowluma": {"enabled": False}, "system": {"enabled": False}}
+        self.save()
+        self.run_c("send", "--fresh", "tool-json:" + json.dumps(["snowluma_get_login_info", {}]))
+        self.assertIn("无权", REQUESTS[-1][1]["messages"][-1]["content"])
+        names = [tool["function"]["name"] for tool in REQUESTS[-1][1]["tools"]]
+        self.assertNotIn("aur_search", names)
+        self.assertNotIn("get_system_info", names)
+        self.assertNotIn("qq_react", names)
+
+    def test_57_question_mouse_selection_and_many_options(self):
+        options = [f"选项 {i}" for i in range(20)]
+        prompt = "tool-json:" + json.dumps(["ask_question", {"question": "滚动选项", "options": options}])
+        def click(output, _):
+            row = next(row for row, text in self.screen_rows(output).items() if "选项 1 " in text)
+            return f"\x1b[<0;20;{row}M".encode(), .35
+        ready = lambda output: "向用户提问 · ask_question" in output
+        output = self.pty_process([], [(prompt.encode() + b"\r", ready), click, b"\x03"])
+        self.assertEqual(REQUESTS[-1][1]["messages"][-1]["content"], "选项 1")
+        prompt = "tool-json:" + json.dumps(["ask_question", {"question": "滚动选项", "options": options}])
+        answered = lambda _: REQUESTS[-1][1]["messages"][-1].get("content") == "选项 19"
+        output = self.pty_process([], [(prompt.encode() + b"\r", ready), (b"\x1b[A\x1b[A\r", answered), b"\x03"])
+        self.assertEqual(REQUESTS[-1][1]["messages"][-1]["content"], "选项 19")
+
+    def test_58_readme_alt_w_a_d_and_history_cycling(self):
+        old = self.write_ui_history("readme-old", "older-context", [{"role": "assistant", "content": "old-answer"}])
+        newest = self.write_ui_history("readme-new", "newer-context", [{"role": "assistant", "content": "new-answer"}])
+        old.write_text(old.read_text().replace("2026-10-17T00:00:00Z", "2025-01-01T00:00:00Z"))
+        os.utime(old, (time.time() - 100, time.time() - 100))
+        old_original = old.read_bytes()
+        frames = []
+        self.pty_process([], [(b"draft-new", .05), (b"\x1bw", .05), (b"j\r", .05),
+            (b"old-follow-up\r", .3), (b"\x1b2", .05), (b"\r", .3), b"\x03"], snapshots=frames)
+        requests = REQUESTS[self.request_start:]
+        self.assertEqual(len(requests), 2)
+        self.assertIn("older-context", str(requests[0][1]["messages"]))
+        self.assertIn("draft-new", str(requests[1][1]["messages"]))
+        self.assertIn("历史会话", ''.join(frames))
+        self.assertTrue(old.read_bytes().startswith(old_original))
+        self.pty_process([], [(b"\x1ba", .1), (b"previous-shortcut\r", .3), (b"\x1bd", .1),
+                              (b"fresh-shortcut\r", .3), b"\x03"])
+        self.assertIn("older-context", str(REQUESTS[-2][1]["messages"]))
+        self.assertNotIn("older-context", str(REQUESTS[-1][1]["messages"]))
+        self.assertNotIn("newer-context", str(REQUESTS[-1][1]["messages"]))
+
+    def test_59_native_slash_commands_never_become_model_prompts(self):
+        output = self.pty_process([], [b"/mod\t plan\r", b"/memory-stats\r", b"/compact\r",
+                                      b"/unknown-command\r", b"/new\r", b"/sessions\r", b"\x1b", b"\x03"])
+        self.assertEqual(len(REQUESTS), self.request_start)
+        self.assertIn("当前无需压缩", output)
+        self.assertIn("未知命令", output)
+        self.assertIn("计划", output)
+        self.assertIn("历史会话", output)
+
+    def test_60_old_slash_and_clipboard_handoff_keep_selected_history_and_draft(self):
+        history = self.write_ui_history("slash-handoff", "preserved", [{"role": "assistant", "content": "history"}])
+        original = history.read_bytes()
+        self.fake_legacy_node()
+        output = self.pty_process([], [b"/model\r"])
+        result = json.loads(re.search(r'(\{"argv":.*\})', output)[1])
+        self.assertEqual(result["startup"], "/model")
+        self.assertEqual(result["session"], str(history))
+        output = self.pty_process([], [b"clipboard-draft", b"\x16"])
+        result = json.loads(re.search(r'(\{"argv":.*\})', output)[1])
+        self.assertEqual(result["clipboard"], "1")
+        self.assertEqual(result["draft"], "clipboard-draft")
+        self.assertEqual(history.read_bytes(), original)
+        self.assertEqual(len(REQUESTS), self.request_start)
+
+    def test_61_manual_compaction_keeps_log_and_does_not_submit_slash_as_user(self):
+        self.value["contextCompaction"] = {"enabled": True, "compactTailTokens": 40}
+        self.save()
+        history = self.write_ui_history("manual-compact", "old goal " + "history " * 120,
+            [{"role": "assistant", "content": "old-response"}, {"role": "user", "content": "latest goal"},
+             {"role": "assistant", "content": "latest-response"}])
+        original = history.read_bytes()
+        ready = lambda output: "上下文已压缩" in output
+        output = self.pty_process([], [(b"/compact\r", ready), (b"continued\r", .35), b"\x03"])
+        self.assertIn("上下文已压缩", output)
+        self.assertTrue(history.read_bytes().startswith(original))
+        entries = [json.loads(line) for line in history.read_text().splitlines()]
+        self.assertTrue(any(entry["type"] == "compaction" for entry in entries))
+        self.assertFalse(any(entry.get("message", {}).get("content") == "/compact" for entry in entries))
+        self.assertTrue(any("摘要：保留用户目标" in str(message.get("content", "")) for message in REQUESTS[-1][1]["messages"]))
+
+    def test_62_history_cycle_visits_more_than_two_tabs_and_respects_nonempty_draft(self):
+        for i in range(3):
+            path = self.write_ui_history(f"cycle-{i}", f"cycle-context-{i}", [{"role": "assistant", "content": "past"}])
+            path.write_text(path.read_text().replace("2026-10-17T00:00:00Z", f"2025-01-0{i+1}T00:00:00Z"))
+            os.utime(path, (time.time() - 100 + i, time.time() - 100 + i))
+        self.pty_process([], [(b"\x1b[9;5u", .1), (b"cycle-first\r", .3),
+            (b"\x1b[9;5u", .1), (b"cycle-second\r", .3), (b"\x1b[9;6u", .1),
+            (b"cycle-third\r", .3), (b"retained-draft\x1b[1;3C\r", .3), b"\x03"])
+        requests = REQUESTS[self.request_start:]
+        self.assertEqual(len(requests), 4)
+        for request, expected in zip(requests, [1, 0, 1, 1]):
+            self.assertEqual([m["content"] for m in request[1]["messages"] if m["role"] == "user"][0], f"cycle-context-{expected}")
+
+    def test_63_old_affinity_tool_and_mcp_memory_name_share_existing_data(self):
+        self.env.pop("DITO_DISABLE_LEGACY")
+        self.value["channels"] = {"qq": {"enabled": True}}
+        self.save()
+        for args, expected in [({"group_id": 1, "user_id": 2}, "50/100"),
+                               ({"group_id": 1, "user_id": 2, "delta": 20}, "70/100")]:
+            self.run_c("send", "--fresh", "tool-json:" + json.dumps(["qq_affinity", args]))
+            self.assertIn(expected, REQUESTS[-1][1]["messages"][-1]["content"])
+        scores = self.dir / "private/qq/affinity.json"
+        self.assertEqual(json.loads(scores.read_text()), {"1:2": 70})
+        self.run_c("send", "--fresh", "tool-json:" + json.dumps(["remember_fact", {"content": "测试偏好是原生 C 工具"}]))
+        self.run_c("send", "--fresh", "tool-json:" + json.dumps(["memory_recall", {"query": "原生", "max": 1}]))
+        self.assertIn("测试偏好", REQUESTS[-1][1]["messages"][-1]["content"])
 
 
 if __name__ == "__main__":

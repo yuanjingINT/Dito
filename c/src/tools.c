@@ -1,5 +1,6 @@
 #include "dito.h"
 #include <limits.h>
+#include <math.h>
 #include <regex.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,14 +48,15 @@ static const Tool tools[] = {
     {"kb_upload", "保存 Markdown 笔记。",
      "\"title\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},"
      "\"name\":{\"type\":\"string\"}",
-     "\"title\",\"content\"", true, false},
+     "\"content\"", true, false},
     {"kb_remove", "删除知识库条目。", "\"entry\":{\"type\":\"string\"}",
      "\"entry\"", true, true},
     {"memory_remember", "保存一条明确的稳定事实。",
      "\"content\":{\"type\":\"string\"},\"source\":{\"type\":\"string\"}",
      "\"content\"", true, false},
     {"memory_search", "搜索长期记忆。",
-     "\"query\":{\"type\":\"string\"},\"max_results\":{\"type\":\"integer\"}",
+     "\"query\":{\"type\":\"string\"},\"max_results\":{\"type\":\"integer\"},"
+     "\"max\":{\"type\":\"integer\"}",
      "\"query\"", false, false},
     {"memory_search_events", "搜索过往对话和经历。",
      "\"query\":{\"type\":\"string\"},\"max_results\":{\"type\":\"integer\"}",
@@ -62,7 +64,11 @@ static const Tool tools[] = {
     {"memory_stats", "查看记忆统计。", "", "", false, false},
     {"memory_forget", "将记忆标记为遗忘。", "\"id\":{\"type\":\"integer\"}",
      "\"id\"", true, true},
-    {"ask_question", "向终端用户提问。", "\"question\":{\"type\":\"string\"}",
+    {"ask_question",
+     "向用户提问。支持选项弹窗及自定义回答；无交互界面时返回问题文本。",
+     "\"question\":{\"type\":\"string\",\"minLength\":1},"
+     "\"options\":{\"type\":\"array\",\"maxItems\":32,\"items\":{\"type\":"
+     "\"string\",\"minLength\":1,\"maxLength\":4096}}",
      "\"question\"", false, true},
     {"subagent",
      "单任务使用原生 C；并行、串行链、选模和预算通过旧功能兼容层执行。",
@@ -75,7 +81,7 @@ static const Tool tools[] = {
      "\"agentScope\":{\"type\":\"string\",\"enum\":[\"user\",\"project\","
      "\"both\"]},"
      "\"confirmProjectAgents\":{\"type\":\"boolean\"}",
-     "", false, true}};
+     "", true, true}};
 static const char *alias(const char *name) {
   if (!strcmp(name, "pc_bash"))
     return "bash";
@@ -93,7 +99,8 @@ static const char *alias(const char *name) {
     return "kb_remove";
   if (!strcmp(name, "remember_fact"))
     return "memory_remember";
-  if (!strcmp(name, "recall_memories") || !strcmp(name, "search_memory"))
+  if (!strcmp(name, "recall_memories") || !strcmp(name, "search_memory") ||
+      !strcmp(name, "memory_recall"))
     return "memory_search";
   if (!strcmp(name, "recall_past_events"))
     return "memory_search_events";
@@ -106,35 +113,111 @@ static const Tool *find(const char *name) {
       return &tools[i];
   return NULL;
 }
-static bool valid_args(const Tool *tool, json_object *args) {
-  if (!json_object_is_type(args, json_type_object))
+static bool schema_valid(json_object *schema, json_object *value,
+                         unsigned depth) {
+  if (depth > 32)
     return false;
-  char *raw = format("[%s]", tool->required);
-  json_object *required = json_tokener_parse(raw);
-  free(raw);
-  bool valid = true;
-  for (size_t i = 0; i < jlen(required); i++)
-    if (!jget(args, json_object_get_string(jat(required, i))))
-      valid = false;
-  json_object_put(required);
-  raw = format("{%s}", tool->properties);
-  json_object *properties = json_tokener_parse(raw);
-  free(raw);
-  json_object_object_foreach(properties, key, schema) {
-    json_object *value = jget(args, key);
-    if (!value)
-      continue;
-    const char *type = jstr(schema, "type", "");
-    if (!strcmp(type, "string") &&
-        (!json_object_is_type(value, json_type_string) ||
-         (size_t)json_object_get_string_len(value) !=
-             strlen(json_object_get_string(value))))
-      valid = false;
-    if (!strcmp(type, "integer") && !json_object_is_type(value, json_type_int))
-      valid = false;
+  const char *type = jstr(schema, "type", "");
+  enum json_type actual = json_object_get_type(value);
+  if ((!strcmp(type, "object") && actual != json_type_object) ||
+      (!strcmp(type, "array") && actual != json_type_array) ||
+      (!strcmp(type, "string") && actual != json_type_string) ||
+      (!strcmp(type, "integer") && actual != json_type_int) ||
+      (!strcmp(type, "boolean") && actual != json_type_boolean) ||
+      (!strcmp(type, "number") && actual != json_type_int &&
+       actual != json_type_double))
+    return false;
+  json_object *choices = jget(schema, "enum");
+  if (choices) {
+    bool found = false;
+    for (size_t i = 0; i < jlen(choices); i++)
+      if (json_object_equal(jat(choices, i), value))
+        found = true;
+    if (!found)
+      return false;
   }
-  json_object_put(properties);
+  if (actual == json_type_string) {
+    const char *text = json_object_get_string(value);
+    size_t bytes = strlen(text), length = 0;
+    if (bytes != (size_t)json_object_get_string_len(value))
+      return false;
+    for (size_t i = 0; i < bytes; i++)
+      if (((unsigned char)text[i] & 0xc0) != 0x80)
+        length++;
+    if ((jget(schema, "minLength") &&
+         length < (size_t)jint(schema, "minLength", 0)) ||
+        (jget(schema, "maxLength") &&
+         length > (size_t)jint(schema, "maxLength", 0)))
+      return false;
+  }
+  if (actual == json_type_int || actual == json_type_double) {
+    double number = json_object_get_double(value);
+    if (!isfinite(number) ||
+        (jget(schema, "minimum") &&
+         number < json_object_get_double(jget(schema, "minimum"))) ||
+        (jget(schema, "maximum") &&
+         number > json_object_get_double(jget(schema, "maximum"))))
+      return false;
+  }
+  if (actual == json_type_array) {
+    if ((jget(schema, "minItems") &&
+         jlen(value) < (size_t)jint(schema, "minItems", 0)) ||
+        (jget(schema, "maxItems") &&
+         jlen(value) > (size_t)jint(schema, "maxItems", 0)))
+      return false;
+    json_object *items = jget(schema, "items");
+    for (size_t i = 0; items && i < jlen(value); i++)
+      if (!schema_valid(items, jat(value, i), depth + 1))
+        return false;
+  }
+  if (actual == json_type_object) {
+    json_object *required = jget(schema, "required"),
+                *properties = jget(schema, "properties");
+    for (size_t i = 0; i < jlen(required); i++) {
+      json_object *member;
+      if (!json_object_object_get_ex(
+              value, json_object_get_string(jat(required, i)), &member))
+        return false;
+    }
+    json_object_object_foreach(value, key, member) {
+      json_object *property = jget(properties, key);
+      if (property && !schema_valid(property, member, depth + 1))
+        return false;
+      if (!property && jget(schema, "additionalProperties") &&
+          !jbool(schema, "additionalProperties", true))
+        return false;
+    }
+  }
+  return true;
+}
+bool tool_args_valid(json_object *schema, json_object *args) {
+  return json_object_is_type(args, json_type_object) &&
+         schema_valid(schema, args, 0);
+}
+static bool valid_args(const Tool *tool, json_object *args) {
+  char *raw =
+      format("{\"type\":\"object\",\"properties\":{%s},\"required\":[%s]}",
+             tool->properties, tool->required);
+  json_object *schema = json_tokener_parse(raw);
+  free(raw);
+  bool valid = tool_args_valid(schema, args);
+  json_object_put(schema);
   return valid;
+}
+static const char *tool_plugin(const char *name) {
+  return !strncmp(name, "kb_", 3)           ? "plugins.knowledge_base"
+         : !strncmp(name, "memory_", 7)     ? "plugins.memory"
+         : !strncmp(name, "web_", 4)        ? "plugins.web_search"
+         : !strcmp(name, "subagent")        ? "plugins.subagent"
+         : !strcmp(name, "ask_question")    ? "plugins.ask"
+         : !strcmp(name, "get_system_info") ? "plugins.system"
+                                            : NULL;
+}
+static bool tool_enabled(Session *s, const Tool *t) {
+  const char *plugin = tool_plugin(t->name);
+  return !s->chat_only && !(s->readonly && t->write) &&
+         !(!s->allow_host && t->host) &&
+         (!plugin || jbool(jpath(s->config->json, plugin), "enabled", true));
 }
 static int write_user_file(const char *path, const char *text, size_t length) {
   struct stat old;
@@ -157,17 +240,7 @@ json_object *tool_definitions(Session *s) {
     return out;
   for (size_t i = 0; i < sizeof tools / sizeof *tools; i++) {
     const Tool *t = &tools[i];
-    if ((s->readonly && t->write) || (!s->allow_host && t->host))
-      continue;
-    if (!strncmp(t->name, "kb_", 3) &&
-        !jbool(jpath(s->config->json, "plugins.knowledge_base"), "enabled",
-               true))
-      continue;
-    if (!strncmp(t->name, "memory_", 7) &&
-        !jbool(jpath(s->config->json, "plugins.memory"), "enabled", true))
-      continue;
-    if (!strncmp(t->name, "web_", 4) &&
-        !jbool(jpath(s->config->json, "plugins.web_search"), "enabled", true))
+    if (!tool_enabled(s, t))
       continue;
     json_object *def = json_object_new_object(), *fn = json_object_new_object();
     json_object_object_add(def, "type", json_object_new_string("function"));
@@ -182,6 +255,31 @@ json_object *tool_definitions(Session *s) {
     json_object_object_add(def, "function", fn);
     json_object_array_add(out, def);
   }
+  const char *old_names[] = {"pc_bash",
+                             "system_info",
+                             "search_knowledge_base",
+                             "read_knowledge_base",
+                             "list_knowledge_base",
+                             "upload_to_knowledge_base",
+                             "remove_knowledge_base",
+                             "remember_fact",
+                             "recall_memories",
+                             "search_memory",
+                             "memory_recall",
+                             "recall_past_events"};
+  size_t native_count = jlen(out);
+  for (size_t i = 0; i < sizeof old_names / sizeof *old_names; i++)
+    for (size_t j = 0; j < native_count; j++) {
+      json_object *fn = jget(jat(out, j), "function");
+      if (strcmp(alias(old_names[i]), jstr(fn, "name", "")))
+        continue;
+      json_object *copy = json_copy(jat(out, j));
+      json_object_object_add(jget(copy, "function"), "name",
+                             json_object_new_string(old_names[i]));
+      json_object_array_add(out, copy);
+      break;
+    }
+  legacy_append_tools(s, out);
   if (s->messages)
     mcp_append_tools(s, out);
   return out;
@@ -275,14 +373,16 @@ static char *shell(Session *s, json_object *a, bool *failed, Events *events) {
 char *tool_execute(Session *s, const char *name, json_object *a, Events *events,
                    bool *failed) {
   *failed = false;
+  if (s->chat_only) {
+    *failed = true;
+    return xstrdup("闲聊模式不调用工具");
+  }
   if (!strncmp(name, "mcp_", 4))
     return mcp_call(s, name, a, failed);
   const Tool *t = find(name);
-  if (!t) {
-    *failed = true;
-    return format("未知或未迁移的工具：%s", name);
-  }
-  if ((s->readonly && t->write) || (!s->allow_host && t->host)) {
+  if (!t)
+    return legacy_tool(s, name, a, events, failed);
+  if (!tool_enabled(s, t)) {
     *failed = true;
     return xstrdup("当前模式或身份无权调用该工具");
   }
@@ -291,22 +391,24 @@ char *tool_execute(Session *s, const char *name, json_object *a, Events *events,
     return xstrdup("工具参数缺失或类型错误，未执行操作");
   }
   name = t->name;
-  const char *plugin = !strncmp(name, "kb_", 3)       ? "plugins.knowledge_base"
-                       : !strncmp(name, "memory_", 7) ? "plugins.memory"
-                       : !strcmp(name, "subagent")    ? "plugins.subagent"
-                       : !strcmp(name, "ask_question") ? "plugins.ask"
-                                                       : NULL;
-  if (plugin && !jbool(jpath(s->config->json, plugin), "enabled", true)) {
-    *failed = true;
-    return xstrdup("该插件已关闭，未执行工具");
-  }
   if (!strncmp(name, "web_", 4))
     return web_tool(s, name, a, events, failed);
-  if (!strncmp(name, "kb_", 3) || !strncmp(name, "memory_", 7))
+  if (!strncmp(name, "kb_", 3) || !strncmp(name, "memory_", 7)) {
+    if (!strcmp(name, "memory_search") && jget(a, "max") &&
+        !jget(a, "max_results")) {
+      json_object *mapped = json_copy(a);
+      json_object_object_add(mapped, "max_results", json_copy(jget(a, "max")));
+      char *result = storage_tool(s, name, mapped, failed);
+      json_object_put(mapped);
+      return result;
+    }
     return storage_tool(s, name, a, failed);
+  }
   if (!strcmp(name, "bash"))
     return shell(s, a, failed, events);
   if (!strcmp(name, "get_system_info")) {
+    if (legacy_available(s->config))
+      return legacy_tool(s, name, a, events, failed);
     struct utsname u;
     if (uname(&u)) {
       *failed = true;
@@ -400,16 +502,29 @@ char *tool_execute(Session *s, const char *name, json_object *a, Events *events,
     return xstrdup(*failed ? "编辑失败" : "文件已编辑");
   }
   if (!strcmp(name, "ask_question")) {
-    if (!s->interactive) {
-      *failed = true;
-      return xstrdup("当前界面不支持同步提问");
+    const char *question = jstr(a, "question", "");
+    json_object *options = jget(a, "options");
+    Buffer prompt = {0};
+    buf_puts(&prompt, question);
+    for (size_t i = 0; i < jlen(options); i++) {
+      char *option =
+          format("\n%zu. %s", i + 1, json_object_get_string(jat(options, i)));
+      buf_puts(&prompt, option);
+      free(option);
     }
-    char *prompt = format("%s\n› ", jstr(a, "question", ""));
-    char *line = s->ask ? s->ask(s->ask_opaque, prompt) : terminal_line(prompt);
-    free(prompt);
-    if (!line) {
-      *failed = true;
-      return xstrdup("用户未回答");
+    if (!s->interactive) {
+      char *text = format("请回答：%s", prompt.data);
+      buf_free(&prompt);
+      return text;
+    }
+    buf_puts(&prompt, "\n› ");
+    char *line = s->choose ? s->choose(s->ask_opaque, question, options)
+                 : s->ask  ? s->ask(s->ask_opaque, prompt.data)
+                           : terminal_line(prompt.data);
+    buf_free(&prompt);
+    if (!line || !*line) {
+      free(line);
+      return xstrdup("用户未作答");
     }
     return line;
   }

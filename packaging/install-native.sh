@@ -27,7 +27,7 @@ for name in config personas identities system-prompts kb skills web-ui; do
   [[ ! -d "$ROOT/$name" ]] || cp -a "$ROOT/$name" "$stage/$name"
 done
 mkdir -p "$stage/third_party" "$stage/extensions"
-cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/VERSION" "$ROOT/README.md" "$stage/"
+cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/VERSION" "$ROOT/README.md" "$ROOT/README_PARITY.md" "$stage/"
 cp "$ROOT/c/third_party/MiyuAgent-LICENSE" "$stage/third_party/"
 cp "$ROOT/extensions/snowluma-actions.json" "$stage/extensions/"
 if $with_legacy; then

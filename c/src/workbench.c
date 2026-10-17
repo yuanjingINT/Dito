@@ -470,13 +470,24 @@ static Grid grid_new(int rows, int cols) {
 static void fill(Grid *g, int y, int x, int width, unsigned style) {
   if (y < 0 || y >= g->rows)
     return;
-  for (int i = x; i < x + width && i < g->cols; i++)
-    if (i >= 0) {
-      Cell *c = &g->cells[y * g->cols + i];
-      memset(c, 0, sizeof *c);
-      strcpy(c->text, " ");
-      c->style = style;
-    }
+  int left = x < 0 ? 0 : x, right = x + width;
+  if (right > g->cols)
+    right = g->cols;
+  if (left >= right)
+    return;
+  /* Overlays may cut through a two-cell glyph. Erase the entire old glyph,
+   * including the cell just outside the panel, rather than leaving an orphan.
+   */
+  while (left > 0 && g->cells[y * g->cols + left].continuation)
+    left--;
+  while (right < g->cols && g->cells[y * g->cols + right].continuation)
+    right++;
+  for (int i = left; i < right; i++) {
+    Cell *c = &g->cells[y * g->cols + i];
+    memset(c, 0, sizeof *c);
+    strcpy(c->text, " ");
+    c->style = style;
+  }
 }
 static int put(Grid *g, int y, int x, const char *text, int max,
                unsigned style) {
@@ -497,6 +508,7 @@ static int put(Grid *g, int y, int x, const char *text, int max,
     if (used + width > max || x + width > g->cols)
       break;
     if (x >= 0 && n < 5) {
+      fill(g, y, x, width, style);
       Cell *cell = &g->cells[y * g->cols + x];
       memset(cell, 0, sizeof *cell);
       memcpy(cell->text, p, n);
@@ -837,6 +849,87 @@ static void draw_history(Renderer *r, Grid *g) {
     free(short_line);
   }
 }
+static void draw_question(Renderer *r, Grid *g, int input_height) {
+  if (!r->question_text)
+    return;
+  int width = g->cols * 86 / 100;
+  if (width < 12)
+    width = g->cols;
+  int x = (g->cols - width) / 2;
+  int bottom = g->rows - input_height - 4, max_height = bottom - 1;
+  if (max_height < 4) {
+    char *title = one_line(r->question_text);
+    fill(g, 1, x, width, TEXT | PANEL);
+    put(g, 1, x + 1, title, width - 2, ACCENT | BOLD | PANEL);
+    free(title);
+    r->question_top = r->question_selected;
+    r->question_y = 2;
+    r->question_visible = bottom >= 2 ? 1 : 0;
+    if (bottom >= 2) {
+      const char *label =
+          (size_t)r->question_selected < jlen(r->question_options)
+              ? json_object_get_string(
+                    jat(r->question_options, (size_t)r->question_selected))
+              : "自定义回答：在下方输入";
+      char *clean = one_line(label);
+      fill(g, 2, x, width, TEXT | PANEL);
+      put(g, 2, x + 1, clean, width - 2, ACCENT | PANEL);
+      free(clean);
+    }
+    return;
+  }
+  Block question = {0};
+  wrap_lines(&question, r->question_text, width - 4, TEXT, false);
+  int prompt_lines = (int)question.count;
+  if (prompt_lines > 4)
+    prompt_lines = 4;
+  if (prompt_lines > max_height - 4)
+    prompt_lines = max_height - 4;
+  int count = (int)jlen(r->question_options),
+      available = max_height - prompt_lines - 3;
+  int visible = count + 1;
+  if (visible > available)
+    visible = available;
+  if (visible < 1)
+    visible = 1;
+  int height = prompt_lines + visible + 3;
+  int y = bottom - height;
+  if (y < 1)
+    y = 1;
+  for (int i = 0; i < height; i++)
+    fill(g, y + i, x, width, TEXT | PANEL);
+  put(g, y, x + 1, r->question_skip ? "向用户提问 · ask_question" : "操作确认",
+      width - 2, ACCENT | BOLD | PANEL);
+  for (int i = 0; i < prompt_lines; i++)
+    put(g, y + 1 + i, x + 2, question.lines[i].text, width - 4, TEXT | PANEL);
+  clear_lines(&question);
+  if (r->question_selected < r->question_top)
+    r->question_top = r->question_selected;
+  if (r->question_selected >= r->question_top + visible)
+    r->question_top = r->question_selected - visible + 1;
+  r->question_y = y + 1 + prompt_lines;
+  r->question_visible = visible;
+  for (int i = 0; i < visible && r->question_top + i <= count; i++) {
+    int index = r->question_top + i;
+    const char *label =
+        index == count
+            ? "自定义回答：在下方输入"
+            : json_object_get_string(jat(r->question_options, (size_t)index));
+    char *clean = one_line(label),
+         *short_label = truncate_text(clean, width - 7);
+    char *line =
+        format("%s %s", index == r->question_selected ? "▸" : " ", short_label);
+    put(g, r->question_y + i, x + 2, line, width - 4,
+        index == r->question_selected ? ACCENT | BOLD | NAV : DIM | PANEL);
+    free(clean);
+    free(short_label);
+    free(line);
+  }
+  put(g, y + height - 1, x + 1,
+      r->question_skip ? "↑↓/Tab 选择 · Enter 确认 · Esc 跳过 · 可切换会话"
+                       : "输入后 Enter 确认 · Esc 中断任务",
+      width - 2, MUTED | PANEL);
+}
 static Grid build_frame(Renderer *r, int rows, int cols) {
   Grid g = grid_new(rows, cols);
   draw_tabs(r, &g);
@@ -884,6 +977,7 @@ static Grid build_frame(Renderer *r, int rows, int cols) {
     draw_bash(r, &g, top, height, cols - 40, 40);
   draw_footer(r, &g, input_height);
   draw_history(r, &g);
+  draw_question(r, &g, input_height);
   return g;
 }
 static char *grid_row(Grid *g, int y, bool styled) {

@@ -33,6 +33,7 @@ typedef struct {
   CURLM *multi;
   void *mcp;
   char *(*ask)(void *, const char *);
+  char *(*choose)(void *, const char *, json_object *);
   void *ask_opaque;
 } Session;
 typedef void (*EventFn)(void *, const char *, const char *, json_object *);
@@ -83,6 +84,10 @@ typedef struct {
   int history_selected, history_top, bash_scroll;
   int context_tokens;
   int cursor_row, cursor_col;
+  char *question_text;
+  json_object *question_options;
+  int question_selected, question_top, question_y, question_visible;
+  bool question_skip;
 } Renderer;
 
 void *xmalloc(size_t);
@@ -154,6 +159,7 @@ char *build_prompt(Config *);
 int agent_turn(Session *, const char *, json_object *, Events *);
 json_object *tool_definitions(Session *);
 char *tool_execute(Session *, const char *, json_object *, Events *, bool *);
+bool tool_args_valid(json_object *, json_object *);
 void mcp_append_tools(Session *, json_object *);
 char *mcp_call(Session *, const char *, json_object *, bool *);
 void mcp_close(Session *);
@@ -180,6 +186,8 @@ bool legacy_bridge_command(const char *, int);
 bool legacy_chat_required(Config *, const char *);
 int legacy_run(Config *, const char *, int, char **);
 char *legacy_subagent(Session *, json_object *, Events *, bool *);
+void legacy_append_tools(Session *, json_object *);
+char *legacy_tool(Session *, const char *, json_object *, Events *, bool *);
 int terminal_animation_demo(unsigned);
 int serve_http(Config *, const char *, int);
 int channel_run(Config *, const char *);

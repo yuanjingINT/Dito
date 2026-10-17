@@ -94,8 +94,8 @@ static json_object *mcp_result(json_object *id, json_object *result,
 }
 static bool mcp_allowed(const char *name, bool bash) {
   return !strncmp(name, "kb_", 3) || !strncmp(name, "memory_", 7) ||
-         !strcmp(name, "get_system_info") || !strcmp(name, "web_fetch") ||
-         !strcmp(name, "web_search") ||
+         !strcmp(name, "get_system_info") || !strcmp(name, "system_info") ||
+         !strcmp(name, "web_fetch") || !strcmp(name, "web_search") ||
          (bash && (!strcmp(name, "bash") || !strcmp(name, "pc_bash")));
 }
 static json_object *mcp(Server *server, json_object *request) {

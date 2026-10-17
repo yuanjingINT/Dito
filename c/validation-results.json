@@ -1,10 +1,10 @@
 {
-  "checkedAt": "2026-10-16T20:23:22.386616+00:00",
+  "checkedAt": "2026-10-17T00:37:21.898322+00:00",
   "runtime": "C17",
-  "binarySha256": "acdcb0d6b688f03f76147d04ddfa6e3875c73522e281b79b3a5daeec817b8159",
+  "binarySha256": "bab52d295c441dcf9beea4ec3675ff6aafa41bfe1b2c9ce2fb3e393540e741e9",
   "releaseCoreTests": "passed",
-  "releaseIntegrationContracts": 50,
-  "asanUbsanLeakIntegrationContracts": 50,
+  "releaseIntegrationContracts": 63,
+  "asanUbsanLeakIntegrationContracts": 63,
   "asanUbsanLeakCoreTests": "passed",
   "gccAnalyzerWarnings": 0,
   "modelAndChannelTests": "Temporary fixtures and local mocks; no real model, QQ account or microphone requests",
@@ -19,7 +19,7 @@
   "version": "0.3.0-alpha",
   "legacyRuntime": "JavaScript / Node >=22.5",
   "ownTypeScriptSourcesRemoved": true,
-  "legacyUnitTests": 71,
+  "legacyUnitTests": 73,
   "legacyIntegrationContracts": 9,
   "privateDataIncludedInUpload": false,
   "defaultEntryIsNativeC": true,
@@ -30,5 +30,13 @@
   "installedDefaultCommand": "dito",
   "legacyUnitTestCoverage": "images, TUI, model metadata, subagent scheduling, private configuration and data migration",
   "automaticLegacyRouting": "unsupported model APIs, SDK stored auth and encrypted prompt bundles",
-  "portableBuild": "Linux native package and relocatable entry verified"
+  "portableBuild": "Linux native package and relocatable entry verified",
+  "releaseToolContracts": "passed",
+  "asanUbsanLeakToolContracts": "passed",
+  "legacyPublicToolSchemas": 200,
+  "askQuestionOptions": "native selector, custom input, skip, mouse, scrolling and session isolation verified",
+  "readmeParity": "All previous README sections, commands and keys compared in README_PARITY.md; remaining native differences explicitly recorded",
+  "legacyToolBridge": "SDK file tools, distro tools, complete system info, QQ actions and affinity; fixed registry with configuration read-only",
+  "legacyModelPicker": "Real model selector and persistence verified; never submits /model as a model prompt",
+  "nativeCommandContracts": "Alt+W/A/D, forward/backward history cycling, command completion and manual compaction verified"
 }

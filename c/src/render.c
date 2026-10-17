@@ -213,6 +213,9 @@ void render_event(void *opaque, const char *kind, const char *text,
 void render_finish(Renderer *r) {
   clear_wait(r);
   workbench_free(r);
+  free(r->question_text);
+  if (r->question_options)
+    json_object_put(r->question_options);
   if (r->tab_items)
     json_object_put(r->tab_items);
   free(r->tab_hits);

@@ -2,7 +2,7 @@
 
 Dito 0.3.0-alpha 以 **C17 程序作为 `dito` 默认入口**。终端对话、流式模型请求、工具循环、知识库、记忆和双会话并行由 C 运行时处理。未完成原生迁移的功能通过 `legacy/` 中的 JavaScript 兼容层运行；项目自有 TypeScript 源码、tsx 启动链和根目录 npm 发行包已移除。
 
-这次切换改变默认实现，**不代表所有功能都已用 C 重写**。兼容频道和旧界面仍需 Node ≥22.5。详细边界见 [迁移记录](C_MIGRATION.md)。
+这次切换改变默认实现，**不代表所有功能都已用 C 重写**。兼容频道和旧界面仍需 Node ≥22.5。详细边界见 [迁移记录](C_MIGRATION.md)。旧 README 的全部章节、命令、快捷键及功能已逐项对照，见 [旧版功能对照表](README_PARITY.md)。
 
 ## 构建与安装
 
@@ -48,7 +48,17 @@ bash packaging/install-native.sh --prefix /绝对路径
 
 `--native` 禁止默认命令转交兼容层；未实现的原生功能会明确报错。`DITO_DISABLE_LEGACY=1` 可在整个进程中关闭兼容层。普通 C 终端不加载 Node；选择未原生支持的模型协议、使用 SDK 保存的 OAuth 鉴权或启用加密提示词包时，会自动转交兼容实现。子代理单任务默认使用 C 子进程；传入并行 tasks、chain、选模或预算参数时，由 JavaScript 兼容调度器执行，并保留 C 权限与取消门控。
 
-C 终端恢复原版工作台布局：历史标签、可展开的思考/工具、Bash 实时侧栏、边框输入和模型/上下文状态。Ctrl+T 新建，Alt+1…9 选标签，Ctrl+W 或终端支持的 Ctrl+Tab 切换。两个会话可同时运行，提问、输入草稿和取消操作各自独立。Alt+W 打开历史，鼠标点击展开记录，滚轮分别滚动正文与 Bash；Ctrl+B / Ctrl+Shift+B 展开 Bash。空闲时输入 `/legacy` 可恢复当前会话的完整旧界面，运行中的两个任务不会被静默中断。
+C 终端恢复原版工作台布局：历史标签、可展开的思考/工具、Bash 实时侧栏、边框输入和模型/上下文状态。Ctrl+T / Alt+D 新建，Alt+A 上一历史会话，Alt+1…9 选标签；Ctrl+Tab / Ctrl+Shift+Tab 按方向切换历史标签，输入框为空时 Alt+←→ 同样有效，Ctrl+W 切换两个工作会话。两个会话可同时运行，提问、输入草稿和取消操作各自独立。Alt+W 打开历史会话选择器，↑↓ 或 j/k 移动、Enter 恢复、Esc 返回；草稿保留。鼠标点击展开记录，滚轮分别滚动正文与 Bash；Ctrl+B / Ctrl+Shift+B 展开 Bash。`/compact` 在独立 C 工作进程中手动压缩上下文；`/memory-stats` 查看记忆；`/new`、`/prev`、`/sessions`、`/chat`、`/standard`、`/plan`、`/mode`、`/help` 原生处理，斜杠命令可按 Tab 补全。
+
+`/model`、`/persona`、`/identity`、`/sudo`、`/memory-clear`、`/system`、`/kb-stats`、`/image`、`/images`、`/unimage` 会携带当前会话进入完整旧界面并执行原命令；Ctrl+V 同样通过旧界面处理剪贴板附件并保留文字草稿。空闲时输入 `/legacy` 可手动进入旧界面。若仍有任务运行，命令会保留并提示先完成或取消；两个任务不会被静默中断。
+
+## 旧工具兼容
+
+`ask_question` 支持 `question` 与可选 `options`。C 终端弹出选项框，↑↓/Tab 选择、Enter 确认，鼠标点击亦可；直接输入为自定义回答，Esc 返回“用户未作答”。没有交互界面时返回问题和选项供下轮回复。语音问答继续由 `dito voice` 的旧实现处理。
+
+原有 `remember_fact`、`recall_memories`、`recall_past_events`、知识库五个工具名以及 `pc_bash`/`system_info` 已向模型注册，与 C 工具共用权限及数据。`grep`、`find`、`ls`、AUR/COPR 五个工具和完整系统信息接入旧执行器；QQ 频道与 SnowLuma 插件启用后注册 184 个 `snowluma_*` 动作及 7 个 QQ 辅助工具。
+
+兼容调用只在需要时启动 Node。公共工具目录只保存名称、说明、参数及权限元数据；执行参数使用本机 0600 临时文件，结束或取消后清理。单次工具读取配置时禁用旧版自动迁移和改写；插件关闭、只读模式及非主人身份均在 C 层过滤和再次检查。更新旧工具定义后可运行 `node legacy/generate-tool-catalog.mjs` 重建公开目录。
 
 ## 配置、对话与记忆
 

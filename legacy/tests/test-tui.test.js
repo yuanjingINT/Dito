@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, after } from "node:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { imageAttachment } from "../bin/image-input.js";
@@ -754,5 +754,60 @@ test("TUI waits for a pending paste and falls back to pasting clipboard text", a
     release?.({});
     terminal.send("");
     await running;
+  }
+});
+
+test("C handoff executes the requested old command after binding the selected session", async () => {
+  setMode("standard");
+  const session = new TestSession("history-0");
+  const terminal = new TestTerminal();
+  process.env.DITO_STARTUP_COMMAND = "/persona";
+  const running = runTui(session.asTui(), "Offline", async () => { throw new Error("unexpected new session"); },
+    terminal, source([summary(0)], async () => { throw new Error("unexpected history"); }));
+  try {
+    await until(() => session.sent.includes("/persona"), "startup command dispatched");
+    assert.equal(session.bound, true);
+    assert.equal(process.env.DITO_STARTUP_COMMAND, undefined);
+  } finally {
+    delete process.env.DITO_STARTUP_COMMAND;
+    terminal.send("\u0003");
+    await running;
+  }
+});
+
+test("model command opens a picker after C handoff and persists selection without a model prompt", async () => {
+  const scratch = mkdtempSync(join(tmpdir(), "dito-model-picker-"));
+  const oldAgent = process.env.PI_CODING_AGENT_DIR, oldConfig = process.env.DITO_CONFIG_FILE;
+  process.env.PI_CODING_AGENT_DIR = join(scratch, "agent");
+  process.env.DITO_CONFIG_FILE = join(scratch, "config.json");
+  writeFileSync(process.env.DITO_CONFIG_FILE, JSON.stringify({ model: { provider: "mock", chat: "first" },
+    providers: [{ id: "mock", name: "Mock", api: "openai-completions", baseUrl: "http://127.0.0.1", apiKey: "", models: [{ id: "first", name: "First", input: ["text"] }] }] }));
+  process.env.DITO_STARTUP_COMMAND = "/model";
+  const session = new TestSession("history-0");
+  const models = [{ provider: "mock", id: "first", name: "First" }, { provider: "mock", id: "second", name: "Second" }];
+  session.modelRuntime = { getAvailable: async () => models };
+  session.setModel = async (model) => { session.model = model; };
+  const terminal = new TestTerminal();
+  const running = runTui(session.asTui(), "Offline", async () => { throw new Error("unexpected new session"); },
+    terminal, source([summary(0)], async () => { throw new Error("unexpected history"); }));
+  try {
+    await until(() => terminal.text().includes("→ mock/first"), "model selector");
+    terminal.send("\x1b[B");
+    terminal.send("\r");
+    await until(() => terminal.text().includes("已切换模型：Second"), "model selected");
+    assert.equal(session.model.id, "second");
+    assert.equal(session.sent.length, 0);
+    const config = JSON.parse(readFileSync(process.env.DITO_CONFIG_FILE, "utf8"));
+    assert.equal(config.model.provider, "mock");
+    assert.equal(config.model.chat, "second");
+  } finally {
+    terminal.send("\u0003");
+    await running;
+    delete process.env.DITO_STARTUP_COMMAND;
+    if (oldAgent === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = oldAgent;
+    if (oldConfig === undefined) delete process.env.DITO_CONFIG_FILE;
+    else process.env.DITO_CONFIG_FILE = oldConfig;
+    rmSync(scratch, { recursive: true, force: true });
   }
 });

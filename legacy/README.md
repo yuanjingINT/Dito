@@ -4,6 +4,10 @@
 
 `dito` 是 C 主程序；qq、qqadmin、matrix、mobile、bridge、relay、voice、plugins 和专用配置界面通过 argv 转交此目录。`dito legacy` 显式启动完整旧终端。C 的复杂子代理参数通过私有临时 JSON 请求进入 `subagent-bridge.mjs`，任务结束或取消后清理请求文件。`DITO_DISABLE_LEGACY=1` 可关闭兼容层。
 
+`tool-catalog.json` 是 200 项公开工具定义（文件工具 3 项、系统/AUR/COPR 6 项、QQ 191 项），由 `generate-tool-catalog.mjs` 在临时目录收集，不读取个人数据。C 只补充缺失工具，系统信息复用旧实现；`tool-bridge.mjs` 经固定工具注册表执行，不启动模型会话。配置加载以 `DITO_CONFIG_READONLY=1` 禁用迁移和写盘；QQ 表情包沿用 `user/qq/memes/`。
+
+C 界面可在空闲时把 `/model`、`/persona`、`/identity`、`/sudo`、记忆清理、图片等交互命令连同当前会话转入旧界面。启动命令只在 UI 绑定后执行一次，Ctrl+V 还会带入剪贴板请求与文字草稿。
+
 Node 需要 ≥22.5。从干净源码安装依赖：
 
 ```bash
